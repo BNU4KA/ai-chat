@@ -2,6 +2,7 @@ import { Pressable, Text } from './locale-ui';
 import { FoolSpinner } from './fool-spinner';
 import { useEffect, useRef, useState, type ComponentRef, type ReactNode } from 'react';
 import { Modal, Platform, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from './theme';
 import { ErrorNotice, Field } from './ui';
@@ -49,34 +50,39 @@ type SidebarProps = {
   onMore: () => void;
 };
 
-function NavIcon({ kind }: { kind: 'menu' | 'new' | 'search' | 'chat' | 'settings' }) {
+export function MenuMark({ color }: { color: string }) {
+  return (
+    <View style={{ width: 16, height: 12, justifyContent: 'space-between' }}>
+      {[0, 1, 2].map((line) => (
+        <View key={line} style={{ height: 1.5, borderRadius: 1, backgroundColor: color }} />
+      ))}
+    </View>
+  );
+}
+function NavIcon({
+  kind,
+  color,
+}: {
+  kind: 'menu' | 'new' | 'search' | 'chat' | 'settings';
+  color?: string;
+}) {
   const { colors: c } = useTheme();
+  const ink = color ?? c.muted;
   if (kind === 'menu')
     return (
-      <View testID="nav-icon" style={[styles.icon, { transform: [{ scale: 0.88 }] }]}>
-        {[0, 1, 2].map((line) => (
-          <View
-            key={line}
-            style={{
-              width: 18,
-              height: 1.5,
-              backgroundColor: c.muted,
-              borderRadius: 1,
-              marginVertical: 2,
-            }}
-          />
-        ))}
+      <View testID="nav-icon" style={styles.icon}>
+        <MenuMark color={ink} />
       </View>
     );
   if (kind === 'search')
     return (
-      <View testID="nav-icon" style={[styles.icon, { transform: [{ scale: 0.88 }] }]}>
+      <View testID="nav-icon" style={styles.icon}>
         <View
           style={{
             width: 13,
             height: 13,
             borderWidth: 1.7,
-            borderColor: c.muted,
+            borderColor: ink,
             borderRadius: 7,
             marginTop: -3,
             marginLeft: -3,
@@ -87,7 +93,7 @@ function NavIcon({ kind }: { kind: 'menu' | 'new' | 'search' | 'chat' | 'setting
             position: 'absolute',
             width: 7,
             height: 1.7,
-            backgroundColor: c.muted,
+            backgroundColor: ink,
             transform: [{ rotate: '45deg' }],
             left: 15,
             top: 17,
@@ -97,25 +103,56 @@ function NavIcon({ kind }: { kind: 'menu' | 'new' | 'search' | 'chat' | 'setting
     );
   if (kind === 'chat')
     return (
-      <View testID="nav-icon" style={[styles.icon, { transform: [{ scale: 0.88 }] }]}>
-        <View
-          style={{ width: 17, height: 14, borderWidth: 1.4, borderColor: c.muted, borderRadius: 4 }}
-        />
+      <View testID="nav-icon" style={styles.icon}>
+        <Svg width={18} height={16} viewBox="0 0 18 16" aria-hidden={true} focusable={false}>
+          <Path
+            d="M3 1.4h12a1.6 1.6 0 0 1 1.6 1.6v6.1a1.6 1.6 0 0 1-1.6 1.6H7.1L4.2 13.4V10.7H3A1.6 1.6 0 0 1 1.4 9.1V3A1.6 1.6 0 0 1 3 1.4Z"
+            fill="none"
+            stroke={ink}
+            strokeWidth={1.4}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+        </Svg>
+      </View>
+    );
+  if (kind === 'new')
+    return (
+      <View testID="nav-icon" style={styles.icon}>
+        <Svg
+          width={16}
+          height={16}
+          viewBox="0 0 16 16"
+          fill="none"
+          aria-hidden={true}
+          focusable={false}
+        >
+          <Path
+            d="M8 2.2v11.6M2.2 8h11.6"
+            stroke={ink}
+            strokeWidth={1.6}
+            strokeLinecap="round"
+          />
+        </Svg>
       </View>
     );
   return (
-    <View testID="nav-icon" style={[styles.icon, { transform: [{ scale: 0.88 }] }]}>
-      <Text
-        style={{
-          fontSize: kind === 'new' ? 28 : 22,
-          lineHeight: 30,
-          color: c.muted,
-          fontWeight: '400',
-          textAlign: 'center',
-        }}
-      >
-        {kind === 'new' ? '＋' : '⚙'}
-      </Text>
+    <View testID="nav-icon" style={styles.icon}>
+      <Svg width={18} height={18} viewBox="0 0 24 24" aria-hidden={true} focusable={false}>
+        <Path
+          d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z"
+          fill="none"
+          stroke={c.muted}
+          strokeWidth={1.6}
+        />
+        <Path
+          d="M12 3.2v2M12 18.8v2M4.9 6.1l1.4 1.4M17.7 16.5l1.4 1.4M3.2 12h2M18.8 12h2M4.9 17.9l1.4-1.4M17.7 7.5l1.4-1.4"
+          fill="none"
+          stroke={c.muted}
+          strokeWidth={1.6}
+          strokeLinecap="round"
+        />
+      </Svg>
     </View>
   );
 }
@@ -194,14 +231,16 @@ export function ConversationSidebar(props: SidebarProps) {
           {
             alignSelf: props.expanded ? 'flex-start' : 'center',
             paddingHorizontal: props.expanded ? 14 : 10,
-            backgroundColor: pressed || hovered ? c.hover : c.control,
+            backgroundColor: pressed || hovered ? c.cardPressed : c.card,
+            borderWidth: 1,
+            borderColor: c.cardEdge,
             opacity: props.busy ? 0.5 : 1,
           },
         ]}
       >
-        <NavIcon kind="new" />
+        <NavIcon kind="new" color={c.cardInk} />
         {props.expanded && (
-          <Text style={{ color: c.text, fontSize: 14, fontWeight: '500' }}>New chat</Text>
+          <Text style={{ color: c.cardInk, fontSize: 14, fontWeight: '500' }}>New chat</Text>
         )}
       </Pressable>
       {props.expanded ? (

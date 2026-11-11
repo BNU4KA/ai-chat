@@ -447,3 +447,20 @@ Git publication was explicitly requested by the owner after completing this upda
 Live browser SSO was refreshed during the final smoke check and returned successfully to the
 hosted home screen with the restored English preference. Russian and English homepage previews
 were captured locally and are not included in the public repository.
+
+## T13 — Composer note, toasts, sign-in cards, sidebar icons, smoother answers — 2026-11-11
+
+Owner UI polish, not published.
+
+- The OpenRouter balance note under the composer is centered and uses a slightly darker quiet color.
+- Save and copy confirmations render as a top-right toast in the app surface, with the greeting accent.
+- The sign-in screen uses the same drifting tarot cards as a new chat.
+- Sidebar chat, new, and settings marks are drawn icons. The narrow-screen history button uses the same menu mark.
+- A streaming assistant reply reveals text in small steps, then catches up. Reduced motion shows the full text at once.
+- Shared buttons, the new-chat control, suggestion chips, and language choices use the parchment, gold edge, and ink colors. Danger actions stay red.
+- The Google sign-in button has the same moving color border as the composer, drawn thicker so it stays visible on the dark page.
+
+Checks: client typecheck and eslint on the touched files passed. `smooth-text` unit test passed.
+Desktop Playwright: Google sign-in, one persisted answer with the copy toast, and the Russian home
+scenario passed against synthetic fixtures. Sign-in cards and the expanded sidebar chat icon were
+visually checked locally. No provider call, schema change, commit, or deploy.

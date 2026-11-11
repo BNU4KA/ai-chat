@@ -8,6 +8,7 @@ import { useAuth } from '../../src/auth';
 import { useTheme, type ThemeChoice } from '../../src/theme';
 import { useCredential, useProfile } from '../../src/queries';
 import { api, json } from '../../src/api';
+import { showToast } from '../../src/toast';
 import { Button, Copy, ErrorNotice, Field, Page, Panel } from '../../src/ui';
 export default function Settings() {
   const router = useRouter();
@@ -23,21 +24,19 @@ export default function Settings() {
   const [timezone, setTimezone] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
-  const [notice, setNotice] = useState('');
   useEffect(() => {
     if (profile.data) setTimezone(profile.data.timezone);
   }, [profile.data]);
   async function saveKey() {
     setBusy(true);
     setError(null);
-    setNotice('');
     try {
       await api(
         '/v1/credentials/openrouter',
         json('PUT', { api_key: key }, saved.data?.version ?? 0),
       );
       setKey('');
-      setNotice('Key saved securely.');
+      showToast('Key saved securely.');
       await cache.invalidateQueries({ queryKey: ['credential'] });
       await cache.invalidateQueries({ queryKey: ['models'] });
     } catch (e) {
@@ -60,7 +59,7 @@ export default function Settings() {
     if (!profile.data) return;
     try {
       await api('/v1/profile', json('PATCH', { timezone }, profile.data.version));
-      setNotice('Timezone saved.');
+      showToast('Timezone saved.');
       await cache.invalidateQueries({ queryKey: ['profile'] });
     } catch (e) {
       setError(e);
@@ -69,7 +68,6 @@ export default function Settings() {
   return (
     <Page title="Settings">
       <ErrorNotice error={error ?? profile.error ?? saved.error} />
-      {!!notice && <Copy>{notice}</Copy>}
       <Panel>
         <Copy translate={false}>
           {profile.data?.display_name ?? auth.session?.user.email ?? t('Your account')}
@@ -104,7 +102,7 @@ export default function Settings() {
                 setLanguageBusy(true);
                 setError(null);
                 void saveLanguage(value)
-                  .then(() => setNotice('Language saved.'))
+                  .then(() => showToast('Language saved.'))
                   .catch(setError)
                   .finally(() => setLanguageBusy(false));
               }}
@@ -113,11 +111,12 @@ export default function Settings() {
                 paddingVertical: 12,
                 borderRadius: 22,
                 borderWidth: 1,
-                borderColor: choice === value ? c.accent : c.border,
-                backgroundColor: choice === value ? c.selected : 'transparent',
+                borderColor: c.cardEdge,
+                backgroundColor: choice === value ? c.cardPressed : c.card,
+                opacity: languageBusy ? 0.45 : 1,
               }}
             >
-              <Text style={{ color: c.text }}>
+              <Text style={{ color: c.cardInk }}>
                 {value === 'auto' ? 'Automatic' : value === 'ru' ? 'Русский' : 'English'}
               </Text>
             </Pressable>
@@ -150,7 +149,7 @@ export default function Settings() {
             onPress={() =>
               void api('/v1/credentials/openrouter', json('DELETE', undefined, saved.data.version))
                 .then(() => {
-                  setNotice('Key removed. Active requests are stopping.');
+                  showToast('Key removed. Active requests are stopping.');
                   void cache.invalidateQueries({ queryKey: ['credential'] });
                   cache.removeQueries({ queryKey: ['models'] });
                 })

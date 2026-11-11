@@ -1,5 +1,6 @@
 import { Pressable, Text } from './locale-ui';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { showToast } from './toast';
 import { Platform, Share, View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 import * as Clipboard from 'expo-clipboard';
@@ -113,17 +114,10 @@ export function MessageActions({
   onRetry: () => void;
   onError: (error: unknown) => void;
 }) {
-  const { colors: c } = useTheme();
-  const [notice, setNotice] = useState('');
-  useEffect(() => {
-    if (!notice) return;
-    const timer = setTimeout(() => setNotice(''), 2000);
-    return () => clearTimeout(timer);
-  }, [notice]);
   async function copy() {
     try {
       await Clipboard.setStringAsync(text);
-      setNotice('Copied');
+      showToast('Copied');
     } catch (error) {
       onError(error);
     }
@@ -134,7 +128,7 @@ export function MessageActions({
         if (navigator.share) await navigator.share({ text });
         else {
           await Clipboard.setStringAsync(text);
-          setNotice('Response copied to share');
+          showToast('Response copied to share');
         }
       } else await Share.share({ message: text });
     } catch (error) {
@@ -168,11 +162,6 @@ export function MessageActions({
         )}
         <IconButton icon="copy" label="Copy message" disabled={!text} onPress={() => void copy()} />
       </View>
-      {!!notice && (
-        <Text accessibilityLiveRegion="polite" style={{ fontSize: 12, color: c.muted }}>
-          {notice}
-        </Text>
-      )}
     </View>
   );
 }

@@ -11,6 +11,7 @@ export function Button({
   secondary = false,
   danger = false,
   label,
+  testID,
 }: {
   children: ReactNode;
   onPress: () => void;
@@ -18,10 +19,12 @@ export function Button({
   secondary?: boolean;
   danger?: boolean;
   label?: string;
+  testID?: string;
 }) {
   const { colors: c } = useTheme();
   return (
     <Pressable
+      testID={testID}
       accessibilityRole="button"
       accessibilityLabel={label}
       disabled={disabled}
@@ -31,18 +34,20 @@ export function Button({
         paddingHorizontal: 16,
         paddingVertical: 11,
         borderRadius: 24,
+        borderWidth: secondary ? 1 : 2,
+        borderColor: danger ? c.danger : c.cardEdge,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: secondary ? (hovered ? c.hover : c.control) : danger ? c.danger : c.accent,
-        opacity: disabled ? 0.45 : pressed ? 0.75 : 1,
+        backgroundColor: danger ? c.danger : pressed || hovered ? c.cardPressed : c.card,
+        opacity: disabled ? 0.45 : 1,
       })}
     >
       {typeof children === 'string' ? (
         <Text
           style={{
-            fontWeight: '500',
+            fontWeight: '600',
             fontSize: 14,
-            color: secondary ? c.text : danger ? c.dangerText : c.accentText,
+            color: danger ? c.dangerText : c.cardInk,
           }}
         >
           {children}

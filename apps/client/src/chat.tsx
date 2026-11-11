@@ -18,7 +18,7 @@ import { useCredential, useCapabilities, useModels, useProfile } from './queries
 import { useRun, activeStatus } from './use-run';
 import { Button, Copy, ErrorNotice, Field, Loading, Panel } from './ui';
 import { Dialog } from './dialog';
-import { ConversationSidebar, ConversationDrawer, useSidebarTransition } from './sidebar';
+import { ConversationSidebar, ConversationDrawer, MenuMark, useSidebarTransition } from './sidebar';
 import { Markdown, safeUrl } from './markdown';
 import { ApprovalCard } from './approval';
 import { Attachment } from './attachment';
@@ -408,17 +408,19 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
             accessibilityRole="button"
             accessibilityLabel="Choose model"
             onPress={() => setDialog('models')}
-            style={({ hovered }) => ({
+            style={({ pressed, hovered }) => ({
               minHeight: 44,
               maxWidth: wide ? 220 : 130,
               flexShrink: 1,
               borderRadius: 22,
+              borderWidth: 1,
+              borderColor: c.cardEdge,
               paddingHorizontal: 12,
               justifyContent: 'center',
-              backgroundColor: hovered ? c.hover : 'transparent',
+              backgroundColor: pressed || hovered ? c.cardPressed : c.card,
             })}
           >
-            <Text numberOfLines={1} style={{ color: c.text, fontSize: 14 }}>
+            <Text numberOfLines={1} style={{ color: c.cardInk, fontSize: 14 }}>
               {(currentModel?.name ?? 'Gemini 3.8 Flash').replace('Google: ', '')} ▾
             </Text>
           </Pressable>
@@ -448,7 +450,9 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                 flexShrink: 0,
                 alignItems: 'center',
                 justifyContent: 'center',
-                backgroundColor: c.accent,
+                backgroundColor: pressed ? c.cardPressed : c.card,
+                borderWidth: 1,
+                borderColor: c.cardEdge,
                 opacity:
                   busy ||
                   uploading ||
@@ -458,12 +462,10 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                   !fileReady ||
                   (!draft.trim() && !selectedFiles.length)
                     ? 0.4
-                    : pressed
-                      ? 0.8
-                      : 1,
+                    : 1,
               })}
             >
-              <Text style={{ fontSize: 22, color: c.accentText }}>↑</Text>
+              <Text style={{ fontSize: 22, color: c.cardInk }}>↑</Text>
             </Pressable>
           )}
         </View>
@@ -472,9 +474,16 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
         <ErrorNotice error="This model cannot see photos. Choose a model with photo support." />
       )}
       <ErrorNotice error={error} />
-      <Copy small muted>
+      <Text
+        style={{
+          textAlign: 'center',
+          color: c.quiet,
+          fontSize: 13,
+          lineHeight: 20,
+        }}
+      >
         Uses your OpenRouter balance. Review external actions before confirming.
-      </Copy>
+      </Text>
     </View>
   );
   const sidebar = (mobile = false) => (
@@ -556,7 +565,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
         >
           {!wide && (
             <Button secondary label="Open conversation history" onPress={() => setDrawer(true)}>
-              ☰
+              <MenuMark color={c.cardInk} />
             </Button>
           )}
           <View style={{ flex: 1 }}>
@@ -648,16 +657,16 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                     key={prompt}
                     accessibilityRole="button"
                     onPress={() => setDraft(t(prompt))}
-                    style={({ hovered }) => ({
+                    style={({ pressed, hovered }) => ({
                       paddingHorizontal: 18,
                       paddingVertical: 12,
                       borderRadius: 22,
                       borderWidth: 1,
-                      borderColor: c.border,
-                      backgroundColor: hovered ? c.hover : 'transparent',
+                      borderColor: c.cardEdge,
+                      backgroundColor: pressed || hovered ? c.cardPressed : c.card,
                     })}
                   >
-                    <Text style={{ fontSize: 14, color: c.text }}>{prompt}</Text>
+                    <Text style={{ fontSize: 14, color: c.cardInk }}>{prompt}</Text>
                   </Pressable>
                 ))}
               </View>
@@ -750,7 +759,14 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                       )}
                     </Text>
                     {message.content ? (
-                      <Markdown text={message.content} />
+                      <Markdown
+                        text={message.content}
+                        smooth={
+                          message.role === 'assistant' &&
+                          running &&
+                          message.id === snapshot.data?.assistant_message.id
+                        }
+                      />
                     ) : message.status === 'pending' ? (
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                         <FoolSpinner size={24} label="Generating response" />

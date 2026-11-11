@@ -7,6 +7,7 @@ import { StatusBar } from 'expo-status-bar';
 import { AuthProvider, useAuth } from '../src/auth';
 import { ThemeProvider, useTheme } from '../src/theme';
 import { Loading } from '../src/ui';
+import { ToastHost } from '../src/toast';
 import { LocaleProvider } from '../src/locale';
 import { WebEffects } from '../src/web-effects';
 import { rememberReturnPath, consumeReturnPath } from '../src/return-path';
@@ -43,6 +44,7 @@ function Navigation() {
             animation: Platform.OS === 'web' ? 'none' : 'default',
           }}
         />
+        <ToastHost />
         {(!ready || (!session && !isPublic)) && (
           <View style={{ position: 'absolute', inset: 0 }}>
             <Loading />
