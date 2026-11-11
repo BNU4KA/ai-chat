@@ -6,8 +6,8 @@ service state, Caddy site and firewall rules intact. Deploy AI Chat independentl
 
 ## Current status
 
-Live at **https://chat.72-56-89-122.sslip.io**. Current web release is `20261111T135627Z`;
-current runtime remains `20261111T111852Z`. The first published release `20261111T095526Z` is retained on
+Live at **https://chat.72-56-89-122.sslip.io**. Web releases now come from GitHub Actions
+after CI on `master`. The first one is `20261111T144829Z`. Runtime remains `20261111T111852Z`. The first published release `20261111T095526Z` is retained on
 the owner's existing Ubuntu VPS. The personal SSH key was added through the provider panel;
 no work identity was used. Caddy serves the static export and proxies to the API on loopback.
 Both app services are enabled, running as the dedicated unprivileged `aichat` user, and have
