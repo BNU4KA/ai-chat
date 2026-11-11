@@ -482,4 +482,4 @@ Checks: client typecheck and eslint on the touched files passed. A synthetic bro
 
 ## GitHub web deploy — 2026-11-11 (not published)
 
-A dedicated deploy key can log in to the VPS as root. Its private half is only on this machine until GitHub Actions secrets can be written. `deploy/publish-web.sh` switches the static release and does not restart the API or worker. `.github/workflows/deploy-web.yml` builds the web client after CI succeeds on `master`. Server secrets stay in `/etc/ai-chat/server.env`. GitHub CLI is installed and waiting for a device login before the five public secrets can be stored and the workflow pushed.
+A dedicated deploy key can log in to the VPS as root. Its private half is stored as the `SSH_PRIVATE_KEY` Actions secret. `deploy/publish-web.sh` switches the static release and does not restart the API or worker. `.github/workflows/deploy-web.yml` builds the web client after CI succeeds on `master`. The other Actions secrets are `SSH_HOST`, `EXPO_PUBLIC_API_URL`, `EXPO_PUBLIC_SUPABASE_URL`, and `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. Server secrets stay in `/etc/ai-chat/server.env`.
