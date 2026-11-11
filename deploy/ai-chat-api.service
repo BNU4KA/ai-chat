@@ -1,0 +1,29 @@
+[Unit]
+Description=AI Chat API
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=120
+StartLimitBurst=10
+
+[Service]
+Type=simple
+User=aichat
+Group=aichat
+WorkingDirectory=/opt/ai-chat/current
+EnvironmentFile=/etc/ai-chat/server.env
+Environment=NODE_OPTIONS=--max-old-space-size=128
+ExecStart=/opt/ai-chat/toolchain/node/bin/node apps/api/src/index.ts
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+RestrictSUIDSGID=true
+UMask=0077
+MemoryHigh=192M
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target

@@ -2,22 +2,22 @@
 
 ## Stack
 
-| Concern | Required default |
-| --- | --- |
-| Workspace | pnpm workspaces; one committed lockfile; TypeScript strict |
-| App | Expo stable SDK; React Native; React Native Web; Expo Router |
-| Server state | TanStack Query; React state for transient UI |
-| API | Fastify on Node.js active LTS, compatible with the chosen Expo tooling |
-| Validation | Zod schemas shared through packages/contracts |
-| Identity | Supabase Auth with Google provider |
-| Data | Supabase PostgreSQL; SQL migrations; private Supabase Storage |
-| Durable jobs | pg-boss, separate worker; dedicated queue schema and DB role |
-| Database access | pg parameterized SQL; no ORM in MVP |
-| Models | OpenRouter chat/completions over fetch; tools and SSE in one adapter |
-| Search | Tavily Search via server fetch; no user-managed search key |
-| Document retrieval | PostgreSQL full-text search over extracted chunks; no embeddings |
-| Tests | Vitest, Fastify inject, local PostgreSQL/Supabase integration tests, Playwright web E2E |
-| Formatting | ESLint and Prettier with a shared root configuration |
+| Concern            | Required default                                                                        |
+| ------------------ | --------------------------------------------------------------------------------------- |
+| Workspace          | pnpm workspaces; one committed lockfile; TypeScript strict                              |
+| App                | Expo stable SDK; React Native; React Native Web; Expo Router                            |
+| Server state       | TanStack Query; React state for transient UI                                            |
+| API                | Fastify on Node.js active LTS, compatible with the chosen Expo tooling                  |
+| Validation         | Zod schemas shared through packages/contracts                                           |
+| Identity           | Supabase Auth with Google provider                                                      |
+| Data               | Supabase PostgreSQL; SQL migrations; private Supabase Storage                           |
+| Durable jobs       | pg-boss, separate worker; dedicated queue schema and DB role                            |
+| Database access    | pg parameterized SQL; no ORM in MVP                                                     |
+| Models             | OpenRouter chat/completions over fetch; tools and SSE in one adapter                    |
+| Search             | Tavily Search via server fetch; no user-managed search key                              |
+| Document retrieval | PostgreSQL full-text search over extracted chunks; no embeddings                        |
+| Tests              | Vitest, Fastify inject, local PostgreSQL/Supabase integration tests, Playwright web E2E |
+| Formatting         | ESLint and Prettier with a shared root configuration                                    |
 
 At T01 select exact mutually compatible versions and pin the package manager and Node version.
 Commit the lockfile. Record supported OS floors from that Expo SDK; do not invent lower OS support.
@@ -96,20 +96,20 @@ Do not add a shared operator OpenRouter key as a fallback for users without keys
 
 ## Safe defaults and limits
 
-| Limit | Default |
-| --- | --- |
-| Message text | 32,000 Unicode code points, subject to model context budget |
-| File | 20 MiB, five attachments per message, 200 files and 500 MiB stored per user |
-| Extracted document | 200 pages for PDF; 1,000,000 characters; 64 MiB decompression cap |
-| Agent | 10 model requests, 20 tool calls, 300 seconds active execution |
-| Model output | Up to 4,096 tokens per model request, clamped to provider support |
-| Concurrency | One active run per conversation; three per user |
-| Approval | 24-hour expiry; wait does not consume active execution time |
-| External tool timeout | 20 seconds; page read 10 seconds; model call 90 seconds |
-| Search | Five results per call; ten page reads per run |
-| Model catalog cache | 15 minutes; stale fallback at most 24 hours with a visible stale marker |
-| Event batch | Flush at 100 ms or 2 KiB, whichever comes first; persist before publish |
-| Access rates | New runs: 10/minute/user; search: 30/hour/user; uploads: 20/hour/user |
+| Limit                 | Default                                                                     |
+| --------------------- | --------------------------------------------------------------------------- |
+| Message text          | 32,000 Unicode code points, subject to model context budget                 |
+| File                  | 20 MiB, five attachments per message, 200 files and 500 MiB stored per user |
+| Extracted document    | 200 pages for PDF; 1,000,000 characters; 64 MiB decompression cap           |
+| Agent                 | 10 model requests, 20 tool calls, 300 seconds active execution              |
+| Model output          | Up to 4,096 tokens per model request, clamped to provider support           |
+| Concurrency           | One active run per conversation; three per user                             |
+| Approval              | 24-hour expiry; wait does not consume active execution time                 |
+| External tool timeout | 20 seconds; page read 10 seconds; model call 90 seconds                     |
+| Search                | Five results per call; ten page reads per run                               |
+| Model catalog cache   | 15 minutes; stale fallback at most 24 hours with a visible stale marker     |
+| Event batch           | Flush at 100 ms or 2 KiB, whichever comes first; persist before publish     |
+| Access rates          | New runs: 10/minute/user; search: 30/hour/user; uploads: 20/hour/user       |
 
 Apply limits server-side and expose relevant validation messages. Use shared DB counters for
 multi-instance enforcement. No IP-only identity for authenticated usage. Limits are configurable
@@ -145,3 +145,18 @@ Record hosting/search/storage and OAuth verification dependencies separately fro
 - [Gmail scopes](https://developers.google.com/workspace/gmail/api/auth/scopes)
 - [Google production OAuth](https://developers.google.com/identity/protocols/oauth2/production-readiness/policy-compliance)
 - [Apple login services](https://developer.apple.com/app-store/review/guidelines/#login-services)
+
+## Owner-approved photo and Word extension — 2026-11-10
+
+The isolated file parser supports DOC/DOCX and JPEG/PNG/WebP/GIF. Sharp validates/decode
+limits, corrects orientation, resizes to 2048 px and strips metadata; word-extractor handles
+legacy OLE DOC, with the existing bounded DOCX pipeline retained. The worker marks validated
+photos ready without inventing extracted text. Binary parsing remains in a time- and
+heap-limited child process with no application secrets in its environment.
+
+Persist only attachment references in the agent checkpoint. Immediately before each model
+call a service resolves references under owner/conversation/deletion checks. Document excerpts
+are included as untrusted text; normalized photo bytes become private base64 image_url content
+parts. No signed URLs or photo bytes are persisted in checkpoints. Cache normalized images
+only inside that run's dependency instance and recheck ownership/deletion on every request.
+Model catalog input modalities drive photo-compatibility validation; no silent model switch.

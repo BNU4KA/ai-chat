@@ -61,7 +61,7 @@ integration DTOs must expose only the safe columns listed below; lock them as fi
 | Method / path | Request | Result |
 | --- | --- | --- |
 | GET /profile | — | 200 profile; provision once from verified Auth identity if needed |
-| PATCH /profile | display_name?, theme?, timezone? (valid IANA), locale? (en in MVP) | 200 profile/version |
+| PATCH /profile | display_name?, theme?, timezone? (valid IANA), locale? (auto/en/ru) | 200 profile/version |
 | GET /capabilities | — | 200 configured tool groups, safe limits, disabled reasons |
 | GET /credentials/openrouter | — | 200 {configured,last_four,status,version,validated_at}; null mask when absent |
 | PUT /credentials/openrouter | {api_key:string} | 200 masked credential; validate before replacing |

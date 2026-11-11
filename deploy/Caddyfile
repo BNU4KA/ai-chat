@@ -1,0 +1,30 @@
+chat.72-56-89-122.sslip.io {
+    encode zstd gzip
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+        X-Frame-Options DENY
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    }
+
+    @api path /v1/* /health/* /integrations/google/callback /openapi.json
+    handle @api {
+        reverse_proxy 127.0.0.1:3001 {
+            flush_interval -1
+        }
+    }
+
+    @private path /.env* /.git/* /node_modules/* /packages/* /supabase/* /deploy/*
+    handle @private {
+        respond 404
+    }
+
+    handle {
+        root * /srv/ai-chat/current
+        route {
+            try_files {path} /index.html
+            header /index.html Cache-Control "no-cache"
+            file_server
+        }
+    }
+}

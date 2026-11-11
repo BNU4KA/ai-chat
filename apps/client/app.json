@@ -1,0 +1,50 @@
+{
+  "expo": {
+    "name": "AI Chat",
+    "slug": "ai-chat",
+    "scheme": "aichat",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "bundleIdentifier": "app.aichat",
+      "supportsTablet": true,
+      "infoPlist": {
+        "CFBundleLocalizations": [
+          "en",
+          "ru"
+        ]
+      }
+    },
+    "android": {
+      "package": "app.aichat"
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "@react-native-google-signin/google-signin",
+      "expo-document-picker",
+      [
+        "expo-localization",
+        {
+          "supportedLocales": {
+            "ios": [
+              "en",
+              "ru"
+            ],
+            "android": [
+              "en",
+              "ru"
+            ]
+          }
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

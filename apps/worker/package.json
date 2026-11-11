@@ -1,0 +1,19 @@
+{
+  "name": "@ai-chat/worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file-if-exists=../../.env --watch src/index.ts",
+    "start": "node --env-file-if-exists=../../.env src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-chat/agent-runtime": "workspace:*",
+    "@ai-chat/contracts": "workspace:*",
+    "@ai-chat/database": "workspace:*",
+    "@ai-chat/integrations": "workspace:*",
+    "pg-boss": "12.38.1",
+    "@ai-chat/services": "workspace:*"
+  }
+}

@@ -22,7 +22,7 @@ Unless listed otherwise, rows have id uuid, owner_id uuid, created_at timestampt
 
 | Table | Additional fields |
 | --- | --- |
-| profiles | id = auth.users.id, display_name text?, avatar_url text?, locale text default en, timezone text, theme system/light/dark, deletion_requested_at timestamptz?; no separate owner_id |
+| profiles | id = auth.users.id, display_name text?, avatar_url text?, locale text auto/en/ru default auto (existing values preserved), timezone text, theme system/light/dark, deletion_requested_at timestamptz?; no separate owner_id |
 | conversations | title text, title_source auto/manual, model_id text?, enabled_tools text[], deleted_at timestamptz? |
 | messages | conversation_id uuid, run_id uuid?, seq bigint, role user/assistant, content text, status pending/complete/partial/failed/cancelled, client_message_id uuid? |
 | runs | conversation_id uuid, user_message_id uuid, assistant_message_id uuid, attempt int, status enum, model_id text, tool_snapshot jsonb, credential_version int, cancel_requested_at timestamptz?, execution_ms int, model_calls int, tool_calls int, checkpoint jsonb, error_code text?, usage jsonb, started_at timestamptz?, finished_at timestamptz? |

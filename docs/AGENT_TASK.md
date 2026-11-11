@@ -12,24 +12,29 @@ Implement real integrations, persistence, and agent execution. A UI prototype is
 
 ## 2. Confirmed requirements
 
-| ID | Requirement |
-| --- | --- |
-| P01 | Shared React Native implementation for iOS, Android, and web. |
+| ID  | Requirement                                                                            |
+| --- | -------------------------------------------------------------------------------------- |
+| P01 | Shared React Native implementation for iOS, Android, and web.                          |
 | P02 | Google SSO creates an account on first sign-in and restores it on subsequent sign-ins. |
-| P03 | Bring-your-own OpenRouter key, encrypted on the server. |
+| P03 | Bring-your-own OpenRouter key, encrypted on the server.                                |
 | P04 | Accounts, conversation history, and cross-device synchronization in the first release. |
-| P05 | Model-driven tool use with real execution, not persona-only chat. |
-| P06 | Internet search and reading uploaded documents. |
-| P07 | Email and calendar access through explicit integration consent. |
-| P08 | Persistent server tasks continue after the client disconnects. |
-| P09 | Review the exact arguments before sending email or writing calendar data. |
+| P05 | Model-driven tool use with real execution, not persona-only chat.                      |
+| P06 | Internet search and reading uploaded documents.                                        |
+| P07 | Email and calendar access through explicit integration consent.                        |
+| P08 | Persistent server tasks continue after the client disconnects.                         |
+| P09 | Review the exact arguments before sending email or writing calendar data.              |
 
 ## 3. Fixed MVP scope
 
 One agent, with server-authorized tools selected from those enabled in a conversation.
-Default providers: OpenRouter, Tavily, Gmail, Google Calendar. English is the default UI and
-all repository documentation is English. Centralize UI strings for future localization;
-a second translation is not required for MVP.
+Default providers: OpenRouter, Tavily, Gmail, Google Calendar. The UI supports English and Russian, with automatic device-language/region selection and a
+synchronized manual override in Profile → Region → Language. Existing stored choices are preserved.
+All repository documentation remains English.
+
+Owner-approved extension (2026-11-10): support attached photos (JPEG/PNG/WebP/GIF) and
+legacy Word DOC alongside DOCX. Send private photos as real multimodal input to compatible
+models and supply extracted Word text to the model. Retain private ownership and deletion rules.
+Use the familiar Gemini chat layout and visual language with AI Chat branding.
 
 Required: streaming chat, model catalog, conversation search by title, manual rename/delete,
 retry last response, private uploads, sources, action cards, confirmation cards, connection
@@ -78,6 +83,7 @@ structured redacted logs, and operational instructions for restart and backup/re
 No secrets, private datasets, or real provider responses containing personal data in the public repo.
 
 Distinguish these statuses in PROGRESS:
+
 - Implemented: code and relevant automated checks exist.
 - Live verified: the real provider flow was exercised with authorized test credentials.
 - Blocked: a named external prerequisite is missing.

@@ -2,13 +2,26 @@
 
 ## Layout and visual rules
 
-Use a quiet chat interface: neutral surfaces, one accent color, system typography, consistent
+Use a Gemini-inspired visual language while retaining AI Chat branding: neutral surfaces,
+blue accents, rounded pill controls, a rounded composer, and light-weight greeting typography.
+Light palette: white canvas, #f0f4f9 sidebar/composer, #0b57d0 accent. Dark palette:
+#131314 canvas, #1e1f20 sidebar/composer, #a8c7fa accent. Keep semantic colors in
+theme tokens shared by chat, dialogs, settings, and authentication.
+Use system typography and consistent
 8-point spacing, 16 px base text on web, accessible native text scaling. Use tokens for color,
 spacing, radii, and typography. Do not add marketing screens, dashboards, mascots, animations,
 or an agent marketplace. No fake screenshots or completed-feature claims.
 
-Desktop >= 1024 px: 280 px history sidebar, flexible main area, chat column max-width 800 px.
-Below 1024 px: history in a dismissible drawer, top bar in the chat. Settings becomes full-screen
+Desktop >= 1024 px: 280 px history sidebar that collapses to a 72 px icon rail, flexible main
+area, chat column max-width 800 px. On web it starts collapsed and expands over the chat on
+mouse hover, without shifting content. It collapses when the pointer leaves, except while
+search is focused. The menu toggle pins/unpins the expanded sidebar. Width changes use a 240 ms eased
+transition, disabled when the web user prefers reduced motion.
+The sidebar has a menu toggle, compact New chat action,
+search, recent conversations, and bottom-anchored settings/account controls.
+Below 1024 px: history in a full-height left drawer up to 320 px wide, with a dimmed backdrop
+and no centered dialog or duplicate heading. Close with its menu button, backdrop, Escape on
+web, or the native back action. Keep the top bar in the chat. Settings becomes full-screen
 on narrow layouts. Composer stays above native keyboard and safe area; code blocks scroll
 horizontally without overflowing the page. Respect reduced motion and focus visibility.
 
@@ -18,16 +31,16 @@ not a status signal. Use native pickers where appropriate.
 
 ## Screens and routes
 
-| Route | Content and actions |
-| --- | --- |
-| /sign-in | App name, short purpose, Continue with Google, privacy/data-flow explanation |
-| /auth/callback | Web OAuth completion, spinner, recoverable error with Back to sign in |
-| /onboarding/key | Masked key entry, Show/Hide, Save and continue, Skip for now |
-| / | Conversation list/new chat; redirect to selected conversation after creation |
-| /chat/:id | Header, messages, tool cards, composer, sources, active-run state |
-| /settings | Profile, key, connections, theme, data controls, sign out |
-| /settings/connections | Independent Gmail/Calendar capability status and consent actions |
-| /settings/data | Conversation deletion and account deletion explanation |
+| Route                 | Content and actions                                                          |
+| --------------------- | ---------------------------------------------------------------------------- |
+| /sign-in              | App name, short purpose, Continue with Google, privacy/data-flow explanation |
+| /auth/callback        | Web OAuth completion, spinner, recoverable error with Back to sign in        |
+| /onboarding/key       | Masked key entry, Show/Hide, Save and continue, Skip for now                 |
+| /                     | Conversation list/new chat; redirect to selected conversation after creation |
+| /chat/:id             | Header, messages, tool cards, composer, sources, active-run state            |
+| /settings             | Profile, key, connections, theme, data controls, sign out                    |
+| /settings/connections | Independent Gmail/Calendar capability status and consent actions             |
+| /settings/data        | Conversation deletion and account deletion explanation                       |
 
 Native paths map to Expo Router dynamic files. Unauthenticated deep links resume the intended
 owned route after login. Unauthorized/missing conversation IDs show a generic Not found screen.
@@ -104,7 +117,10 @@ before trying again; never render it as Sent or automatically offer one-click re
 
 Show uploading -> processing -> ready, with failure reason and remove action. Send cannot include
 an unready file. File deletion removes the original and retrieval index; explain that existing
-conversation answers may still quote it and deleting the conversation removes those copies. Accept PDF, TXT, MD, DOCX within the documented limits. Label scanned PDFs
+conversation answers may still quote it and deleting the conversation removes those copies. Accept JPEG, PNG, WebP and GIF photos, Word DOC/DOCX, PDF, TXT and MD within the
+documented limits. Show photo thumbnails and document cards in the composer and message
+history, with remove and processing/failure states. Models without image input must show
+a clear compatibility error rather than silently ignoring the attachment. Label scanned PDFs
 with No extractable text; OCR is not supported yet. A file is scoped to one conversation.
 Do not reuse another chat's file silently. Download requires current authorization.
 
@@ -122,15 +138,72 @@ already sent to email recipients or data retained under provider policies.
 
 ## Loading, offline, and failure states
 
-| Situation | Required behavior |
-| --- | --- |
-| Initial load | Skeleton, no fabricated history |
-| No network | Persistent offline indicator; cached history if available, disable new requests |
-| Lost SSE | Reconnecting indicator; fetch status/history and replay events from cursor |
-| Invalid key | Add/update key action; retain draft and partial output |
-| Insufficient balance | Explain OpenRouter balance; link to provider settings |
-| Rate limit | Show retry availability; do not start a duplicate paid run |
-| Tool unavailable | Explain which capability is unavailable; normal chat remains usable |
-| Cancelled run | Keep partial text, label Cancelled; no claim that an external action was undone |
-| Expired session | Refresh once, then sign-in with a return route; clear private cache on account change |
-| Live integration absent | Not configured/Connect action; never simulated successful data |
+| Situation               | Required behavior                                                                     |
+| ----------------------- | ------------------------------------------------------------------------------------- |
+| Initial load            | Skeleton, no fabricated history                                                       |
+| No network              | Persistent offline indicator; cached history if available, disable new requests       |
+| Lost SSE                | Reconnecting indicator; fetch status/history and replay events from cursor            |
+| Invalid key             | Add/update key action; retain draft and partial output                                |
+| Insufficient balance    | Explain OpenRouter balance; link to provider settings                                 |
+| Rate limit              | Show retry availability; do not start a duplicate paid run                            |
+| Tool unavailable        | Explain which capability is unavailable; normal chat remains usable                   |
+| Cancelled run           | Keep partial text, label Cancelled; no claim that an external action was undone       |
+| Expired session         | Refresh once, then sign-in with a return route; clear private cache on account change |
+| Live integration absent | Not configured/Connect action; never simulated successful data                        |
+
+### Start screen and attachment behavior
+
+The home route starts a fresh conversation draft with a centered greeting, composer and
+suggestion chips. Existing conversations remain in history. New chat clears the draft and
+returns home without creating an empty server conversation. The first message or attachment
+creates the conversation. Model selection and Tools are next to the send control; the profile
+avatar opens settings. Keep all controls inside narrow screens.
+
+Photo bytes are decoded and normalized server-side, with orientation corrected and metadata
+stripped before inference. Only the five most recent distinct photo attachments are included
+in a model request; earlier omitted photos are explicitly labelled in context. The current
+limit is 40 megapixels per source photo and 2048 pixels per side for model input. GIF uses
+its first frame. Word documents are text-extracted; this does not preserve embedded pictures
+or page layout and does not implement editing/export. Google Docs links need a separate
+Drive integration and are not supported by this attachment feature.
+
+### Response action bar
+
+Use a compact row of outlined icons under an assistant response: helpful, unhelpful,
+retry (only when permitted), share, more. No full-width retry control or permanent text Copy
+link. More opens a small dismissible menu with Copy response. Keep accessible names and
+hover labels. Helpful/unhelpful choices toggle and are stored per account/message on the
+current device; they do not train a model or imply feedback has been sent to a provider.
+Share opens the device share UI or copies the response for sharing when unsupported; it
+must not automatically publish a conversation or send content to another person. Retry keeps
+the existing paid-request confirmation. User messages use a single outlined copy icon.
+
+### Current message controls and motion
+
+Assistant messages expose compact retry (latest terminal response only), share, and direct
+copy controls. There are no rating controls or overflow menus. User copy appears outside,
+below, and right-aligned with the user bubble. Icons are subdued gray at rest and become
+clearer on hover; accessible names remain available without hover. Retry retains confirmation.
+
+The focused composer has no inner textarea outline. A thin multicolor border circulates
+around the whole composer. Message/attachment entry, dialogs, tooltips and control states
+use gentle transitions. Shared loading visuals are original Fool tarot-inspired cards with
+restrained rocking and star motion. Respect reduced-motion preferences with static artwork
+and a visible static focus border.
+
+
+### Language and tarot motion (owner update, 2026-11-11)
+
+Profile settings expose Region → Language → Automatic / Русский / English. New profiles use
+Automatic; preserve existing saved values. Supported preferred device languages take priority;
+if none is supported, a Russian region selects Russian and all other regions fall back to
+English. No IP lookup or geolocation permission is involved. Manual choices sync through the
+profile API, override device locale, and survive sign-out/device changes. Localized UI chrome
+includes labels, placeholders, loading, settings, onboarding and action controls. Model output,
+user input, original documents, filenames and provider/model names retain their original language.
+
+The composer border remains softly illuminated and circulates even when unfocused; focus
+increases its visibility. Loading is a gentle 22-major-arcana journey from 0 (The Fool) through
+XXI (The World), with an overlapping crossfade/card draw and no numeric progress claim.
+Home-only background cards drift slowly around the edges behind a pointer-transparent layer.
+Respect reduced motion with static artwork and pause decorative motion while the app is hidden.

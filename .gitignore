@@ -1,5 +1,8 @@
 .DS_Store
 node_modules/
+playwright-report/
+test-results/
+.turbo/
 .expo/
 .expo-shared/
 dist/
@@ -16,3 +19,9 @@ credentials.json
 *.mobileprovision
 *.jks
 *.keystore
+
+.local/
+/apps/client/ios/
+/apps/client/android/
+
+/prod-ca-2021.crt

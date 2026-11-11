@@ -14,8 +14,10 @@ An AI agent chat for iOS, Android, and the web — powered by your own OpenRoute
 
 ---
 
-> **Project status: specification complete; implementation has not started.**
-> The features below describe the planned product. No application builds or hosted demo are available yet.
+> **Project status: MVP implementation in active verification.**
+> Google sign-in, streaming chat, document processing, action approvals, and Google adapters
+> are implemented. Automated browser and backend tests use synthetic fixtures. Full live-provider
+> journeys, native platform checks, and release preparation remain incomplete.
 
 ## A familiar chat, with tools to get things done
 
@@ -23,17 +25,19 @@ AI Chat is designed around a simple flow: sign in with Google, connect your Open
 choose a model, and start a conversation. When a request needs more than a text response,
 the agent can use connected tools and show its progress directly in the chat.
 
-### Planned capabilities
+### Capabilities
 
-| Capability | What it enables |
-| --- | --- |
-| **Bring your own key** | Use your own OpenRouter account and choose compatible models. |
-| **Google sign-in** | Create an account and access the same conversations across devices. |
-| **Web research** | Search the web and follow links back to the sources. |
-| **Document conversations** | Ask questions about uploaded PDF, TXT, Markdown, and DOCX files. |
-| **Gmail & Google Calendar** | Find messages, check availability, and prepare actions. |
-| **Review before acting** | Confirm the exact email or calendar change before it is executed. |
-| **Background tasks** | Return to a running task after closing the app or switching devices. |
+| Capability                  | What it enables                                                              |
+| --------------------------- | ---------------------------------------------------------------------------- |
+| **Bring your own key**      | Use your own OpenRouter account and choose compatible models.                |
+| **Google sign-in**          | Create an account and access the same conversations across devices.          |
+| **Web research**            | Search the web and follow links back to the sources.                         |
+| **Document conversations**  | Ask questions about uploaded Word DOC/DOCX, PDF, TXT, and Markdown files.    |
+| **Photo questions**         | Attach JPG, PNG or WebP photos and ask a compatible vision model about them. |
+| **Gmail & Google Calendar** | Find messages, check availability, and prepare actions.                      |
+| **Review before acting**    | Confirm the exact email or calendar change before it is executed.            |
+| **Russian & English**      | Follow device language/region or save a language preference in your profile. |
+| **Background tasks**        | Return to a running task after closing the app or switching devices.         |
 
 ## Designed for control
 
@@ -41,7 +45,7 @@ the agent can use connected tools and show its progress directly in the chat.
 - **See what happens.** Tool activity, sources, and requests for confirmation appear in the conversation.
 - **Manage your connections.** Replace your model key or disconnect a Google integration from settings.
 
-The planned architecture stores user API keys and integration tokens encrypted on the server
+The server stores user API keys and integration tokens encrypted on the server
 so agents can continue working independently of the client. Conversations and uploaded files
 are also stored server-side for synchronization. Relevant content is sent to the model or tool
 provider when needed to answer a request. This is a hosted architecture, not an on-device-only app.
@@ -51,27 +55,27 @@ web search have separate infrastructure costs; bringing a model key does not cov
 
 ## Built as one cross-platform product
 
-| Layer | Planned stack |
-| --- | --- |
-| App | Expo · React Native · React Native Web · Expo Router |
-| API & background execution | TypeScript · Fastify · PostgreSQL job queue |
-| Accounts & data | Supabase Auth · PostgreSQL · private Storage |
-| Models & integrations | OpenRouter · Tavily · Gmail · Google Calendar |
+| Layer                      | Stack                                                |
+| -------------------------- | ---------------------------------------------------- |
+| App                        | Expo · React Native · React Native Web · Expo Router |
+| API & background execution | TypeScript · Fastify · PostgreSQL job queue          |
+| Accounts & data            | Supabase Auth · PostgreSQL · private Storage         |
+| Models & integrations      | OpenRouter · Tavily · Gmail · Google Calendar        |
 
 ## Roadmap
 
-- [ ] Project foundation and Google authentication
-- [ ] Streaming chat, model selection, and cross-device history
-- [ ] Durable agent execution and action approvals
-- [ ] Web research and document tools
-- [ ] Gmail and Google Calendar integrations
-- [ ] Platform testing and release preparation
+- [x] Shared client, API, worker, and Google sign-in implementation
+- [x] Streaming chat, model selection, and synchronized history implementation
+- [x] Durable runs, tool execution, and confirmation cards
+- [x] Document extraction and web research adapters
+- [x] Gmail and Calendar consent and action adapters
+- [ ] Complete live-provider and native acceptance checks
+- [ ] Operational restore drill and release preparation
 
 ## For developers
 
 Start with the [documentation index](docs/README.md). Implementation instructions live in
 [AGENTS.md](AGENTS.md), with a sequenced [implementation plan](docs/IMPLEMENTATION_PLAN.md).
-Setup commands will be added when the runnable scaffold exists; this repository currently
-contains the product and engineering specifications only.
+Setup commands are in [docs/SETUP.md](docs/SETUP.md). Provider checks require local credentials and explicitly authorized test data.
 
 No license has been selected yet. Public source visibility does not by itself grant a software license.

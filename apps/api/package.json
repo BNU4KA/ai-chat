@@ -1,0 +1,19 @@
+{
+  "name": "@ai-chat/api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file-if-exists=../../.env --watch src/index.ts",
+    "start": "node --env-file-if-exists=../../.env src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-chat/contracts": "workspace:*",
+    "@ai-chat/database": "workspace:*",
+    "@ai-chat/integrations": "workspace:*",
+    "fastify": "5.12.8",
+    "jose": "6.2.17",
+    "@ai-chat/services": "workspace:*"
+  }
+}

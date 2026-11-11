@@ -1,0 +1,32 @@
+{
+  "name": "ai-chat",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.18.0",
+  "engines": {
+    "node": ">=26.13.0 <27"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @ai-chat/client --filter @ai-chat/api --filter @ai-chat/worker run dev",
+    "dev:client": "pnpm --filter @ai-chat/client dev",
+    "dev:api": "pnpm --filter @ai-chat/api dev",
+    "dev:worker": "pnpm --filter @ai-chat/worker dev",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "eslint .",
+    "test": "vitest run --config vitest.config.ts",
+    "test:integration": "vitest run --config vitest.integration.ts",
+    "test:e2e": "playwright test",
+    "build": "pnpm --filter @ai-chat/api --filter @ai-chat/worker typecheck && pnpm --filter @ai-chat/client build",
+    "migrate": "pnpm --filter @ai-chat/database migrate",
+    "setup:env": "node scripts/setup-env.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.0",
+    "@types/node": "26.6.6",
+    "eslint": "10.14.0",
+    "prettier": "3.9.10",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.2",
+    "vitest": "5.1.0"
+  }
+}

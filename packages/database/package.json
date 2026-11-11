@@ -1,0 +1,19 @@
+{
+  "name": "@ai-chat/database",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "migrate": "node --env-file-if-exists=../../.env src/migrate.ts"
+  },
+  "dependencies": {
+    "@ai-chat/contracts": "workspace:*",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "@types/pg": "8.23.1"
+  }
+}

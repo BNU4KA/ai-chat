@@ -1,0 +1,16 @@
+{
+  "name": "@ai-chat/agent-runtime",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-chat/contracts": "workspace:*",
+    "@ai-chat/database": "workspace:*",
+    "zod": "4.6.7"
+  }
+}

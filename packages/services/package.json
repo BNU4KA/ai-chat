@@ -1,0 +1,21 @@
+{
+  "name": "@ai-chat/services",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-chat/agent-runtime": "workspace:*",
+    "@ai-chat/contracts": "workspace:*",
+    "@ai-chat/database": "workspace:*",
+    "@ai-chat/integrations": "workspace:*"
+  },
+  "devDependencies": {
+    "fflate": "0.8.3",
+    "sharp": "0.35.5"
+  }
+}
