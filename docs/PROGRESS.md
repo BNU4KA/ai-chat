@@ -479,3 +479,7 @@ bundle includes the thinking line and the smaller composer controls.
 - Attach, tools, model, and send are smaller, transparent, and outlined in the moving colors.
 
 Checks: client typecheck and eslint on the touched files passed. A synthetic browser session confirmed the denser home cards, the 32px transparent composer controls, a collapsed Thought line that opens the tool list, and the rename/delete row menu. The file-picker timing could not be driven by the automated picker. No provider call or schema change. Commit `67b14e7` is on `origin/master`.
+
+## GitHub web deploy — 2026-11-11 (not published)
+
+A dedicated deploy key can log in to the VPS as root. Its private half is only on this machine until GitHub Actions secrets can be written. `deploy/publish-web.sh` switches the static release and does not restart the API or worker. `.github/workflows/deploy-web.yml` builds the web client after CI succeeds on `master`. Server secrets stay in `/etc/ai-chat/server.env`. GitHub CLI is installed and waiting for a device login before the five public secrets can be stored and the workflow pushed.

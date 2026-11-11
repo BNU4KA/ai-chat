@@ -1,0 +1,65 @@
+name: Deploy web
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-web
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'master')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.18.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Export the web client
+        working-directory: apps/client
+        env:
+          EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+        run: node node_modules/expo/bin/cli export --platform web
+      - name: Reject a build that contains server secrets
+        working-directory: apps/client
+        run: |
+          if grep -R -E -q 'service_role|ENCRYPTION_KEYS|postgres://|GOOGLE_OAUTH_CLIENT_SECRET|synthetic\.supabase|your-project\.supabase' dist; then
+            echo 'The web export contains a private or placeholder value.' >&2
+            exit 1
+          fi
+          grep -R -q 'chat.72-56-89-122.sslip.io' dist
+      - name: Publish the static release
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' '72.56.89.122 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPSGyMGxru3RlZla70GcM3kgkWTo6yeyub+guq9UOIhl' > ~/.ssh/known_hosts
+          release=$(date -u +%Y%m%dT%H%M%SZ)
+          tar -C apps/client/dist -czf "/tmp/ai-chat-web-${release}.tgz" .
+          scp -i ~/.ssh/deploy_key -o IdentitiesOnly=yes "/tmp/ai-chat-web-${release}.tgz" "root@${SSH_HOST}:/tmp/ai-chat-web-${release}.tgz"
+          scp -i ~/.ssh/deploy_key -o IdentitiesOnly=yes deploy/publish-web.sh "root@${SSH_HOST}:/tmp/ai-chat-publish-web-${release}.sh"
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes "root@${SSH_HOST}" "bash /tmp/ai-chat-publish-web-${release}.sh /tmp/ai-chat-web-${release}.tgz ${release} && rm -f /tmp/ai-chat-publish-web-${release}.sh"

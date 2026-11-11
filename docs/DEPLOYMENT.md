@@ -50,6 +50,26 @@ The application uses its existing Supabase database, Auth and private Storage. P
 `CLIENT_ORIGINS`, callback origins and the explicit database CA path; omit all test adapter
 and test JWT settings. Do not use another project's `.env`.
 
+## GitHub web deploy
+
+A successful CI run on `master` publishes the static web client. The workflow is
+`.github/workflows/deploy-web.yml`. It builds the Expo web export in GitHub Actions and
+switches `/srv/ai-chat/current` through `deploy/publish-web.sh`. API and worker are not
+restarted. A full runtime release still uses `deploy/install-release.sh` when server code
+changes.
+
+Repository Actions secrets, not committed values:
+
+| Secret | Purpose |
+| --- | --- |
+| `SSH_HOST` | VPS address |
+| `SSH_PRIVATE_KEY` | Dedicated deploy key, public half in root `authorized_keys` |
+| `EXPO_PUBLIC_API_URL` | Public site origin |
+| `EXPO_PUBLIC_SUPABASE_URL` | Hosted Supabase project URL |
+| `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Public Supabase key baked into the web client |
+
+The server environment at `/etc/ai-chat/server.env` stays only on the VPS.
+
 ## Installation sequence for a future release
 
 1. Inspect actual memory, disk, listening ports, Caddy configuration and service states.
