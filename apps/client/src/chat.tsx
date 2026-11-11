@@ -19,7 +19,7 @@ import { useRun, activeStatus } from './use-run';
 import { Button, Copy, ErrorNotice, Field, Loading, Panel } from './ui';
 import { Dialog } from './dialog';
 import { ConversationSidebar, ConversationDrawer, MenuMark, useSidebarTransition } from './sidebar';
-import { Markdown, safeUrl } from './markdown';
+import { Markdown } from './markdown';
 import { ApprovalCard } from './approval';
 import { Attachment } from './attachment';
 import { MessageActions } from './message-actions';
@@ -916,35 +916,6 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
               {snapshot.data?.approvals.map((approval) => (
                 <ApprovalCard key={approval.id} approval={approval} />
               ))}
-              {!!snapshot.data?.sources.length && (
-                <Panel>
-                  <Copy small muted>
-                    Sources
-                  </Copy>
-                  {snapshot.data.sources.map((source) => (
-                    <Pressable
-                      key={source.citation_id}
-                      accessibilityRole="link"
-                      onPress={() => {
-                        if (source.url && safeUrl(source.url)) void Linking.openURL(source.url);
-                        else if (source.file_id)
-                          void api<{ url: string }>(`/v1/files/${source.file_id}/download`)
-                            .then((value) => Linking.openURL(value.url))
-                            .catch(setError);
-                      }}
-                    >
-                      <Text style={{ color: c.accent, lineHeight: 23, fontSize: 14 }}>
-                        [{source.citation_id}] {source.title}
-                        {source.page
-                          ? ` · page ${source.page}`
-                          : source.section
-                            ? ` · ${source.section}`
-                            : ''}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </Panel>
-              )}
               {snapshot.data?.run.error_code && (
                 <ErrorNotice
                   error={new Error(snapshot.data.run.error_code.replaceAll('_', ' ').toLowerCase())}

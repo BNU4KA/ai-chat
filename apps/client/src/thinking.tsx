@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { View } from 'react-native';
 import { Pressable, Text } from './locale-ui';
+import { FoolSpinner } from './fool-spinner';
 import { useTheme } from './theme';
 import type { ToolCall } from './types';
 
@@ -31,7 +32,11 @@ export function ThinkingTrace({ running, tools, startedAt, finishedAt }: Thinkin
         onPress={() => setOpen((value) => !value)}
         style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start' }}
       >
-        <Text style={{ color: c.muted, fontSize: 13 }}>{open ? '▾' : '▸'}</Text>
+        {running ? (
+          <FoolSpinner size={22} label="Thinking…" />
+        ) : (
+          <Text style={{ color: c.muted, fontSize: 13 }}>{open ? '▾' : '▸'}</Text>
+        )}
         <Text
           testID={running ? 'thinking-label' : undefined}
           style={{ fontSize: 14, fontWeight: '600', color: running ? c.text : c.muted }}

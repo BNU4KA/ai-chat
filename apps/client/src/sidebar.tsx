@@ -158,7 +158,7 @@ export function ConversationSidebar(props: SidebarProps) {
   const { colors: c } = useTheme();
   const inset = useSafeAreaInsets();
   const input = useRef<ComponentRef<typeof Field>>(null);
-  const [menuId, setMenuId] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ item: Conversation; x: number; y: number } | null>(null);
   const transition = useSidebarTransition();
   const name = props.displayName?.trim() || 'Your workspace';
   const initials = name
@@ -286,7 +286,7 @@ export function ConversationSidebar(props: SidebarProps) {
                     accessibilityLabel={item.title}
                     accessibilityState={{ selected: props.selectedId === item.id }}
                     onPress={() => {
-                      setMenuId(null);
+                      setMenu(null);
                       props.onSelect(item.id);
                     }}
                     style={({ pressed, hovered }) => [
@@ -319,7 +319,24 @@ export function ConversationSidebar(props: SidebarProps) {
                     accessibilityRole="button"
                     accessibilityLabel="Chat actions"
                     hitSlop={6}
-                    onPress={() => setMenuId((value) => (value === item.id ? null : item.id))}
+                    onPress={(event) => {
+                      const node = event.currentTarget as unknown as {
+                        getBoundingClientRect?: () => { right: number; top: number };
+                        measureInWindow?: (
+                          callback: (x: number, y: number, width: number, height: number) => void,
+                        ) => void;
+                      };
+                      const place = (x: number, y: number) =>
+                        setMenu((current) =>
+                          current?.item.id === item.id ? null : { item, x, y },
+                        );
+                      if (node.getBoundingClientRect) {
+                        const rect = node.getBoundingClientRect();
+                        place(rect.right + 8, rect.top);
+                        return;
+                      }
+                      node.measureInWindow?.((x, y, width) => place(x + width + 8, y));
+                    }}
                     style={{
                       width: 28,
                       height: 28,
@@ -330,30 +347,6 @@ export function ConversationSidebar(props: SidebarProps) {
                     <Text style={{ color: c.muted, fontSize: 18, lineHeight: 20 }}>…</Text>
                   </Pressable>
                 </View>
-                {menuId === item.id && (
-                  <View style={{ paddingLeft: 36, paddingBottom: 6, gap: 2 }}>
-                    <Pressable
-                      accessibilityRole="button"
-                      onPress={() => {
-                        setMenuId(null);
-                        props.onRename(item);
-                      }}
-                      style={styles.chatRow}
-                    >
-                      <Text style={{ color: c.text, fontSize: 13 }}>Rename conversation</Text>
-                    </Pressable>
-                    <Pressable
-                      accessibilityRole="button"
-                      onPress={() => {
-                        setMenuId(null);
-                        props.onDelete(item);
-                      }}
-                      style={styles.chatRow}
-                    >
-                      <Text style={{ color: c.danger, fontSize: 13 }}>Delete conversation</Text>
-                    </Pressable>
-                  </View>
-                )}
               </View>
             ))}
             {props.loading && (
@@ -432,6 +425,58 @@ export function ConversationSidebar(props: SidebarProps) {
           )}
         </Pressable>
       </View>
+      <Modal
+        visible={menu !== null}
+        transparent
+        animationType="none"
+        onRequestClose={() => setMenu(null)}
+      >
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Close dialog"
+          onPress={() => setMenu(null)}
+          style={StyleSheet.absoluteFill}
+        />
+        {menu && (
+          <View
+            style={{
+              position: 'absolute',
+              left: menu.x,
+              top: menu.y,
+              width: 196,
+              borderRadius: 14,
+              backgroundColor: c.surface,
+              borderWidth: 1,
+              borderColor: c.border,
+              padding: 4,
+              gap: 2,
+            }}
+          >
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                const item = menu.item;
+                setMenu(null);
+                props.onRename(item);
+              }}
+              style={styles.chatRow}
+            >
+              <Text style={{ color: c.text, fontSize: 13 }}>Rename conversation</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                const item = menu.item;
+                setMenu(null);
+                props.onDelete(item);
+              }}
+              style={styles.chatRow}
+            >
+              <Text style={{ color: c.danger, fontSize: 13 }}>Delete conversation</Text>
+            </Pressable>
+          </View>
+        )}
+      </Modal>
     </View>
   );
 }

@@ -39,7 +39,7 @@ button:not(:disabled):active,[role="button"]:not([aria-disabled="true"]):active 
  position:relative;isolation:isolate;overflow:visible;background:transparent;border-color:transparent;
 }
 [data-testid="composer-attach"]::before,[data-testid="composer-tools"]::before,[data-testid="composer-model"]::before,[data-testid="composer-send"]::before {
- content:'';position:absolute;inset:-1px;padding:1.5px;border-radius:inherit;pointer-events:none;
+ content:'';position:absolute;inset:0;padding:1px;border-radius:inherit;pointer-events:none;
  background:conic-gradient(from var(--composer-angle),#7eb0ff,#c4a0ff,#ff9ec8,#ffd27a,#8ee0b0,#7eb0ff);
  -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
  -webkit-mask-composite:xor;mask-composite:exclude;opacity:1;animation:composer-colors 6s linear infinite;
