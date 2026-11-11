@@ -464,3 +464,15 @@ Checks: client typecheck and eslint on the touched files passed. `smooth-text` u
 Desktop Playwright: Google sign-in, one persisted answer with the copy toast, and the Russian home
 scenario passed against synthetic fixtures. Sign-in cards and the expanded sidebar chat icon were
 visually checked locally. No provider call or schema change. Commit `6138610` is on `origin/master`.
+
+## T13 — Denser cards, chat actions, faster composer — 2026-11-11
+
+Not published.
+
+- Wide screens show more drifting tarot cards.
+- Each chat row can be renamed or deleted through the existing conversation API.
+- A sent message appears before the server accepts it. A chosen file shows its name immediately, and the attach control stays the same size.
+- Model steps collapse into one shimmering Thinking line and open into a short list. They are no longer repeated as large cards under the answer.
+- Attach, tools, model, and send are smaller, transparent, and outlined in the moving colors.
+
+Checks: client typecheck and eslint on the touched files passed. A synthetic browser session confirmed the denser home cards, the 32px transparent composer controls, a collapsed Thought line that opens the tool list, and the rename/delete row menu. The file-picker timing could not be driven by the automated picker. No provider call, schema change, commit, or deploy.

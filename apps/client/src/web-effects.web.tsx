@@ -4,6 +4,7 @@ const css = `
 @keyframes composer-colors { to { --composer-angle: 360deg; } }
 @keyframes soft-appear { from {opacity:0;transform:translateY(5px)} to {opacity:1;transform:translateY(0)} }
 @keyframes panel-appear { from {opacity:0;transform:translateY(6px) scale(.985)} to {opacity:1;transform:translateY(0) scale(1)} }
+@keyframes thinking-shimmer { to { background-position: 0% 50%; } }
 [data-testid="composer-frame"],[data-testid="sign-in-button"] { position:relative; isolation:isolate; overflow:visible; }
 [data-testid="composer-frame"] { transition:border-color .24s,box-shadow .24s; }
 [data-testid="composer-frame"]::before,[data-testid="sign-in-button"]::before {
@@ -28,6 +29,21 @@ button:not(:disabled):active,[role="button"]:not([aria-disabled="true"]):active 
 [data-testid="chat-message"],[data-testid="attachment-card"] {animation:soft-appear .22s ease-out;}
 [data-testid="dialog-panel"],[data-testid="toast"] {animation:panel-appear .22s ease-out;}
 [data-testid="action-tooltip"] {animation:soft-appear .12s ease-out;}
+[data-testid="thinking-label"] {
+ background-image:linear-gradient(90deg,#8ab4f8,#e9a3c9,#f4c789,#a8d8b9,#8ab4f8);
+ background-size:220% 100%;background-position:100% 50%;
+ -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+ animation:thinking-shimmer 2.4s linear infinite;
+}
+[data-testid="composer-attach"],[data-testid="composer-tools"],[data-testid="composer-model"],[data-testid="composer-send"] {
+ position:relative;isolation:isolate;overflow:visible;background:transparent;border-color:transparent;
+}
+[data-testid="composer-attach"]::before,[data-testid="composer-tools"]::before,[data-testid="composer-model"]::before,[data-testid="composer-send"]::before {
+ content:'';position:absolute;inset:-1px;padding:1.5px;border-radius:inherit;pointer-events:none;
+ background:conic-gradient(from var(--composer-angle),#7eb0ff,#c4a0ff,#ff9ec8,#ffd27a,#8ee0b0,#7eb0ff);
+ -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
+ -webkit-mask-composite:xor;mask-composite:exclude;opacity:1;animation:composer-colors 6s linear infinite;
+}
 @media (prefers-reduced-motion:reduce) {
  *,*::before,*::after {animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:0s!important;scroll-behavior:auto!important;}
 }

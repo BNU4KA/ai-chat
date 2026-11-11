@@ -172,6 +172,8 @@ export const russian: Record<string, string> = {
   'Jump to latest ↓': 'К последним сообщениям ↓',
   'Tools & conversation': 'Инструменты и разговор',
   'Conversation files': 'Файлы разговора',
+  'Chat actions': 'Действия с чатом',
+  Thought: 'Размышление',
   'Rename conversation': 'Переименовать разговор',
   'Delete conversation': 'Удалить разговор',
   'Delete conversation?': 'Удалить разговор?',

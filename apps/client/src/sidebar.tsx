@@ -40,6 +40,8 @@ type SidebarProps = {
   onToggle: () => void;
   onNew: () => void;
   onSelect: (id: string) => void;
+  onRename: (chat: Conversation) => void;
+  onDelete: (chat: Conversation) => void;
   onSettings: () => void;
   displayName?: string | null;
   busy: boolean;
@@ -127,12 +129,7 @@ function NavIcon({
           aria-hidden={true}
           focusable={false}
         >
-          <Path
-            d="M8 2.2v11.6M2.2 8h11.6"
-            stroke={ink}
-            strokeWidth={1.6}
-            strokeLinecap="round"
-          />
+          <Path d="M8 2.2v11.6M2.2 8h11.6" stroke={ink} strokeWidth={1.6} strokeLinecap="round" />
         </Svg>
       </View>
     );
@@ -161,6 +158,7 @@ export function ConversationSidebar(props: SidebarProps) {
   const { colors: c } = useTheme();
   const inset = useSafeAreaInsets();
   const input = useRef<ComponentRef<typeof Field>>(null);
+  const [menuId, setMenuId] = useState<string | null>(null);
   const transition = useSidebarTransition();
   const name = props.displayName?.trim() || 'Your workspace';
   const initials = name
@@ -281,37 +279,82 @@ export function ConversationSidebar(props: SidebarProps) {
             keyboardShouldPersistTaps="handled"
           >
             {props.conversations.map((item) => (
-              <Pressable
-                key={item.id}
-                accessibilityRole="button"
-                accessibilityLabel={item.title}
-                accessibilityState={{ selected: props.selectedId === item.id }}
-                onPress={() => props.onSelect(item.id)}
-                style={({ pressed, hovered }) => [
-                  styles.chatRow,
-                  {
-                    backgroundColor:
-                      props.selectedId === item.id
-                        ? c.selected
-                        : pressed || hovered
-                          ? c.hover
-                          : 'transparent',
-                  },
-                ]}
-              >
-                <NavIcon kind="chat" />
-                <Text
-                  numberOfLines={1}
-                  style={{
-                    flex: 1,
-                    fontSize: 14,
-                    color: c.text,
-                    fontWeight: props.selectedId === item.id ? '600' : '400',
-                  }}
-                >
-                  {item.title}
-                </Text>
-              </Pressable>
+              <View key={item.id}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={item.title}
+                    accessibilityState={{ selected: props.selectedId === item.id }}
+                    onPress={() => {
+                      setMenuId(null);
+                      props.onSelect(item.id);
+                    }}
+                    style={({ pressed, hovered }) => [
+                      styles.chatRow,
+                      {
+                        flex: 1,
+                        backgroundColor:
+                          props.selectedId === item.id
+                            ? c.selected
+                            : pressed || hovered
+                              ? c.hover
+                              : 'transparent',
+                      },
+                    ]}
+                  >
+                    <NavIcon kind="chat" />
+                    <Text
+                      numberOfLines={1}
+                      style={{
+                        flex: 1,
+                        fontSize: 14,
+                        color: c.text,
+                        fontWeight: props.selectedId === item.id ? '600' : '400',
+                      }}
+                    >
+                      {item.title}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Chat actions"
+                    hitSlop={6}
+                    onPress={() => setMenuId((value) => (value === item.id ? null : item.id))}
+                    style={{
+                      width: 28,
+                      height: 28,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Text style={{ color: c.muted, fontSize: 18, lineHeight: 20 }}>…</Text>
+                  </Pressable>
+                </View>
+                {menuId === item.id && (
+                  <View style={{ paddingLeft: 36, paddingBottom: 6, gap: 2 }}>
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => {
+                        setMenuId(null);
+                        props.onRename(item);
+                      }}
+                      style={styles.chatRow}
+                    >
+                      <Text style={{ color: c.text, fontSize: 13 }}>Rename conversation</Text>
+                    </Pressable>
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => {
+                        setMenuId(null);
+                        props.onDelete(item);
+                      }}
+                      style={styles.chatRow}
+                    >
+                      <Text style={{ color: c.danger, fontSize: 13 }}>Delete conversation</Text>
+                    </Pressable>
+                  </View>
+                )}
+              </View>
             ))}
             {props.loading && (
               <FoolSpinner size={28} label="Loading conversations" style={{ marginTop: 12 }} />
