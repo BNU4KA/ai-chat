@@ -6,7 +6,7 @@ service state, Caddy site and firewall rules intact. Deploy AI Chat independentl
 
 ## Current status
 
-Live at **https://chat.72-56-89-122.sslip.io**. Current web release is `20261111T131936Z`;
+Live at **https://chat.72-56-89-122.sslip.io**. Current web release is `20261111T135627Z`;
 current runtime remains `20261111T111852Z`. The first published release `20261111T095526Z` is retained on
 the owner's existing Ubuntu VPS. The personal SSH key was added through the provider panel;
 no work identity was used. Caddy serves the static export and proxies to the API on loopback.
@@ -132,3 +132,12 @@ parchment controls, sign-in tarot screen, themed toasts, drawn sidebar icons, sm
 streaming text, and the brighter moving border on the Google button. The static symlink was
 switched atomically and previous web chunks were retained. API and worker were not restarted.
 Public readiness stayed ok, and the hosted sign-in screen was checked in a browser.
+
+## Faster composer — 2026-11-11
+
+Frontend-only release `20261111T135627Z` uses runtime `20261111T111852Z`. Wide screens show
+more tarot cards. Chats can be renamed or deleted from the list. A sent message and a chosen
+file appear before the server finishes. Model steps collapse into one thinking line. The
+composer controls are smaller, transparent, and outlined in the moving colors. The static
+symlink was switched atomically and previous web chunks were retained. API and worker were
+not restarted. Public readiness stayed ok.

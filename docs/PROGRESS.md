@@ -467,7 +467,10 @@ visually checked locally. No provider call or schema change. Commit `6138610` is
 
 ## T13 — Denser cards, chat actions, faster composer — 2026-11-11
 
-Not published.
+Published as frontend-only release `20261111T135627Z`. Runtime stays `20261111T111852Z`.
+The static symlink was switched atomically and the previous web release was kept. API and
+worker were not restarted. Public readiness reports database and queue ok. The new layout
+bundle includes the thinking line and the smaller composer controls.
 
 - Wide screens show more drifting tarot cards.
 - Each chat row can be renamed or deleted through the existing conversation API.
@@ -475,4 +478,4 @@ Not published.
 - Model steps collapse into one shimmering Thinking line and open into a short list. They are no longer repeated as large cards under the answer.
 - Attach, tools, model, and send are smaller, transparent, and outlined in the moving colors.
 
-Checks: client typecheck and eslint on the touched files passed. A synthetic browser session confirmed the denser home cards, the 32px transparent composer controls, a collapsed Thought line that opens the tool list, and the rename/delete row menu. The file-picker timing could not be driven by the automated picker. No provider call, schema change, commit, or deploy.
+Checks: client typecheck and eslint on the touched files passed. A synthetic browser session confirmed the denser home cards, the 32px transparent composer controls, a collapsed Thought line that opens the tool list, and the rename/delete row menu. The file-picker timing could not be driven by the automated picker. No provider call or schema change. Commit `67b14e7` is on `origin/master`.
