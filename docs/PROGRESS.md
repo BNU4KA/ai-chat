@@ -450,7 +450,7 @@ were captured locally and are not included in the public repository.
 
 ## T13 — Composer note, toasts, sign-in cards, sidebar icons, smoother answers — 2026-11-11
 
-Owner UI polish, not published.
+Owner UI polish. Published as frontend-only release `20261111T131936Z`. Runtime stays `20261111T111852Z`. The static symlink was switched atomically and the previous web release was kept. API and worker were not restarted. Public readiness reports database and queue ok. The hosted sign-in screen shows the tarot cards and the moving Google button border.
 
 - The OpenRouter balance note under the composer is centered and uses a slightly darker quiet color.
 - Save and copy confirmations render as a top-right toast in the app surface, with the greeting accent.
@@ -463,4 +463,4 @@ Owner UI polish, not published.
 Checks: client typecheck and eslint on the touched files passed. `smooth-text` unit test passed.
 Desktop Playwright: Google sign-in, one persisted answer with the copy toast, and the Russian home
 scenario passed against synthetic fixtures. Sign-in cards and the expanded sidebar chat icon were
-visually checked locally. No provider call, schema change, commit, or deploy.
+visually checked locally. No provider call or schema change. Commit `6138610` is on `origin/master`.

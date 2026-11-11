@@ -6,7 +6,8 @@ service state, Caddy site and firewall rules intact. Deploy AI Chat independentl
 
 ## Current status
 
-Live at **https://chat.72-56-89-122.sslip.io**. Release `20261111T095526Z` is active on
+Live at **https://chat.72-56-89-122.sslip.io**. Current web release is `20261111T131936Z`;
+current runtime remains `20261111T111852Z`. The first published release `20261111T095526Z` is retained on
 the owner's existing Ubuntu VPS. The personal SSH key was added through the provider panel;
 no work identity was used. Caddy serves the static export and proxies to the API on loopback.
 Both app services are enabled, running as the dedicated unprivileged `aichat` user, and have
@@ -117,9 +118,17 @@ The latest frontend also fixes Markdown tables, ordered/nested lists and blockqu
 
 ## Tarot and localization release — 2026-11-11
 
-Runtime and web release `20261111T111852Z` are current. Migration 0003 introduces auto/en/ru
+Runtime and web release `20261111T111852Z` were current before the next frontend update. Migration 0003 introduces auto/en/ru
 locale validation and a default for new accounts without rewriting any existing preference.
 API and worker were restarted and passed readiness. Prior runtime/static releases remain
 available for rollback; old web chunks were retained. The runtime release clones the existing
 production dependency tree and overlays the three changed backend files; the added Expo
 Localization dependency belongs only to the bundled client and native rebuild.
+
+## Sign-in and chat polish — 2026-11-11
+
+Frontend-only release `20261111T131936Z` uses runtime `20261111T111852Z`. It publishes the
+parchment controls, sign-in tarot screen, themed toasts, drawn sidebar icons, smoother
+streaming text, and the brighter moving border on the Google button. The static symlink was
+switched atomically and previous web chunks were retained. API and worker were not restarted.
+Public readiness stayed ok, and the hosted sign-in screen was checked in a browser.
