@@ -55,6 +55,8 @@ export const READ_TOOLS = [
   'list_files',
   'read_file',
   'search_files',
+  'list_project_documents',
+  'read_project_document',
   'search_mail',
   'read_mail',
   'list_calendar_events',
@@ -66,7 +68,14 @@ export type ToolName = (typeof ALL_TOOLS)[number];
 
 export function toolGroup(name: ToolName): ToolGroup {
   if (name === 'search_web' || name === 'read_web_page') return 'web';
-  if (name === 'list_files' || name === 'read_file' || name === 'search_files') return 'files';
+  if (
+    name === 'list_files' ||
+    name === 'read_file' ||
+    name === 'search_files' ||
+    name === 'list_project_documents' ||
+    name === 'read_project_document'
+  )
+    return 'files';
   if (
     name === 'search_mail' ||
     name === 'read_mail' ||

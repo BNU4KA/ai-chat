@@ -61,7 +61,15 @@ function useSmoothText(text: string, smooth: boolean) {
   if (!follow.current || reduced) return text;
   return text.slice(0, count);
 }
-export function Markdown({ text, smooth = false }: { text: string; smooth?: boolean }) {
+export function Markdown({
+  text,
+  smooth = false,
+  onCitation,
+}: {
+  text: string;
+  smooth?: boolean;
+  onCitation?: (id: string) => void;
+}) {
   const shown = useSmoothText(text, smooth);
   const { colors: c } = useTheme();
   const tokens = parser.parse(shown, {});
@@ -120,7 +128,23 @@ export function Markdown({ text, smooth = false }: { text: string; smooth?: bool
             backgroundColor: child.type === 'code_inline' ? c.raised : undefined,
           }}
         >
-          {child.content}
+          {onCitation && child.type === 'text'
+            ? child.content.split(/(\[S\d+\])/g).map((part, n) =>
+                /^\[S\d+\]$/.test(part) ? (
+                  <Text
+                    key={n}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Show evidence ${part}`}
+                    style={{ color: c.accent, textDecorationLine: 'underline' }}
+                    onPress={() => onCitation(part.slice(1, -1))}
+                  >
+                    {part}
+                  </Text>
+                ) : (
+                  part
+                ),
+              )
+            : child.content}
         </Text>
       );
     });

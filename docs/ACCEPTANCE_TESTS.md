@@ -65,3 +65,9 @@ checks live verified. If credentials or hardware are unavailable, deliver the im
 and explicitly call it not yet fully verified. Release submission additionally requires Google
 verification status, applicable Apple login requirements, privacy disclosures/deletion UX, and
 an actual deployment retention/backup policy. Public GitHub visibility is not a release gate pass.
+
+## Owner-approved expansion acceptance — 2026-11-11
+
+E01–E11 in EXPANSION_SPEC.md extend this matrix. Keep automated synthetic provider evidence
+separate from live OAuth/model and native-platform verification. Do not infer production readiness
+or permission to deploy from successful expansion checks.

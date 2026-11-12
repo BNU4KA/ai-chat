@@ -106,6 +106,7 @@ export async function validateChatModel(
       );
   }
   return {
+    inputPrice:model.input_price_per_million_usd,outputPrice:model.output_price_per_million_usd,
     contextLength: model.context_length,
     maxOutputTokens: model.max_output_tokens ?? null,
     googleSubject: google?.google_subject as string | undefined,

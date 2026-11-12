@@ -25,11 +25,17 @@ export async function purgeConversation(
       'select object_key,created_at from files where conversation_id = $1 and owner_id = $2',
       [conversationId, ownerId],
     );
-    return {keys:files.rows.map((row) => String(row.object_key)),expires:Math.max(0,...files.rows.map(row=>new Date(String(row.created_at)).getTime()+2*60*60*1000))};
+    return {
+      keys: files.rows.map((row) => String(row.object_key)),
+      expires: Math.max(
+        0,
+        ...files.rows.map((row) => new Date(String(row.created_at)).getTime() + 2 * 60 * 60 * 1000),
+      ),
+    };
   });
   if (keys === null) return;
   if (keys.keys.length) await removeObjects(keys.keys);
-  if(keys.expires>Date.now())throw new Error('Signed upload cleanup pending');
+  if (keys.expires > Date.now()) throw new Error('Signed upload cleanup pending');
   await withWorker(async (tx) => {
     const chat = await tx.query(
       'select id from conversations where id = $1 and owner_id = $2 and deleted_at is not null for update',
@@ -70,6 +76,10 @@ export async function purgeConversation(
     );
     await tx.query('delete from runs where conversation_id = $1 and owner_id = $2', args);
     await tx.query('delete from messages where conversation_id = $1 and owner_id = $2', args);
+    await tx.query(
+      'update run_sources set file_id=null,excerpt=null where owner_id=$2 and file_id in(select id from files where conversation_id=$1 and owner_id=$2)',
+      args,
+    );
     await tx.query('delete from files where conversation_id = $1 and owner_id = $2', args);
     await tx.query('delete from conversations where id = $1 and owner_id = $2', args);
   });

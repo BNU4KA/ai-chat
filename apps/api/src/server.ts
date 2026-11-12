@@ -1,3 +1,4 @@
+import {registerWorkspace} from './workspace.ts';
 import { registerGoogle } from './google.ts';
 import { googleStatus } from '@ai-chat/services';
 import { googleConfigured, GoogleError } from '@ai-chat/integrations';
@@ -341,6 +342,7 @@ export function buildServer(): FastifyInstance {
         title: body.title,
         modelId: body.model_id,
         enabledTools: body.enabled_tools,
+        projectId:body.project_id, researchMode:body.research_mode,budgetUsd:body.budget_usd,
       }),
     };
   });
@@ -407,6 +409,7 @@ export function buildServer(): FastifyInstance {
       maxOutputTokens: model.maxOutputTokens,
       googleSubject: model.googleSubject,
       googleIntegrationId: model.googleIntegrationId,
+      inputPrice:model.inputPrice,outputPrice:model.outputPrice,
     });
     if (created.replayed) reply.header('idempotent-replayed', 'true');
     reply.status(created.status);
@@ -578,6 +581,7 @@ export function buildServer(): FastifyInstance {
     return { data: { deletion_status: 'scheduled' } };
   });
 
+  registerWorkspace(app,versionOf);
   registerFiles(app, versionOf);
   registerGoogle(app, versionOf);
   return app;

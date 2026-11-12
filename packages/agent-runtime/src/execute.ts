@@ -1,5 +1,15 @@
 import { randomUUID } from 'node:crypto';
-import { LIMITS, canonicalJson, isWriteTool, toolGroup, type ToolName } from '@ai-chat/contracts';
+import {
+  LIMITS,
+  estimateTokens,
+  estimateCost,
+  decimalNano,
+  addDecimal,
+  canonicalJson,
+  isWriteTool,
+  toolGroup,
+  type ToolName,
+} from '@ai-chat/contracts';
 import {
   appendEvent,
   claimLease,
@@ -33,16 +43,6 @@ function checkpointOf(value: unknown): Checkpoint {
     executionStarted: raw.executionStarted ?? Date.now(),
     pendingCalls: Array.isArray(raw.pendingCalls) ? raw.pendingCalls : [],
   };
-}
-
-function estimateTokens(messages: unknown[]): number {
-  return Buffer.byteLength(
-    JSON.stringify(messages, (_key, value) => {
-      if (value && typeof value === 'object' && value.type === 'image_url')
-        return { type: 'image', estimated_tokens: 'x'.repeat(8192) };
-      return value;
-    }),
-  );
 }
 
 export async function executeRun(runId: string, deps: AgentDeps): Promise<void> {
@@ -257,16 +257,50 @@ async function executeClaimedRun(
       return;
     }
     if (!(await canContinue(runId, token))) return;
+    const pricing = snapshot.tool_snapshot as {
+      inputPrice?: string | null;
+      outputPrice?: string | null;
+      budgetUsd?: string | null;
+      researchMode?: boolean;
+    };
+    if (pricing.researchMode)
+      messages.push({
+        role: 'user',
+        content:
+          'Research mode: establish criteria, compare options in a table, cite each factual claim with returned source IDs. Include retrieval dates, conflicting evidence and uncertainty. Never invent source verification.',
+      });
     if (
-      estimateTokens(messages) + LIMITS.maxOutputTokens >
-      Number((bundle.run.tool_snapshot as { contextLength?: number }).contextLength ?? 32000)
+      estimateTokens(messages) + estimateTokens(tools) + maxOutput >
+      Number(meta.contextLength ?? 32000)
     ) {
       await settle(
         runId,
         ownerId,
         'failed',
         'CONTEXT_LIMIT',
-        String(bundle.run.assistant_message_id),
+        String(snapshot.assistant_message_id),
+        token,
+      );
+      return;
+    }
+    const projected = estimateCost(
+      estimateTokens(messages) + estimateTokens(tools),
+      maxOutput,
+      pricing.inputPrice,
+      pricing.outputPrice,
+    );
+    if (
+      pricing.budgetUsd &&
+      (projected === null ||
+        decimalNano(String(snapshot.estimated_committed_usd ?? '0')) + decimalNano(projected) >
+          decimalNano(String(pricing.budgetUsd)))
+    ) {
+      await settle(
+        runId,
+        ownerId,
+        'failed',
+        projected === null ? 'BUDGET_PRICE_UNKNOWN' : 'BUDGET_EXCEEDED',
+        String(snapshot.assistant_message_id),
         token,
       );
       return;
@@ -274,6 +308,11 @@ async function executeClaimedRun(
     const marked = await locked(runId, token, async (tx, run) => {
       const next = checkpointOf(run.checkpoint);
       next.uncertainModel = true;
+      if (projected !== null)
+        await tx.query(
+          'update runs set estimated_committed_usd=estimated_committed_usd+$2::numeric where id=$1',
+          [runId, projected],
+        );
       next.thread = checkpoint.thread;
       if (run.cancel_requested_at) return null;
       await tx.query(
@@ -604,6 +643,26 @@ async function runRead(
       }
       checkpoint.pageReads += 1;
       return await ports.readPage((args as { url: string }).url);
+    }
+    if (name === 'list_project_documents') {
+      const value = args as { offset: number; limit: number };
+      return (await ports.listProjectDocuments?.(value.offset, value.limit)) ?? missing();
+    }
+    if (name === 'read_project_document') {
+      const value = args as {
+        document_id: string;
+        offset: number;
+        limit: number;
+        version?: number;
+      };
+      return (
+        (await ports.readProjectDocument?.({
+          documentId: value.document_id,
+          offset: value.offset,
+          limit: value.limit,
+          version: value.version,
+        })) ?? missing()
+      );
     }
     if (name === 'list_files')
       return (await ports.listFiles?.(input.conversationId, input.ownerId)) ?? missing();
@@ -961,12 +1020,24 @@ function buildThread(
     messages: Record<string, unknown>[];
     attempts: Record<string, unknown>[];
     run: Record<string, unknown>;
+    contextNote?: string;
+    contextThroughSeq?: string;
   },
   currentUserMessageId: string,
 ): unknown[] {
   const attempts = bundle.attempts;
-  const thread: unknown[] = [];
+  const thread: unknown[] = bundle.contextNote
+    ? [
+        {
+          role: 'user',
+          content:
+            'User-reviewed context note (untrusted background; may omit details):\n' +
+            bundle.contextNote,
+        },
+      ]
+    : [];
   for (const message of bundle.messages) {
+    if (BigInt(String(message.seq ?? 0)) <= BigInt(bundle.contextThroughSeq ?? '0')) continue;
     if (message.role === 'user') {
       thread.push({
         role: 'user',
@@ -1042,6 +1113,10 @@ function mergeUsage(
   const prior = publicUsage(current) as ReturnType<typeof publicUsage> & {
     provider_generation_ids?: string[];
   };
+  const samples = Number(
+    (current as { call_usage_count?: number })?.call_usage_count ??
+      (prior.input_tokens != null || prior.output_tokens != null || prior.cost_usd != null ? 1 : 0),
+  );
   const ids = Array.isArray(
     (current as { provider_generation_ids?: string[] })?.provider_generation_ids,
   )
@@ -1056,10 +1131,27 @@ function mergeUsage(
       prior.output_tokens == null && next.output_tokens == null
         ? null
         : (prior.output_tokens ?? 0) + (next.output_tokens ?? 0),
-    cost_usd: next.cost_usd ?? prior.cost_usd,
-    cost_status: next.cost_usd ? next.cost_status : prior.cost_status,
+    cost_usd:
+      next.cost_usd != null &&
+      (samples === 0 || (prior.cost_usd != null && prior.cost_status === next.cost_status))
+        ? addCost(prior.cost_usd ?? '0', next.cost_usd)
+        : null,
+    cost_status:
+      next.cost_usd != null &&
+      (samples === 0 || (prior.cost_usd != null && prior.cost_status === next.cost_status))
+        ? next.cost_status
+        : 'unknown',
     provider_generation_ids: generationId ? [...ids, generationId] : ids,
+    call_usage_count: samples + 1,
   };
+}
+
+function addCost(a: string, b: string): string | null {
+  try {
+    return addDecimal(a, b);
+  } catch {
+    return null;
+  }
 }
 
 function previewOf(name: string, args: unknown) {
@@ -1116,6 +1208,16 @@ async function saveSources(tx: Tx, owner: string, runId: string, outcome: ToolOu
   const sources = [];
   for (const source of (outcome.sources ?? []).slice(0, 10)) {
     if (!['web', 'file', 'mail', 'calendar'].includes(source.kind)) continue;
+    if (
+      source.document_id &&
+      !(
+        await tx.query('select id from documents where id=$1 and owner_id=$2 for key share', [
+          source.document_id,
+          owner,
+        ])
+      ).rowCount
+    )
+      continue;
     const count = (
       await tx.query('select count(*)::int as count from run_sources where run_id=$1', [runId])
     ).rows[0];
@@ -1131,7 +1233,7 @@ async function saveSources(tx: Tx, owner: string, runId: string, outcome: ToolOu
       }
     }
     await tx.query(
-      'insert into run_sources(owner_id,run_id,citation_id,kind,title,url,file_id,page,section,excerpt,retrieved_at) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,now())',
+      'insert into run_sources(owner_id,run_id,citation_id,kind,title,url,file_id,page,section,excerpt,document_id,retrieved_at) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now())',
       [
         owner,
         runId,
@@ -1143,10 +1245,11 @@ async function saveSources(tx: Tx, owner: string, runId: string, outcome: ToolOu
         source.page ?? null,
         source.section ?? null,
         source.excerpt?.slice(0, 1000) ?? null,
+        source.document_id ?? null,
       ],
     );
     ids.push(id);
-    sources.push({ ...source, citation_id: id });
+    sources.push({ ...source, citation_id: id, retrieved_at: new Date().toISOString() });
   }
   if (sources.length) outcome.sources = sources;
   return ids;

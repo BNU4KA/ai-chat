@@ -121,3 +121,16 @@ unblocked task. Keep the fixed stack and scope, implement real provider boundari
 verification evidence after each task. Continue independent work when credentials are missing;
 never substitute production mocks or claim unperformed live tests passed. Complete the requested
 scope, and report any remaining external blockers explicitly.
+
+## Owner-approved expansion
+
+Continue T15–T19 in docs/EXPANSION_SPEC.md after inspecting the existing foundation.
+These increments are explicitly authorized even while original live/native gates remain pending.
+
+Current expansion status (2026-11-12): T15, T16, T17 and T18 implemented with synthetic automated
+evidence; T19 automated checks/export passed. Native/live/release portions of T19 remain pending.
+See PROGRESS and verification/WORKSPACE_EXPANSION.md before resuming; do not recreate this work.
+
+Review correction (2026-11-12): six regressions fixed and guarded by automated checks; shared
+workspace styling checked against Settings in light/dark desktop/mobile views. Resume from the
+remaining live/native/release gates, using the latest progress and verification evidence.

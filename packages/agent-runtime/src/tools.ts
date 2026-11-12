@@ -11,6 +11,20 @@ const email = z
 const range = z.iso.datetime({ offset: true });
 
 export const toolSchemas = {
+  list_project_documents: z
+    .object({
+      offset: z.number().int().min(0).max(100000).default(0),
+      limit: z.number().int().min(1).max(20).default(20),
+    })
+    .strict(),
+  read_project_document: z
+    .object({
+      document_id: z.uuid(),
+      offset: z.number().int().min(0).max(200000).default(0),
+      limit: z.number().int().min(1).max(8000).default(8000),
+      version: z.number().int().positive().optional(),
+    })
+    .strict(),
   search_web: z
     .object({
       query: z.string().min(1).max(500),
@@ -86,6 +100,10 @@ export const toolSchemas = {
 } satisfies Record<ToolName, z.ZodType>;
 
 export const toolDescriptions: Record<ToolName, string> = {
+  list_project_documents:
+    'List all documents explicitly shared through the current project, with pagination and version numbers.',
+  read_project_document:
+    'Read a project document in bounded parts. Offsets count Unicode characters. Use next_offset and the same version to read more. Project previews are incomplete; read relevant sections before answering.',
   search_web: 'Search the public web. Returns titles, URLs, and excerpts.',
   read_web_page: 'Read public text from an http or https URL.',
   list_files: 'List ready files in this conversation.',
@@ -105,10 +123,6 @@ export function parametersFor(name: ToolName): Record<string, unknown> {
   return z.toJSONSchema(toolSchemas[name]) as Record<string, unknown>;
 }
 
-export function recipientCount(value: {
-  to: unknown[];
-  cc?: unknown[];
-  bcc?: unknown[];
-}): number {
+export function recipientCount(value: { to: unknown[]; cc?: unknown[]; bcc?: unknown[] }): number {
   return value.to.length + (value.cc?.length ?? 0) + (value.bcc?.length ?? 0);
 }

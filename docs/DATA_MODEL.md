@@ -101,3 +101,20 @@ Keep messages, task records, and citations until conversation/account deletion. 
 event deltas after 30 days, retaining final snapshots and tool outcomes. An expired replay cursor
 returns EVENT_CURSOR_EXPIRED; client reloads the snapshot. Operational logs expire after 14 days,
 backups after 30 days under the configured deployment policy. Document actual host behavior.
+
+## Owner-approved workspace expansion — 2026-11-11
+
+Migration 0004 adds projects, explicit project_files, documents/document_revisions, schedules,
+schedule_occurrences and notices with forced RLS and composite owner FKs. Conversations store
+project_id, context_note/context_through_seq, research_mode and optional budget_usd. Runs retain
+estimated_committed_usd separately from provider usage. Projects do not merge chat histories;
+only explicitly edited memory, project documents and shared-file references enter new runs.
+Occurrences are unique by schedule/due time; their run creation uses the occurrence UUID as
+idempotency and client-message key. New owned data participates in account cleanup. Original
+file/chat deletion revokes project reads. Detailed behavior is in EXPANSION_SPEC.md.
+
+Migration 0005 adds an owner-constrained optional run_sources.document_id reference. Source
+insertion checks/locks the document; document deletion clears references/excerpts before removing
+the row. Account cleanup removes sources before documents. Project deletion explicitly scopes a
+worker transaction to the owner so soft-deleted chats are detached despite API RLS; retained
+documents receive a new version/revision when their project is removed.

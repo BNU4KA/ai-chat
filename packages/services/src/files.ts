@@ -106,7 +106,7 @@ export function filePorts(owner: string, chat: string): ToolPorts {
     return withWorker(async (tx) => {
       const values: unknown[] = [owner, chat];
       let where =
-        "f.owner_id=$1 and f.conversation_id=$2 and f.status='ready' and f.deleted_at is null and c.deleted_at is null";
+        "f.owner_id=$1 and (f.conversation_id=$2 or exists(select 1 from project_files pf join conversations current_chat on current_chat.project_id=pf.project_id and current_chat.owner_id=pf.owner_id where pf.file_id=f.id and pf.owner_id=$1 and current_chat.id=$2 and current_chat.deleted_at is null)) and f.status='ready' and f.deleted_at is null and c.deleted_at is null";
       for (const [sql, value] of [
         ['f.id =', fileId],
         ['d.page >=', pageStart],
@@ -135,7 +135,7 @@ export function filePorts(owner: string, chat: string): ToolPorts {
       ).rows;
       if (fileId && !rows.length) {
         const exists = await tx.query(
-          "select f.id from files f join conversations c on c.id=f.conversation_id where f.id=$1 and f.owner_id=$2 and f.conversation_id=$3 and f.status='ready' and f.deleted_at is null and c.deleted_at is null",
+          "select f.id from files f join conversations c on c.id=f.conversation_id where f.id=$1 and f.owner_id=$2 and (f.conversation_id=$3 or exists(select 1 from project_files pf join conversations current_chat on current_chat.project_id=pf.project_id and current_chat.owner_id=pf.owner_id where pf.file_id=f.id and pf.owner_id=$2 and current_chat.id=$3 and current_chat.deleted_at is null)) and f.status='ready' and f.deleted_at is null and c.deleted_at is null",
           [fileId, owner, chat],
         );
         if (!exists.rowCount) throw new AppError(404, 'NOT_FOUND', 'File not found');
@@ -165,7 +165,7 @@ export function filePorts(owner: string, chat: string): ToolPorts {
         ok: true,
         data: (
           await tx.query(
-            "select f.* from files f join conversations c on c.id=f.conversation_id where f.owner_id=$1 and f.conversation_id=$2 and f.status='ready' and f.deleted_at is null and c.deleted_at is null",
+            "select f.* from files f join conversations c on c.id=f.conversation_id where f.owner_id=$1 and (f.conversation_id=$2 or exists(select 1 from project_files pf join conversations current_chat on current_chat.project_id=pf.project_id and current_chat.owner_id=pf.owner_id where pf.file_id=f.id and pf.owner_id=$1 and current_chat.id=$2 and current_chat.deleted_at is null)) and f.status='ready' and f.deleted_at is null and c.deleted_at is null",
             [owner, chat],
           )
         ).rows.map(fileDto),

@@ -45,6 +45,7 @@ async function fixture(
   page: Page,
   answer = 'Synthetic answer with **Markdown** and a safe result.',
   initialLocale: 'auto' | 'en' | 'ru' = 'en',
+  evidenceSources: Record<string, unknown>[] = [],
 ) {
   let profileLocale = initialLocale;
   let profileVersion = 1;
@@ -81,6 +82,14 @@ async function fixture(
           'access-control-allow-headers': '*',
           'access-control-allow-methods': 'GET,POST,PATCH,PUT,DELETE,OPTIONS',
         },
+      });
+    if (['/v1/projects', '/v1/documents', '/v1/schedules', '/v1/notices'].includes(path))
+      return data([]);
+    if (path.endsWith('/estimate'))
+      return data({
+        input_tokens_estimated: 1000,
+        context_length: 32000,
+        cost_usd_estimated: '0.001',
       });
     if (path === '/v1/profile') {
       if (method === 'PATCH') {
@@ -229,7 +238,7 @@ async function fixture(
         assistant_message: messages[1],
         tool_calls: [],
         approvals: [],
-        sources: [],
+        sources: evidenceSources,
       });
     if (path === `/v1/runs/${runId}/events`) {
       messages[1] = {
@@ -275,7 +284,16 @@ async function fixture(
       },
     });
   });
-  return { submissions };
+  return {
+    submissions,
+    snapshot: () => ({
+      run,
+      assistant_message: messages[1],
+      tool_calls: [],
+      approvals: [],
+      sources: evidenceSources,
+    }),
+  };
 }
 test('Google sign-in uses PKCE and does not request Gmail or Calendar scopes', async ({ page }) => {
   const errors: string[] = [];
@@ -680,4 +698,575 @@ test('Russian auto locale and profile override persist while the homepage stays 
   await expect(page.getByText('What’s on your mind?', { exact: true })).toBeVisible();
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
   await page.screenshot({ path: test.info().outputPath('tarot-home.png'), animations: 'disabled' });
+});
+
+async function workspaceFixture(page: Page) {
+  const projects: Record<string, unknown>[] = [];
+  const documents: Record<string, unknown>[] = [];
+  const schedules: Record<string, unknown>[] = [];
+  const revisions: Record<string, unknown>[] = [];
+  await page.route('http://localhost:3001/**', async (route) => {
+    const req = route.request(),
+      path = new URL(req.url()).pathname,
+      method = req.method();
+    const data = (value: unknown, status = 200) =>
+      route.fulfill({
+        status,
+        json: { data: value },
+        headers: { 'access-control-allow-origin': 'http://localhost:8092' },
+      });
+    if (method === 'OPTIONS') return route.fallback();
+    if (path === '/v1/projects') {
+      if (method === 'POST') {
+        const p = {
+          ...req.postDataJSON(),
+          id: randomUUID(),
+          version: 1,
+          created_at: time,
+          updated_at: time,
+        };
+        projects.push(p);
+        return data(p, 201);
+      }
+      return data(projects);
+    }
+    if (path.startsWith('/v1/projects/') && path.endsWith('/files')) return data([]);
+    if (path === '/v1/documents') {
+      if (method === 'POST') {
+        const d = {
+          ...req.postDataJSON(),
+          id: randomUUID(),
+          version: 1,
+          created_at: time,
+          updated_at: time,
+        };
+        documents.push(d);
+        revisions.push({ ...d });
+        return data(d, 201);
+      }
+      return data(documents);
+    }
+    if (path.startsWith('/v1/documents/')) {
+      const id = path.split('/')[3],
+        doc = documents.find((d) => d.id === id);
+      if (path.endsWith('/revisions')) return data(revisions.filter((v) => v.id === id).reverse());
+      if (method === 'GET' && doc) return data(doc);
+      if (method === 'PATCH' && doc) {
+        Object.assign(doc, req.postDataJSON(), { version: Number(doc.version) + 1 });
+        revisions.push({ ...doc });
+        return data(doc);
+      }
+    }
+    if (path === '/v1/schedules') {
+      if (method === 'POST') {
+        const s = {
+          ...req.postDataJSON(),
+          id: randomUUID(),
+          paused: false,
+          next_at: '2026-11-13T08:00:00Z',
+          last_error: null,
+          version: 1,
+          created_at: time,
+          updated_at: time,
+        };
+        schedules.push(s);
+        return data(s, 201);
+      }
+      return data(schedules);
+    }
+    if (path.startsWith('/v1/schedules/') && method === 'PATCH') {
+      const s = schedules.find((v) => v.id === path.split('/')[3]);
+      Object.assign(s!, req.postDataJSON(), { version: Number(s!.version) + 1 });
+      return data(s);
+    }
+    if (path === '/v1/notices')
+      return data([
+        {
+          id: randomUUID(),
+          title: 'Daily review: completed',
+          conversation_id: chatId,
+          read_at: null,
+        },
+      ]);
+    if (path === '/v1/search/messages')
+      return data([
+        {
+          id: userId,
+          conversation_id: chatId,
+          title: 'Synthetic question',
+          snippet: 'A matching private phrase',
+        },
+      ]);
+    if (path === '/v1/meetings/slots')
+      return data({
+        slots: [{ start: '2026-11-12T12:00:00Z', end: '2026-11-12T12:30:00Z' }],
+        timezone: 'UTC',
+      });
+    if (path.endsWith('/estimate'))
+      return data({
+        input_tokens_estimated: 512,
+        context_length: 32000,
+        cost_usd_estimated: '0.001000000',
+      });
+    return route.fallback();
+  });
+  return { projects, documents, schedules };
+}
+
+test('workspace persists project memory, document versions and scheduled task pause', async ({
+  context,
+  page,
+}, testInfo) => {
+  await seed(context);
+  await fixture(page);
+  const f = await workspaceFixture(page);
+  const errors: string[] = [];
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(m.text());
+  });
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Projects & tasks', exact: true }).click();
+  await page.getByLabel('Project name', { exact: true }).fill('Synthetic career project');
+  await page
+    .getByLabel('Project memory', { exact: true })
+    .fill('Goal: find a role. Decision: prioritize remote teams.');
+  await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: 'Synthetic career project', exact: true }),
+  ).toBeVisible();
+  expect(f.projects[0]?.memory).toContain('remote teams');
+  await page.getByRole('button', { name: 'Documents', exact: true }).click();
+  await page.getByLabel('New document title', { exact: true }).fill('Synthetic plan');
+  await page.getByRole('button', { name: 'Create document', exact: true }).click();
+  await page
+    .getByLabel('Document content', { exact: true })
+    .fill('A preserved first paragraph.\n\nAn editable second paragraph.');
+  await page.getByRole('button', { name: 'Save version', exact: true }).click();
+  await expect(page.getByText('Document · version 2', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Versions', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: 'Load version 1 into editor', exact: true }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Scheduled tasks', exact: true }).click();
+  await page.getByLabel('Scheduled task title', { exact: true }).fill('Synthetic daily review');
+  await page
+    .getByLabel('Scheduled task instruction', { exact: true })
+    .fill('Prepare a summary of my day.');
+  await page.getByRole('button', { name: 'Choose scheduled model', exact: true }).click();
+  await page.getByRole('button', { name: /Synthetic Model Tools supported/ }).click();
+  await page.getByRole('button', { name: 'Create scheduled task', exact: true }).click();
+  await expect(page.getByText(/Synthetic daily review ·/)).toBeVisible();
+  await page.getByRole('button', { name: 'Pause', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Resume', exact: true })).toBeVisible();
+  expect(f.schedules[0]?.paused).toBe(true);
+  expect(errors).toEqual([]);
+  await page.screenshot({
+    path: `/tmp/ai-chat-workspace-${testInfo.project.name}.png`,
+    fullPage: true,
+  });
+});
+
+test('response tools save a versioned document and prepare passage follow-ups without submission', async ({
+  context,
+  page,
+}, testInfo) => {
+  await seed(context);
+  const base = await fixture(page, 'A detailed synthetic answer.');
+  const f = await workspaceFixture(page);
+  const errors: string[] = [];
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(m.text());
+  });
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Choose model', exact: true }).click();
+  await page.getByRole('button', { name: /Synthetic Model Tools supported/ }).click();
+  await page.getByLabel('Message', { exact: true }).fill('Synthetic question');
+  await page.getByRole('button', { name: 'Send ↑', exact: true }).click();
+  await expect(page.getByText('A detailed synthetic answer.', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Work with response', exact: true }).click();
+  await page.getByLabel('Selected response passage', { exact: true }).fill('synthetic answer');
+  await page.getByRole('button', { name: 'Explain', exact: true }).click();
+  await expect(page.getByLabel('Message', { exact: true })).toHaveValue(
+    'Explain the following passage:\n\nsynthetic answer',
+  );
+  expect(base.submissions).toHaveLength(1);
+  await page.getByRole('button', { name: 'Save as document', exact: true }).click();
+  await expect(page.getByTestId('document-editor')).toBeVisible();
+  expect(f.documents).toHaveLength(1);
+  expect(f.documents[0]?.content).toBe('A detailed synthetic answer.');
+  await page.getByLabel('Document content', { exact: true }).fill('An edited saved result.');
+  await page.getByRole('button', { name: 'Save version', exact: true }).click();
+  await expect(page.getByText('Document · version 2', { exact: true })).toBeVisible();
+  expect(base.submissions).toHaveLength(1);
+  expect(errors).toEqual([]);
+  await page.screenshot({
+    path: `/tmp/ai-chat-document-${testInfo.project.name}.png`,
+    fullPage: true,
+  });
+});
+
+test('research citations reveal saved evidence and meeting suggestions prepare an unsubmitted draft', async ({
+  context,
+  page,
+}) => {
+  await seed(context);
+  const base = await fixture(page, 'A supported synthetic claim [S1].', 'en', [
+    {
+      citation_id: 'S1',
+      kind: 'web',
+      title: 'Synthetic reference',
+      url: 'https://example.com/evidence',
+      excerpt: 'This is the stored evidence passage.',
+      retrieved_at: time,
+    },
+  ]);
+  await workspaceFixture(page);
+  const errors: string[] = [];
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(m.text());
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Choose model', exact: true }).click();
+  await page.getByRole('button', { name: /Synthetic Model Tools supported/ }).click();
+  await page.getByLabel('Message', { exact: true }).fill('Synthetic research');
+  await page.getByRole('button', { name: 'Send ↑', exact: true }).click();
+  await page.getByRole('button', { name: 'Show evidence [S1]', exact: true }).click();
+  await expect(
+    page.getByText('This is the stored evidence passage.', { exact: true }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+  await page.getByRole('button', { name: 'Work tools', exact: true }).click();
+  await page.getByRole('button', { name: 'Cost & limits', exact: true }).click();
+  await page.getByRole('button', { name: 'Estimate current draft', exact: true }).click();
+  await expect(page.getByText(/Estimated input: 512 tokens/)).toBeVisible();
+  await page.getByRole('button', { name: 'Meeting times', exact: true }).click();
+  await page.getByLabel('Meeting search start', { exact: true }).fill('2026-11-12T09:00:00Z');
+  await page.getByLabel('Meeting search end', { exact: true }).fill('2026-11-12T18:00:00Z');
+  await page.getByRole('button', { name: 'Find meeting times', exact: true }).click();
+  await page.getByRole('button', { name: /11\/12\/2026|12\.11\.2026/ }).click();
+  await expect(page.getByLabel('Message', { exact: true })).toHaveValue(
+    /Prepare a calendar event from 2026-11-12T12:00:00Z/,
+  );
+  expect(base.submissions).toHaveLength(1);
+  expect(errors).toEqual([]);
+});
+
+test('editing a user message creates a preserved branch and keeps the new prompt as a draft', async ({
+  context,
+  page,
+}) => {
+  await seed(context);
+  const base = await fixture(page);
+  await workspaceFixture(page);
+  const branch = randomUUID();
+  await page.route('http://localhost:3001/**', async (route) => {
+    const req = route.request(),
+      path = new URL(req.url()).pathname;
+    if (req.method() === 'OPTIONS') return route.fallback();
+    if (path === `/v1/messages/${userId}/branch`)
+      return route.fulfill({
+        json: {
+          data: {
+            conversation_id: branch,
+            draft: req.postDataJSON().text,
+            attachments_copied: false,
+          },
+        },
+      });
+    if (path === `/v1/conversations/${branch}`)
+      return route.fulfill({
+        json: {
+          data: {
+            id: branch,
+            title: 'Branch: Synthetic question',
+            model_id: 'synthetic/model',
+            enabled_tools: [],
+            version: 1,
+            created_at: time,
+            updated_at: time,
+          },
+        },
+      });
+    if (path.startsWith(`/v1/conversations/${branch}/`))
+      return route.fulfill({ json: { data: [], next_cursor: null } });
+    return route.fallback();
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Choose model', exact: true }).click();
+  await page.getByRole('button', { name: /Synthetic Model Tools supported/ }).click();
+  await page.getByLabel('Message', { exact: true }).fill('Original synthetic question');
+  await page.getByRole('button', { name: 'Send ↑', exact: true }).click();
+  await expect(page.getByText(/Synthetic answer with/)).toBeVisible();
+  await page.getByRole('button', { name: 'Edit into a new branch', exact: true }).click();
+  await page.getByLabel('Edited message', { exact: true }).fill('Edited synthetic question');
+  await page.getByRole('button', { name: 'Create branch', exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(branch));
+  await expect(page.getByRole('textbox', { name: 'Message', exact: true })).toHaveValue(
+    'Edited synthetic question',
+  );
+  expect(base.submissions).toHaveLength(1);
+});
+
+test('long-context advice offers a reviewed note without submitting another generation', async ({
+  context,
+  page,
+}) => {
+  await seed(context);
+  const base = await fixture(page);
+  await page.route('http://localhost:3001/**/estimate', (route) =>
+    route.fulfill({
+      json: {
+        data: { input_tokens_estimated: 28000, context_length: 32000, cost_usd_estimated: '0.1' },
+      },
+    }),
+  );
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Choose model', exact: true }).click();
+  await page.getByRole('button', { name: /Synthetic Model Tools supported/ }).click();
+  await page.getByLabel('Message', { exact: true }).fill('Synthetic long conversation');
+  await page.getByRole('button', { name: 'Send ↑', exact: true }).click();
+  await expect(page.getByText(/Synthetic answer with/)).toBeVisible();
+  await page.getByRole('button', { name: 'Review context', exact: true }).click();
+  await expect(
+    page.getByRole('textbox', { name: 'Reviewed context note', exact: true }),
+  ).toBeVisible();
+  expect(base.submissions).toHaveLength(1);
+});
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`workspace matches shared styling in ${scheme} mode`, async ({ context, page }, info) => {
+    await seed(context);
+    await fixture(page);
+    await workspaceFixture(page);
+    await page.emulateMedia({ colorScheme: scheme });
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    page.on('console', (m) => {
+      if (m.type() === 'error') errors.push(m.text());
+    });
+    await page.goto('/');
+    await page
+      .getByTestId('chat-header')
+      .getByRole('button', { name: 'Settings', exact: true })
+      .click();
+    await expect(page.getByText('Settings', { exact: true })).toHaveCSS(
+      'color',
+      scheme === 'dark' ? 'rgb(227, 227, 227)' : 'rgb(31, 31, 31)',
+    );
+    await page.screenshot({
+      animations: 'disabled',
+      path: `/tmp/ai-chat-style-settings-${scheme}-${info.project.name}.png`,
+    });
+    await page.getByRole('button', { name: 'Back to conversations', exact: true }).click();
+    await page.getByRole('button', { name: 'Projects & tasks', exact: true }).click();
+    await page.getByLabel('Project name', { exact: true }).fill('Synthetic shared project');
+    await page
+      .getByLabel('Project memory', { exact: true })
+      .fill('Goals and decisions stay together.');
+    await page.getByRole('button', { name: 'Save project', exact: true }).click();
+    const project = page.getByRole('button', { name: 'Synthetic shared project', exact: true });
+    await expect(project).toHaveAttribute('aria-pressed', 'true');
+    await expect(project).toHaveCSS(
+      'background-color',
+      scheme === 'dark' ? 'rgb(0, 74, 119)' : 'rgb(211, 227, 253)',
+    );
+    await page.screenshot({
+      animations: 'disabled',
+      path: `/tmp/ai-chat-style-projects-${scheme}-${info.project.name}.png`,
+    });
+    await page.getByRole('button', { name: 'Documents', exact: true }).click();
+    await page.getByLabel('New document title', { exact: true }).fill('Synthetic working document');
+    await page.getByRole('button', { name: 'Create document', exact: true }).click();
+    await page
+      .getByLabel('Document content', { exact: true })
+      .fill('A document uses the same neutral surfaces and typography as chat.');
+    await page.getByRole('button', { name: 'Save version', exact: true }).click();
+    const editor = page.getByTestId('document-editor');
+    await expect(editor).toHaveCSS(
+      'background-color',
+      scheme === 'dark' ? 'rgb(30, 31, 32)' : 'rgb(248, 250, 253)',
+    );
+    await expect(page.getByRole('button', { name: 'Save version', exact: true })).toHaveCSS(
+      'border-radius',
+      '24px',
+    );
+    await page.screenshot({
+      animations: 'disabled',
+      path: `/tmp/ai-chat-style-documents-${scheme}-${info.project.name}.png`,
+    });
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true);
+    await page.getByRole('button', { name: 'Scheduled tasks', exact: true }).click();
+    await page.getByRole('button', { name: 'Choose scheduled model', exact: true }).click();
+    await expect(page.getByRole('textbox', { name: 'Search models', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: /Synthetic Model Tools supported/ }).click();
+    await expect(
+      page.getByRole('textbox', { name: 'Search models', exact: true }),
+    ).not.toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Choose scheduled model', exact: true }),
+    ).toContainText('Synthetic Model');
+    await page.getByRole('button', { name: 'Daily', exact: true }).scrollIntoViewIfNeeded();
+    await expect(page.getByRole('button', { name: 'Daily', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await page.screenshot({
+      animations: 'disabled',
+      path: `/tmp/ai-chat-style-schedules-${scheme}-${info.project.name}.png`,
+    });
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true);
+    expect(errors).toEqual([]);
+  });
+}
+
+test('calendar revision UI retains omitted fields and requires a separate fresh confirmation', async ({
+  context,
+  page,
+}) => {
+  await seed(context);
+  const f = await fixture(page);
+  await workspaceFixture(page);
+  let revision: Record<string, unknown> | null = null;
+  let approval = {
+    id: '60000000-0000-4000-8000-000000000006',
+    run_id: runId,
+    tool_call_id: '70000000-0000-4000-8000-000000000007',
+    tool_name: 'update_calendar_event',
+    args_hash: 'original-hash',
+    status: 'pending',
+    expires_at: new Date(Date.now() + 3600000).toISOString(),
+    arguments: {
+      event_id: 'synthetic-event',
+      expected_etag: 'synthetic-etag',
+      title: 'Proposed title',
+      timezone: 'UTC',
+    },
+    structured_preview: {
+      title: 'Proposed title',
+      start: '2026-11-12T09:00:00Z',
+      end: '2026-11-12T10:00:00Z',
+      timezone: 'UTC',
+      attendees: [{ address: 'guest@example.com' }],
+      description: 'Keep this description',
+    },
+  };
+  await page.route(`http://localhost:3001/v1/runs/${runId}`, (route) => {
+    const snapshot = f.snapshot();
+    return route.fulfill({
+      json: {
+        data: {
+          ...snapshot,
+          run: { ...snapshot.run, status: 'waiting_approval' },
+          approvals: [approval],
+        },
+      },
+    });
+  });
+  await page.route('http://localhost:3001/v1/approvals/*/revise', async (route) => {
+    revision = route.request().postDataJSON().arguments;
+    approval = {
+      ...approval,
+      args_hash: 'revised-hash',
+      arguments: revision as typeof approval.arguments,
+      structured_preview: { ...approval.structured_preview, title: String(revision!.title) },
+    };
+    await route.fulfill({ json: { data: { id: approval.id, args_hash: approval.args_hash } } });
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Choose model', exact: true }).click();
+  await page.getByRole('button', { name: /Synthetic Model Tools supported/ }).click();
+  await page.getByLabel('Message', { exact: true }).fill('Change the event title');
+  await page.getByRole('button', { name: 'Send ↑', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit proposal', exact: true }).click();
+  await expect(page.getByLabel('Edit start', { exact: true })).toHaveValue('2026-11-12T09:00:00Z');
+  await page.getByLabel('Edit title', { exact: true }).fill('Edited title');
+  await page.getByRole('button', { name: 'Save revised proposal', exact: true }).click();
+  await expect
+    .poll(() => revision)
+    .toEqual({
+      event_id: 'synthetic-event',
+      expected_etag: 'synthetic-etag',
+      title: 'Edited title',
+      timezone: 'UTC',
+    });
+  await expect(page.getByRole('button', { name: 'Confirm action', exact: true })).toBeVisible();
+  await expect(page.getByText('Keep this description', { exact: true })).toBeVisible();
+  expect(f.submissions).toHaveLength(1);
+});
+
+test('Russian workspace keeps localized navigation and shared selection styling', async ({
+  context,
+  page,
+}, info) => {
+  await seed(context);
+  await fixture(page, 'Synthetic answer', 'ru');
+  await workspaceFixture(page);
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Проекты и задачи', exact: true }).click();
+  await expect(page.getByText('Рабочее пространство', { exact: true })).toBeVisible();
+  const scheduleTab = page.getByRole('button', { name: 'Задачи по расписанию', exact: true });
+  await scheduleTab.click();
+  await expect(scheduleTab).toHaveAttribute('aria-pressed', 'true');
+  await expect(scheduleTab).toHaveCSS('background-color', 'rgb(0, 74, 119)');
+  await expect(page.getByRole('button', { name: 'Ежедневно', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(
+    page.getByRole('button', { name: 'Выбрать модель для расписания', exact: true }),
+  ).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  await page.screenshot({ path: `/tmp/ai-chat-style-russian-${info.project.name}.png` });
+});
+
+test('a document citation opens its owned document editor', async ({ context, page }) => {
+  await seed(context);
+  const docId = randomUUID();
+  await fixture(page, 'A project-document claim [S1].', 'en', [
+    {
+      citation_id: 'S1',
+      kind: 'file',
+      title: 'Synthetic source document',
+      document_id: docId,
+      section: 'Version 1, characters 8001–9021',
+      excerpt: 'IMPORTANT_FINAL_CLAUSE',
+      retrieved_at: time,
+    },
+  ]);
+  await workspaceFixture(page);
+  await page.route(`http://localhost:3001/v1/documents/${docId}`, (route) =>
+    route.fulfill({
+      json: {
+        data: {
+          id: docId,
+          title: 'Synthetic source document',
+          content: 'Original source text',
+          project_id: null,
+          version: 1,
+          created_at: time,
+          updated_at: time,
+        },
+      },
+    }),
+  );
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Choose model', exact: true }).click();
+  await page.getByRole('button', { name: /Synthetic Model Tools supported/ }).click();
+  await page.getByLabel('Message', { exact: true }).fill('Read the source document');
+  await page.getByRole('button', { name: 'Send ↑', exact: true }).click();
+  await page.getByRole('button', { name: 'Show evidence [S1]', exact: true }).click();
+  await expect(page.getByText('IMPORTANT_FINAL_CLAUSE', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Open original source', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Document title', exact: true })).toHaveValue(
+    'Synthetic source document',
+  );
 });
