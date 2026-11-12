@@ -11,6 +11,18 @@ const positions = [
   { left: '20%', top: '84%', card: 1, angle: -14 },
   { left: '73%', top: '81%', card: 21, angle: 18 },
 ] as const;
+const widePositions = [
+  { left: '22%', top: '4%', card: 2, angle: 10 },
+  { left: '46%', top: '2%', card: 3, angle: -6 },
+  { left: '63%', top: '11%', card: 4, angle: 13 },
+  { left: '8%', top: '32%', card: 5, angle: -11 },
+  { left: '88%', top: '16%', card: 6, angle: 8 },
+  { left: '34%', top: '90%', card: 7, angle: -15 },
+  { left: '55%', top: '86%', card: 8, angle: 10 },
+  { left: '94%', top: '78%', card: 9, angle: -8 },
+  { left: '15%', top: '72%', card: 10, angle: 7 },
+  { left: '70%', top: '48%', card: 11, angle: -13 },
+] as const;
 export function TarotBackground() {
   const reduced = useMotionPaused();
   const { isDark } = useTheme();
@@ -44,7 +56,7 @@ export function TarotBackground() {
       aria-hidden={true}
       style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}
     >
-      {positions.map((item, i) => (
+      {(width >= 1200 ? [...positions, ...widePositions] : positions).map((item, i) => (
         <Animated.View
           key={i}
           style={{

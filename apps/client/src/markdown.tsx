@@ -1,7 +1,9 @@
 import MarkdownIt from 'markdown-it';
-import type { ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Linking, Platform, ScrollView, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
+import { useReducedMotion } from './motion';
+import { revealStep } from './smooth-text';
 import { useTheme } from './theme';
 import { Button } from './ui';
 const parser = new MarkdownIt({ html: false, linkify: false, breaks: true });
@@ -17,15 +19,60 @@ export function safeUrl(value: string) {
 }
 type Token = ReturnType<typeof parser.parse>[number];
 type Cell = { token: Token; header: boolean; align: 'left' | 'center' | 'right' };
+function useSmoothText(text: string, smooth: boolean) {
+  const reduced = useReducedMotion();
+  const target = useRef(text);
+  const previous = useRef('');
+  const countRef = useRef(0);
+  const follow = useRef(false);
+  const [count, setCount] = useState(0);
+  target.current = text;
+  if (smooth && !reduced) follow.current = true;
+  const live = follow.current && !reduced && (smooth || count < text.length);
+  useEffect(() => {
+    if (reduced) {
+      countRef.current = target.current.length;
+      setCount(target.current.length);
+      return;
+    }
+    if (!live) return;
+    if (previous.current && !text.startsWith(previous.current)) {
+      countRef.current = 0;
+      setCount(0);
+    }
+    previous.current = text;
+    let frame = 0;
+    let stopped = false;
+    const tick = () => {
+      if (stopped) return;
+      const next = revealStep(countRef.current, target.current.length);
+      if (next !== countRef.current) {
+        countRef.current = next;
+        setCount(next);
+      }
+      if (countRef.current < target.current.length) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => {
+      stopped = true;
+      cancelAnimationFrame(frame);
+    };
+  }, [live, reduced, text]);
+  if (!follow.current || reduced) return text;
+  return text.slice(0, count);
+}
 export function Markdown({
   text,
+  smooth = false,
   onCitation,
 }: {
   text: string;
+  smooth?: boolean;
   onCitation?: (id: string) => void;
 }) {
+  const shown = useSmoothText(text, smooth);
   const { colors: c } = useTheme();
-  const tokens = parser.parse(text, {});
+  const tokens = parser.parse(shown, {});
   function inline(children: Token[] = []): ReactNode {
     let bold = 0,
       italic = 0,

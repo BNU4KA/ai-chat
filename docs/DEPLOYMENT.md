@@ -6,7 +6,8 @@ service state, Caddy site and firewall rules intact. Deploy AI Chat independentl
 
 ## Current status
 
-Live at **https://chat.72-56-89-122.sslip.io**. Release `20261111T095526Z` is active on
+Live at **https://chat.72-56-89-122.sslip.io**. Web releases now come from GitHub Actions
+after CI on `master`. The first one is `20261111T144829Z`. Runtime remains `20261111T111852Z`. The first published release `20261111T095526Z` is retained on
 the owner's existing Ubuntu VPS. The personal SSH key was added through the provider panel;
 no work identity was used. Caddy serves the static export and proxies to the API on loopback.
 Both app services are enabled, running as the dedicated unprivileged `aichat` user, and have
@@ -48,6 +49,26 @@ The application uses its existing Supabase database, Auth and private Storage. P
 `ENCRYPTION_KEYS` to retain access to existing encrypted user keys. Supply production
 `CLIENT_ORIGINS`, callback origins and the explicit database CA path; omit all test adapter
 and test JWT settings. Do not use another project's `.env`.
+
+## GitHub web deploy
+
+A successful CI run on `master` publishes the static web client. The workflow is
+`.github/workflows/deploy-web.yml`. It builds the Expo web export in GitHub Actions and
+switches `/srv/ai-chat/current` through `deploy/publish-web.sh`. API and worker are not
+restarted. A full runtime release still uses `deploy/install-release.sh` when server code
+changes.
+
+Repository Actions secrets, not committed values:
+
+| Secret | Purpose |
+| --- | --- |
+| `SSH_HOST` | VPS address |
+| `SSH_PRIVATE_KEY` | Dedicated deploy key, public half in root `authorized_keys` |
+| `EXPO_PUBLIC_API_URL` | Public site origin |
+| `EXPO_PUBLIC_SUPABASE_URL` | Hosted Supabase project URL |
+| `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Public Supabase key baked into the web client |
+
+The server environment at `/etc/ai-chat/server.env` stays only on the VPS.
 
 ## Installation sequence for a future release
 
@@ -117,9 +138,26 @@ The latest frontend also fixes Markdown tables, ordered/nested lists and blockqu
 
 ## Tarot and localization release — 2026-11-11
 
-Runtime and web release `20261111T111852Z` are current. Migration 0003 introduces auto/en/ru
+Runtime and web release `20261111T111852Z` were current before the next frontend update. Migration 0003 introduces auto/en/ru
 locale validation and a default for new accounts without rewriting any existing preference.
 API and worker were restarted and passed readiness. Prior runtime/static releases remain
 available for rollback; old web chunks were retained. The runtime release clones the existing
 production dependency tree and overlays the three changed backend files; the added Expo
 Localization dependency belongs only to the bundled client and native rebuild.
+
+## Sign-in and chat polish — 2026-11-11
+
+Frontend-only release `20261111T131936Z` uses runtime `20261111T111852Z`. It publishes the
+parchment controls, sign-in tarot screen, themed toasts, drawn sidebar icons, smoother
+streaming text, and the brighter moving border on the Google button. The static symlink was
+switched atomically and previous web chunks were retained. API and worker were not restarted.
+Public readiness stayed ok, and the hosted sign-in screen was checked in a browser.
+
+## Faster composer — 2026-11-11
+
+Frontend-only release `20261111T135627Z` uses runtime `20261111T111852Z`. Wide screens show
+more tarot cards. Chats can be renamed or deleted from the list. A sent message and a chosen
+file appear before the server finishes. Model steps collapse into one thinking line. The
+composer controls are smaller, transparent, and outlined in the moving colors. The static
+symlink was switched atomically and previous web chunks were retained. API and worker were
+not restarted. Public readiness stayed ok.

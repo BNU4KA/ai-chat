@@ -12,6 +12,7 @@ export function Button({
   danger = false,
   label,
   quiet = false,
+  testID,
 }: {
   children: ReactNode;
   onPress: () => void;
@@ -20,10 +21,12 @@ export function Button({
   danger?: boolean;
   label?: string;
   quiet?: boolean;
+  testID?: string;
 }) {
   const { colors: c } = useTheme();
   return (
     <Pressable
+      testID={testID}
       accessibilityRole="button"
       accessibilityLabel={label}
       disabled={disabled}
@@ -33,20 +36,20 @@ export function Button({
         paddingHorizontal: quiet ? 10 : 16,
         paddingVertical: quiet ? 8 : 11,
         borderRadius: 24,
+        borderWidth: secondary ? 1 : 2,
+        borderColor: danger ? c.danger : c.cardEdge,
         alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: quiet
           ? hovered
             ? c.hover
             : 'transparent'
-          : secondary
-            ? hovered
-              ? c.hover
-              : c.control
-            : danger
-              ? c.danger
-              : c.accent,
-        opacity: disabled ? 0.45 : pressed ? 0.75 : 1,
+          : danger
+            ? c.danger
+            : pressed || hovered
+              ? c.cardPressed
+              : c.card,
+        opacity: disabled ? 0.45 : 1,
       })}
     >
       {Children.toArray(children).every(
@@ -54,17 +57,9 @@ export function Button({
       ) ? (
         <Text
           style={{
-            fontWeight: '500',
+            fontWeight: '600',
             fontSize: quiet ? 13 : 14,
-            color: quiet
-              ? danger
-                ? c.danger
-                : c.muted
-              : secondary
-                ? c.text
-                : danger
-                  ? c.dangerText
-                  : c.accentText,
+            color: quiet ? (danger ? c.danger : c.muted) : danger ? c.dangerText : c.cardInk,
           }}
         >
           {children}

@@ -448,6 +448,42 @@ Live browser SSO was refreshed during the final smoke check and returned success
 hosted home screen with the restored English preference. Russian and English homepage previews
 were captured locally and are not included in the public repository.
 
+## T13 — Composer note, toasts, sign-in cards, sidebar icons, smoother answers — 2026-11-11
+
+Owner UI polish. Published as frontend-only release `20261111T131936Z`. Runtime stays `20261111T111852Z`. The static symlink was switched atomically and the previous web release was kept. API and worker were not restarted. Public readiness reports database and queue ok. The hosted sign-in screen shows the tarot cards and the moving Google button border.
+
+- The OpenRouter balance note under the composer is centered and uses a slightly darker quiet color.
+- Save and copy confirmations render as a top-right toast in the app surface, with the greeting accent.
+- The sign-in screen uses the same drifting tarot cards as a new chat.
+- Sidebar chat, new, and settings marks are drawn icons. The narrow-screen history button uses the same menu mark.
+- A streaming assistant reply reveals text in small steps, then catches up. Reduced motion shows the full text at once.
+- Shared buttons, the new-chat control, suggestion chips, and language choices use the parchment, gold edge, and ink colors. Danger actions stay red.
+- The Google sign-in button has the same moving color border as the composer, drawn thicker so it stays visible on the dark page.
+
+Checks: client typecheck and eslint on the touched files passed. `smooth-text` unit test passed.
+Desktop Playwright: Google sign-in, one persisted answer with the copy toast, and the Russian home
+scenario passed against synthetic fixtures. Sign-in cards and the expanded sidebar chat icon were
+visually checked locally. No provider call or schema change. Commit `6138610` is on `origin/master`.
+
+## T13 — Denser cards, chat actions, faster composer — 2026-11-11
+
+Published as frontend-only release `20261111T135627Z`. Runtime stays `20261111T111852Z`.
+The static symlink was switched atomically and the previous web release was kept. API and
+worker were not restarted. Public readiness reports database and queue ok. The new layout
+bundle includes the thinking line and the smaller composer controls.
+
+- Wide screens show more drifting tarot cards.
+- Each chat row can be renamed or deleted through the existing conversation API.
+- A sent message appears before the server accepts it. A chosen file shows its name immediately, and the attach control stays the same size.
+- Model steps collapse into one shimmering Thinking line and open into a short list. They are no longer repeated as large cards under the answer.
+- Attach, tools, model, and send are smaller, transparent, and outlined in the moving colors.
+
+Checks: client typecheck and eslint on the touched files passed. A synthetic browser session confirmed the denser home cards, the 32px transparent composer controls, a collapsed Thought line that opens the tool list, and the rename/delete row menu. The file-picker timing could not be driven by the automated picker. No provider call or schema change. Commit `67b14e7` is on `origin/master`.
+
+## GitHub web deploy — 2026-11-11
+
+A dedicated deploy key can log in to the VPS as root. Its private half is stored as the `SSH_PRIVATE_KEY` Actions secret. `deploy/publish-web.sh` switches the static release and does not restart the API or worker. `.github/workflows/deploy-web.yml` builds the web client after CI succeeds on `master`. The other Actions secrets are `SSH_HOST`, `EXPO_PUBLIC_API_URL`, `EXPO_PUBLIC_SUPABASE_URL`, and `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. Server secrets stay in `/etc/ai-chat/server.env`. Client typecheck on CI was failing because React Native's types omit web hover state and CSS width transitions; `apps/client/src/react-native.d.ts` adds those fields. Local client typecheck passed after that change. CI run `43041714287` then passed, and Deploy web run `43041953787` published `/srv/ai-chat/releases/20261111T144829Z`. Public readiness still reports database and queue ok. API and worker were not restarted.
+
 ## T15–T19 — Functional expansion — 2026-11-11 (in progress)
 
 Owner requested all eight main and five additional proposals. Scope and acceptance are recorded
@@ -556,5 +592,16 @@ fixed defects as unresolved findings; retain the regression scenarios when editi
 Owner explicitly requested commit and push of the expansion and review fixes. Publishing to
 `codex/workspace-expansion`; `origin/master` has newer independent UI changes and an automatic
 web deployment workflow. This branch preserves both histories without changing master or
-triggering its deployment. Merge/integration with those newer UI changes remains a separate step.
-The verification evidence above applies to this branch before integration with master.
+triggering its deployment. The verification evidence above applies to this branch before integration with master.
+
+## Merge with master UI — 2026-11-12
+
+Merged `origin/master` into `codex/workspace-expansion`. Workspace tools, citation evidence,
+quiet actions, and source cards stay, together with the thinking trace, optimistic send,
+parchment buttons, and smooth assistant text.
+
+Checks: `tsc --noEmit` passed in contracts, database, integrations, agent-runtime, services, api,
+worker, and client. ESLint passed on `chat.tsx`, `markdown.tsx`, and `ui.tsx`. `vitest run` passed
+49 tests. Node v24.2.0; the pinned pnpm 12.18.0 shim returns ENOEXEC on this machine, so
+`pnpm typecheck` itself was not the runner. Integration and browser suites were not rerun.
+

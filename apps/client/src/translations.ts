@@ -270,10 +270,6 @@ export const russian: Record<string, string> = {
   'Connecting…': 'Подключение…',
   'Sign-in is not available yet. Please contact the service owner.':
     'Вход пока недоступен. Свяжитесь с владельцем сервиса.',
-  'Your first sign-in creates your account. Gmail and Calendar are connected separately, only when you choose.':
-    'При первом входе создаётся аккаунт. Gmail и Календарь подключаются отдельно, только по вашему выбору.',
-  'Bring your own OpenRouter key. Conversations and files sync through the server. Relevant content is shared with the model and tools you use.':
-    'Добавьте свой ключ OpenRouter. Разговоры и файлы синхронизируются через сервер. Необходимое содержимое передаётся выбранной модели и инструментам.',
   'Connect your model key': 'Подключите ключ модели',
   'Use your own OpenRouter balance. Your key is encrypted on the server so tasks can continue when you close the app.':
     'Используйте свой баланс OpenRouter. Ключ зашифрован на сервере, чтобы задачи продолжались после закрытия приложения.',
@@ -316,6 +312,8 @@ export const russian: Record<string, string> = {
   'Jump to latest ↓': 'К последним сообщениям ↓',
   'Tools & conversation': 'Инструменты и разговор',
   'Conversation files': 'Файлы разговора',
+  'Chat actions': 'Действия с чатом',
+  Thought: 'Размышление',
   'Rename conversation': 'Переименовать разговор',
   'Delete conversation': 'Удалить разговор',
   'Delete conversation?': 'Удалить разговор?',

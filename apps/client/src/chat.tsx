@@ -22,7 +22,7 @@ import { useCredential, useCapabilities, useModels, useProfile } from './queries
 import { useRun, activeStatus } from './use-run';
 import { Button, Copy, ErrorNotice, Field, Loading, Panel } from './ui';
 import { Dialog } from './dialog';
-import { ConversationSidebar, ConversationDrawer, useSidebarTransition } from './sidebar';
+import { ConversationSidebar, ConversationDrawer, MenuMark, useSidebarTransition } from './sidebar';
 import { Markdown } from './markdown';
 import { ApprovalCard } from './approval';
 import { Attachment } from './attachment';
@@ -30,7 +30,8 @@ import { MessageActions } from './message-actions';
 import { TarotBackground } from './tarot-background';
 import { ComposerFrame } from './composer-frame';
 import { FoolSpinner } from './fool-spinner';
-import { pickAndUpload } from './upload';
+import { ThinkingTrace } from './thinking';
+import { pickFile, uploadPicked } from './upload';
 import type { Conversation, Message, Run, FileRecord, Snapshot } from './types';
 type Group = 'web' | 'files' | 'gmail' | 'calendar';
 const groupLabels: Record<Group, string> = {
@@ -54,7 +55,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
   const id = routeId ?? createdChat?.id;
   const router = useRouter();
   const cache = useQueryClient();
-  const { colors: c, setChoice } = useTheme();
+  const { colors: c, isDark, setChoice } = useTheme();
   const width = useWindowDimensions().width;
   const wide = width >= 1024;
   const sidebarTransition = useSidebarTransition();
@@ -67,7 +68,9 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState<{ id: string; name: string }[]>([]);
+  const [pendingMessage, setPendingMessage] = useState<Message | null>(null);
+  const [managed, setManaged] = useState<Conversation | null>(null);
   const [composerFocused, setComposerFocused] = useState(false);
   const [dialog, setDialog] = useState<
     'models' | 'tools' | 'rename' | 'delete' | 'retry' | 'files' | null
@@ -93,6 +96,9 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     setSelectedFiles([]);
     setError(null);
     pending.current = null;
+    setPendingMessage((current) =>
+      current && routeId && current.conversation_id !== routeId ? null : current,
+    );
     setAtBottom(true);
   }, [routeId, profile.data?.id]);
   const history = useInfiniteQuery({
@@ -179,6 +185,10 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
       if (!visibleMessages.some((v) => v.id === m.id)) visibleMessages.push(m);
     visibleMessages.sort((a, b) => (BigInt(a.seq) < BigInt(b.seq) ? -1 : 1));
   }
+  const shown =
+    pendingMessage && !visibleMessages.some((message) => message.id === pendingMessage.id)
+      ? [...visibleMessages, pendingMessage]
+      : visibleMessages;
   async function ensureChat() {
     if (id) return id;
     if (creating.current) return creating.current;
@@ -216,20 +226,22 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     router.replace('/');
   }
   async function patch(body: Partial<Conversation>) {
-    if (!id) {
+    const target = managed ?? chat.data;
+    if (!target) {
       if (body.model_id) setHomeModel(body.model_id);
       setDialog(null);
+      setManaged(null);
       return;
     }
-    if (!chat.data) return;
     try {
       const value = await api<Conversation>(
-        `/v1/conversations/${id}`,
-        json('PATCH', body, chat.data.version),
+        `/v1/conversations/${target.id}`,
+        json('PATCH', body, target.version),
       );
-      cache.setQueryData(['conversation', id], value);
+      cache.setQueryData(['conversation', target.id], value);
       void cache.invalidateQueries({ queryKey: ['conversations'] });
       setDialog(null);
+      setManaged(null);
     } catch (e) {
       setError(e);
       void chat.refetch();
@@ -247,36 +259,57 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
       (!draft.trim() && !selectedFiles.length)
     )
       return;
+    const text = draft;
+    const fileIds = selectedFiles.slice();
+    const body = JSON.stringify({ text, file_ids: fileIds });
+    if (pending.current?.body !== body)
+      pending.current = { body, key: Crypto.randomUUID(), clientId: Crypto.randomUUID() };
+    const saved = pending.current;
+    if (!saved) return;
     sending.current = true;
     setBusy(true);
     setError(null);
+    setDraft('');
+    setSelectedFiles([]);
+    setPendingMessage({
+      id: saved.clientId,
+      conversation_id: id ?? '00000000-0000-4000-8000-000000000000',
+      run_id: null,
+      seq: '0',
+      role: 'user',
+      content: text,
+      status: 'complete',
+      file_ids: fileIds,
+      created_at: new Date().toISOString(),
+    });
+    setAtBottom(true);
     try {
       const targetId = await ensureChat();
-      const body = JSON.stringify({ text: draft, file_ids: selectedFiles });
-      if (pending.current?.body !== body)
-        pending.current = { body, key: Crypto.randomUUID(), clientId: Crypto.randomUUID() };
-      const saved = pending.current;
+      setPendingMessage((current) =>
+        current?.id === saved.clientId ? { ...current, conversation_id: targetId } : current,
+      );
       const value = await api<{ run: Run }>(
         `/v1/conversations/${targetId}/messages`,
         json(
           'POST',
-          { client_message_id: saved.clientId, text: draft, file_ids: selectedFiles },
+          { client_message_id: saved.clientId, text, file_ids: fileIds },
           undefined,
           saved.key,
         ),
       );
       pending.current = null;
-      setDraft('');
-      setSelectedFiles([]);
-      setAtBottom(true);
       cache.setQueryData(['runs', targetId], (old: Run[] | undefined) => [
         value.run,
         ...(old ?? []),
       ]);
       await cache.invalidateQueries({ queryKey: ['messages', targetId] });
+      setPendingMessage(null);
       if (!routeId) router.replace(`/chat/${targetId}`);
       void cache.invalidateQueries({ queryKey: ['conversations'] });
     } catch (e) {
+      setDraft(text);
+      setSelectedFiles(fileIds);
+      setPendingMessage(null);
       setError(e);
     } finally {
       setBusy(false);
@@ -308,32 +341,38 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     }
   }
   async function upload() {
-    setUploading(true);
     setError(null);
+    const picked = await pickFile().catch((e: unknown) => {
+      setError(e);
+      return null;
+    });
+    if (!picked) return;
+    const localId = Crypto.randomUUID();
+    setPendingFiles((old) => [...old, { id: localId, name: picked.name }]);
     try {
-      const file = await pickAndUpload(ensureChat);
-      if (file) {
-        const targetId = file.conversation_id;
-        setSelectedFiles((old) => [...old, file.id]);
-        cache.setQueryData(['files', targetId], (old: FileRecord[] | undefined) => [
-          file,
-          ...(old ?? []).filter((item) => item.id !== file.id),
-        ]);
-        await cache.invalidateQueries({ queryKey: ['files', targetId] });
-      }
+      const file = await uploadPicked(picked, ensureChat);
+      const targetId = file.conversation_id;
+      setSelectedFiles((old) => [...old, file.id]);
+      cache.setQueryData(['files', targetId], (old: FileRecord[] | undefined) => [
+        file,
+        ...(old ?? []).filter((item) => item.id !== file.id),
+      ]);
+      await cache.invalidateQueries({ queryKey: ['files', targetId] });
     } catch (e) {
       setError(e);
     } finally {
-      setUploading(false);
+      setPendingFiles((old) => old.filter((item) => item.id !== localId));
     }
   }
   async function removeChat() {
-    if (!chat.data) return;
+    const target = managed ?? chat.data;
+    if (!target) return;
     try {
-      await api(`/v1/conversations/${id}`, json('DELETE', undefined, chat.data.version));
+      await api(`/v1/conversations/${target.id}`, json('DELETE', undefined, target.version));
       setDialog(null);
+      setManaged(null);
       await cache.invalidateQueries({ queryKey: ['conversations'] });
-      router.replace('/');
+      if (target.id === id) router.replace('/');
     } catch (e) {
       setError(e);
     }
@@ -341,6 +380,16 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
   const fileReady = selectedFiles.every((fileId) =>
     files.data?.some((file) => file.id === fileId && file.status === 'ready'),
   );
+  const composerInk = isDark ? '#ffffff' : c.text;
+  const sendLocked =
+    busy ||
+    pendingFiles.length > 0 ||
+    !credential.data?.configured ||
+    !(chat.data?.model_id ?? homeModel) ||
+    incompatible ||
+    imageIncompatible ||
+    !fileReady ||
+    (!draft.trim() && !selectedFiles.length);
   const composer = (
     <View
       style={{
@@ -364,8 +413,27 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
       {incompatible && (
         <ErrorNotice error="This model does not support the selected tools. Choose another model or turn off tools." />
       )}
-      {!!selectedFiles.length && (
+      {(!!selectedFiles.length || !!pendingFiles.length) && (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {pendingFiles.map((file) => (
+            <View
+              key={file.id}
+              style={{
+                maxWidth: 220,
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: c.border,
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                gap: 2,
+              }}
+            >
+              <Text translate={false} numberOfLines={1} style={{ color: c.text, fontSize: 13 }}>
+                {file.name}
+              </Text>
+              <Text style={{ color: c.muted, fontSize: 12 }}>Uploading…</Text>
+            </View>
+          ))}
           {selectedFiles.map((fileId) => (
             <Attachment
               key={fileId}
@@ -410,91 +478,110 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
           }}
         />
         <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-          <Button
-            secondary
-            label="Attach photos or files"
+          <Pressable
+            testID="composer-attach"
+            accessibilityRole="button"
+            accessibilityLabel="Attach photos or files"
             disabled={
-              uploading ||
+              pendingFiles.length > 0 ||
               running ||
               selectedFiles.length >= 5 ||
               capabilities.data?.tools.files !== 'available'
             }
             onPress={() => void upload()}
-          >
-            {uploading ? <FoolSpinner size={24} label="Uploading attachment" /> : '＋'}
-          </Button>
-          <Button
-            secondary
-            label="Choose tools"
-            onPress={() =>
-              void ensureChat()
-                .then(() => setDialog('tools'))
-                .catch(setError)
-            }
-          >
-            Tools
-          </Button>
-          <View style={{ flex: 1 }} />
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Choose model"
-            onPress={() => setDialog('models')}
-            style={({ hovered }) => ({
-              minHeight: 44,
-              maxWidth: wide ? 220 : 130,
-              flexShrink: 1,
-              borderRadius: 22,
-              paddingHorizontal: 12,
+            style={({ pressed, hovered }) => ({
+              width: 32,
+              height: 32,
+              borderRadius: 16,
+              alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: hovered ? c.hover : 'transparent',
+              backgroundColor: pressed || hovered ? c.hover : 'transparent',
+              opacity: pendingFiles.length > 0 ? 0.45 : 1,
             })}
           >
-            <Text numberOfLines={1} style={{ color: c.text, fontSize: 14 }}>
+            <Text style={{ color: composerInk, fontSize: 18, lineHeight: 20 }}>＋</Text>
+          </Pressable>
+          <Pressable
+            testID="composer-tools"
+            accessibilityRole="button"
+            accessibilityLabel="Choose tools"
+            onPress={() =>
+              void ensureChat()
+                .then(() => {
+                  setManaged(null);
+                  setDialog('tools');
+                })
+                .catch(setError)
+            }
+            style={({ pressed, hovered }) => ({
+              minHeight: 32,
+              paddingHorizontal: 12,
+              borderRadius: 16,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: pressed || hovered ? c.hover : 'transparent',
+            })}
+          >
+            <Text style={{ color: composerInk, fontSize: 13, fontWeight: '600' }}>Tools</Text>
+          </Pressable>
+          <View style={{ flex: 1 }} />
+          <Pressable
+            testID="composer-model"
+            accessibilityRole="button"
+            accessibilityLabel="Choose model"
+            onPress={() => {
+              setManaged(null);
+              setDialog('models');
+            }}
+            style={({ pressed, hovered }) => ({
+              minHeight: 32,
+              maxWidth: wide ? 200 : 120,
+              flexShrink: 1,
+              borderRadius: 16,
+              paddingHorizontal: 12,
+              justifyContent: 'center',
+              backgroundColor: pressed || hovered ? c.hover : 'transparent',
+            })}
+          >
+            <Text numberOfLines={1} style={{ color: composerInk, fontSize: 13 }}>
               {(currentModel?.name ?? 'Gemini 3.8 Flash').replace('Google: ', '')} ▾
             </Text>
           </Pressable>
           {running ? (
-            <Button danger onPress={() => void stop()}>
-              Stop
-            </Button>
-          ) : (
             <Pressable
               accessibilityRole="button"
+              accessibilityLabel="Stop"
+              onPress={() => void stop()}
+              style={{
+                minHeight: 32,
+                paddingHorizontal: 12,
+                borderRadius: 16,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: c.danger,
+              }}
+            >
+              <Text style={{ color: c.dangerText, fontSize: 13, fontWeight: '600' }}>Stop</Text>
+            </Pressable>
+          ) : (
+            <Pressable
+              testID="composer-send"
+              accessibilityRole="button"
               accessibilityLabel="Send ↑"
-              disabled={
-                busy ||
-                uploading ||
-                !credential.data?.configured ||
-                !(chat.data?.model_id ?? homeModel) ||
-                incompatible ||
-                imageIncompatible ||
-                !fileReady ||
-                (!draft.trim() && !selectedFiles.length)
-              }
+              disabled={sendLocked}
               onPress={() => void send()}
               style={({ pressed }) => ({
-                width: 44,
-                height: 44,
-                borderRadius: 22,
+                width: 32,
+                height: 32,
+                borderRadius: 16,
                 flexShrink: 0,
                 alignItems: 'center',
                 justifyContent: 'center',
-                backgroundColor: c.accent,
-                opacity:
-                  busy ||
-                  uploading ||
-                  !credential.data?.configured ||
-                  incompatible ||
-                  imageIncompatible ||
-                  !fileReady ||
-                  (!draft.trim() && !selectedFiles.length)
-                    ? 0.4
-                    : pressed
-                      ? 0.8
-                      : 1,
+                backgroundColor: pressed ? c.hover : 'transparent',
+                opacity: sendLocked ? 0.4 : 1,
               })}
             >
-              <Text style={{ fontSize: 22, color: c.accentText }}>↑</Text>
+              <Text style={{ fontSize: 16, color: composerInk }}>↑</Text>
             </Pressable>
           )}
         </View>
@@ -503,9 +590,16 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
         <ErrorNotice error="This model cannot see photos. Choose a model with photo support." />
       )}
       <ErrorNotice error={error} />
-      <Copy small muted>
+      <Text
+        style={{
+          textAlign: 'center',
+          color: c.quiet,
+          fontSize: 13,
+          lineHeight: 20,
+        }}
+      >
         Uses your OpenRouter balance. Review external actions before confirming.
-      </Copy>
+      </Text>
     </View>
   );
   const sidebar = (mobile = false) => (
@@ -532,12 +626,21 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
         router.replace(`/chat/${conversationId}`);
         setDrawer(false);
       }}
+      onRename={(item) => {
+        setManaged(item);
+        setTitle(item.title);
+        setDialog('rename');
+      }}
+      onDelete={(item) => {
+        setManaged(item);
+        setDialog('delete');
+      }}
       onSettings={() => {
         setDrawer(false);
         router.push('/settings');
       }}
       displayName={profile.data?.display_name}
-      busy={busy || uploading}
+      busy={busy || pendingFiles.length > 0}
       loading={history.isPending}
       loadingMore={history.isFetchingNextPage}
       error={history.error}
@@ -632,7 +735,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
         >
           {!wide && (
             <Button secondary label="Open conversation history" onPress={() => setDrawer(true)}>
-              ☰
+              <MenuMark color={c.cardInk} />
             </Button>
           )}
           <View style={{ flex: 1 }}>
@@ -671,7 +774,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
           documentSeed={documentSeed}
           onOpenChange={setWorkToolsOpen}
         />
-        {!routeId && !visibleMessages.length ? (
+        {!routeId && !shown.length ? (
           <KeyboardAvoidingView
             style={{ flex: 1 }}
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -734,16 +837,16 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                     key={prompt}
                     accessibilityRole="button"
                     onPress={() => setDraft(t(prompt))}
-                    style={({ hovered }) => ({
+                    style={({ pressed, hovered }) => ({
                       paddingHorizontal: 18,
                       paddingVertical: 12,
                       borderRadius: 22,
                       borderWidth: 1,
-                      borderColor: c.border,
-                      backgroundColor: hovered ? c.hover : 'transparent',
+                      borderColor: c.cardEdge,
+                      backgroundColor: pressed || hovered ? c.cardPressed : c.card,
                     })}
                   >
-                    <Text style={{ fontSize: 14, color: c.text }}>{prompt}</Text>
+                    <Text style={{ fontSize: 14, color: c.cardInk }}>{prompt}</Text>
                   </Pressable>
                 ))}
               </View>
@@ -780,7 +883,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                   Load earlier messages
                 </Button>
               )}
-              {!visibleMessages.length && (
+              {!shown.length && (
                 <View style={{ paddingVertical: wide ? 80 : 40, gap: 20 }}>
                   <Text
                     style={{
@@ -804,7 +907,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                   ))}
                 </View>
               )}
-              {visibleMessages.map((message) => (
+              {shown.map((message) => (
                 <View
                   key={message.id}
                   testID="chat-message"
@@ -844,22 +947,32 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                         },
                       )}
                     </Text>
+                    {message.role === 'assistant' &&
+                      message.id === snapshot.data?.assistant_message.id && (
+                        <ThinkingTrace
+                          running={running && message.status === 'pending'}
+                          tools={snapshot.data.tool_calls}
+                          startedAt={snapshot.data.run.created_at}
+                          finishedAt={snapshot.data.run.finished_at}
+                        />
+                      )}
                     {message.content ? (
                       <Markdown
                         text={message.content}
+                        smooth={
+                          message.role === 'assistant' &&
+                          running &&
+                          message.id === snapshot.data?.assistant_message.id
+                        }
                         onCitation={
                           message.run_id
                             ? (id) => setEvidence({ run: message.run_id!, citation: id })
                             : undefined
                         }
                       />
-                    ) : message.status === 'pending' ? (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <FoolSpinner size={24} label="Generating response" />
-                        <Copy small muted>
-                          Thinking…
-                        </Copy>
-                      </View>
+                    ) : message.status === 'pending' &&
+                      message.id !== snapshot.data?.assistant_message.id ? (
+                      <ThinkingTrace running tools={[]} />
                     ) : null}
                     {message.file_ids.map((fileId) => (
                       <Attachment
@@ -923,16 +1036,6 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                     />
                   )}
                 </View>
-              ))}
-              {snapshot.data?.tool_calls.map((tool) => (
-                <Panel key={tool.id}>
-                  <Copy small>
-                    {tool.name.replaceAll('_', ' ')} · {tool.status}
-                  </Copy>
-                  {tool.status === 'unknown' && (
-                    <Copy small>Outcome unconfirmed. Check the provider before trying again.</Copy>
-                  )}
-                </Panel>
               ))}
               {snapshot.data?.approvals.map((approval) => (
                 <ApprovalCard key={approval.id} approval={approval} />
@@ -1030,20 +1133,30 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
         <Button
           secondary
           onPress={() => {
+            setManaged(chat.data ?? null);
             setTitle(chat.data?.title ?? '');
             setDialog('rename');
           }}
         >
           Rename conversation
         </Button>
-        <Button danger onPress={() => setDialog('delete')}>
+        <Button
+          danger
+          onPress={() => {
+            setManaged(chat.data ?? null);
+            setDialog('delete');
+          }}
+        >
           Delete conversation
         </Button>
       </Dialog>
       <Dialog
         title="Rename conversation"
         visible={dialog === 'rename'}
-        close={() => setDialog(null)}
+        close={() => {
+          setDialog(null);
+          setManaged(null);
+        }}
       >
         <Field accessibilityLabel="Conversation title" value={title} onChangeText={setTitle} />
         <Button disabled={!title.trim()} onPress={() => void patch({ title: title.trim() })}>
@@ -1053,7 +1166,10 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
       <Dialog
         title="Delete conversation?"
         visible={dialog === 'delete'}
-        close={() => setDialog(null)}
+        close={() => {
+          setDialog(null);
+          setManaged(null);
+        }}
       >
         <Copy>
           Tasks will stop and this conversation and its documents will be removed. Private upload
