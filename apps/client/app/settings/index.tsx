@@ -111,12 +111,12 @@ export function SettingsScreen() {
                 paddingVertical: 12,
                 borderRadius: 22,
                 borderWidth: 1,
-                borderColor: c.cardEdge,
-                backgroundColor: choice === value ? c.cardPressed : c.card,
+                borderColor: choice === value ? c.accent : c.border,
+                backgroundColor: choice === value ? c.selected : 'transparent',
                 opacity: languageBusy ? 0.45 : 1,
               }}
             >
-              <Text style={{ color: c.cardInk }}>
+              <Text style={{ color: c.text }}>
                 {value === 'auto' ? 'Automatic' : value === 'ru' ? 'Русский' : 'English'}
               </Text>
             </Pressable>

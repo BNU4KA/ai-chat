@@ -616,3 +616,11 @@ Checks: client `tsc --noEmit` passed. ESLint passed on the touched client files.
 desktop scenario for settings, Gmail/Calendar, and typed account deletion passed against a
 synthetic API. Node v24.2.0. The full browser suite was not rerun.
 
+## Cool chrome, parchment on the cards — 2026-11-12
+
+Shared buttons, the new-chat control, suggestion chips, and language choices use the cool
+surfaces and blue accent. Parchment and gold remain on the tarot artwork and the loader.
+Client `tsc --noEmit` and ESLint on the touched files passed. The already-running web server
+was still serving the previous parchment button colors, so this pass was not rechecked in that
+browser session.
+

@@ -36,8 +36,8 @@ export function Button({
         paddingHorizontal: quiet ? 10 : 16,
         paddingVertical: quiet ? 8 : 11,
         borderRadius: 24,
-        borderWidth: secondary ? 1 : 2,
-        borderColor: danger ? c.danger : c.cardEdge,
+        borderWidth: quiet || secondary ? 1 : 0,
+        borderColor: danger ? c.danger : quiet || secondary ? c.border : c.accent,
         alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: quiet
@@ -46,10 +46,12 @@ export function Button({
             : 'transparent'
           : danger
             ? c.danger
-            : pressed || hovered
-              ? c.cardPressed
-              : c.card,
-        opacity: disabled ? 0.45 : 1,
+            : secondary
+              ? hovered || pressed
+                ? c.hover
+                : 'transparent'
+              : c.accent,
+        opacity: disabled ? 0.45 : pressed ? 0.85 : 1,
       })}
     >
       {Children.toArray(children).every(
@@ -59,7 +61,15 @@ export function Button({
           style={{
             fontWeight: '600',
             fontSize: quiet ? 13 : 14,
-            color: quiet ? (danger ? c.danger : c.muted) : danger ? c.dangerText : c.cardInk,
+            color: quiet
+              ? danger
+                ? c.danger
+                : c.muted
+              : danger
+                ? c.dangerText
+                : secondary
+                  ? c.text
+                  : c.accentText,
           }}
         >
           {children}

@@ -229,16 +229,16 @@ export function ConversationSidebar(props: SidebarProps) {
           {
             alignSelf: props.expanded ? 'flex-start' : 'center',
             paddingHorizontal: props.expanded ? 14 : 10,
-            backgroundColor: pressed || hovered ? c.cardPressed : c.card,
+            backgroundColor: pressed || hovered ? c.hover : 'transparent',
             borderWidth: 1,
-            borderColor: c.cardEdge,
+            borderColor: c.border,
             opacity: props.busy ? 0.5 : 1,
           },
         ]}
       >
-        <NavIcon kind="new" color={c.cardInk} />
+        <NavIcon kind="new" color={c.text} />
         {props.expanded && (
-          <Text style={{ color: c.cardInk, fontSize: 14, fontWeight: '500' }}>New chat</Text>
+          <Text style={{ color: c.text, fontSize: 14, fontWeight: '500' }}>New chat</Text>
         )}
       </Pressable>
       {props.expanded ? (

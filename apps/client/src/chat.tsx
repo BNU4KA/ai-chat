@@ -736,7 +736,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
         >
           {!wide && (
             <Button secondary label="Open conversation history" onPress={() => setDrawer(true)}>
-              <MenuMark color={c.cardInk} />
+              <MenuMark color={c.text} />
             </Button>
           )}
           <View style={{ flex: 1 }}>
@@ -843,11 +843,11 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                       paddingVertical: 12,
                       borderRadius: 22,
                       borderWidth: 1,
-                      borderColor: c.cardEdge,
-                      backgroundColor: pressed || hovered ? c.cardPressed : c.card,
+                      borderColor: c.border,
+                      backgroundColor: pressed || hovered ? c.hover : 'transparent',
                     })}
                   >
-                    <Text style={{ fontSize: 14, color: c.cardInk }}>{prompt}</Text>
+                    <Text style={{ fontSize: 14, color: c.text }}>{prompt}</Text>
                   </Pressable>
                 ))}
               </View>
