@@ -106,3 +106,9 @@ from the documentation. State any uncompleted platform/provider/release checks e
 
 Do not claim that a user's OpenRouter balance pays for hosting, search, storage, or Google
 verification. Keep estimated usage distinct from confirmed provider usage and actual cost.
+
+## Owner-approved functional expansion — 2026-11-11
+
+Implement the eight primary and five additional improvements defined in EXPANSION_SPEC.md.
+That specification supersedes conflicting original MVP scope rules for these specific features.
+Original incomplete live/native checks remain required and must not block independent local work.

@@ -1,3 +1,5 @@
+import { ModelList } from './model-list';
+import { transferDraft, consumeDraft } from './draft-transfer';
 import { useLocale } from './locale';
 import { Pressable, Text } from './locale-ui';
 import { useEffect, useRef, useState, type ComponentRef } from 'react';
@@ -9,7 +11,9 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { ChatExtras, PassageActions, RunUsage } from './chat-extras';
+import { SourceCard } from './source-card';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Crypto from 'expo-crypto';
 import { api, apiEnvelope, json } from './api';
@@ -19,7 +23,7 @@ import { useRun, activeStatus } from './use-run';
 import { Button, Copy, ErrorNotice, Field, Loading, Panel } from './ui';
 import { Dialog } from './dialog';
 import { ConversationSidebar, ConversationDrawer, useSidebarTransition } from './sidebar';
-import { Markdown, safeUrl } from './markdown';
+import { Markdown } from './markdown';
 import { ApprovalCard } from './approval';
 import { Attachment } from './attachment';
 import { MessageActions } from './message-actions';
@@ -27,7 +31,7 @@ import { TarotBackground } from './tarot-background';
 import { ComposerFrame } from './composer-frame';
 import { FoolSpinner } from './fool-spinner';
 import { pickAndUpload } from './upload';
-import type { Conversation, Message, Model, Run, FileRecord } from './types';
+import type { Conversation, Message, Run, FileRecord, Snapshot } from './types';
 type Group = 'web' | 'files' | 'gmail' | 'calendar';
 const groupLabels: Record<Group, string> = {
   web: 'Web research',
@@ -37,6 +41,14 @@ const groupLabels: Record<Group, string> = {
 };
 export function ChatWorkspace({ id: routeId }: { id?: string }) {
   const { t, language } = useLocale();
+  const params = useLocalSearchParams<{ draft?: string; project?: string; message?: string }>();
+  const [documentSeed, setDocumentSeed] = useState<{ text: string; key: string }>();
+  const [evidence, setEvidence] = useState<{ run: string; citation: string } | null>(null);
+  const evidenceSnapshot = useQuery({
+    queryKey: ['evidence', evidence?.run],
+    queryFn: () => api<Snapshot>(`/v1/runs/${evidence!.run}`),
+    enabled: !!evidence,
+  });
   const [createdChat, setCreatedChat] = useState<Conversation | null>(null);
   const [homeModel, setHomeModel] = useState('google/gemini-3.8-flash');
   const id = routeId ?? createdChat?.id;
@@ -47,6 +59,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
   const wide = width >= 1024;
   const sidebarTransition = useSidebarTransition();
   const [drawer, setDrawer] = useState(false);
+  const [workToolsOpen, setWorkToolsOpen] = useState(false);
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const [sidebarHovered, setSidebarHovered] = useState(false);
   const [sidebarSearchFocused, setSidebarSearchFocused] = useState(false);
@@ -61,6 +74,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
   >(null);
   const [modelSearch, setModelSearch] = useState('');
   const [title, setTitle] = useState('');
+  const [branchMessage, setBranchMessage] = useState<string | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [atBottom, setAtBottom] = useState(true);
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
@@ -75,12 +89,12 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     if (profile.data) setChoice(profile.data.theme);
   }, [profile.data, setChoice]);
   useEffect(() => {
-    setDraft('');
+    setDraft(profile.data?.id ? (consumeDraft(profile.data.id, routeId ?? 'home') ?? '') : '');
     setSelectedFiles([]);
     setError(null);
     pending.current = null;
     setAtBottom(true);
-  }, [routeId]);
+  }, [routeId, profile.data?.id]);
   const history = useInfiniteQuery({
     queryKey: ['conversations', search],
     initialPageParam: null as string | null,
@@ -119,6 +133,11 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     enabled: !!id,
     refetchInterval: 5000,
   });
+  const targetMessage = useQuery({
+    queryKey: ['message-context', params.message],
+    queryFn: () => api<Message[]>(`/v1/messages/${params.message}/context`),
+    enabled: !!params.message,
+  });
   const latest = runs.data?.[0];
   const snapshot = useRun(latest?.id);
   const running = !!latest && activeStatus(snapshot.data?.run.status ?? latest.status);
@@ -155,6 +174,11 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     !visibleMessages.some((message) => message.id === snapshot.data!.assistant_message.id)
   )
     visibleMessages.push(snapshot.data.assistant_message);
+  if (targetMessage.data) {
+    for (const m of targetMessage.data)
+      if (!visibleMessages.some((v) => v.id === m.id)) visibleMessages.push(m);
+    visibleMessages.sort((a, b) => (BigInt(a.seq) < BigInt(b.seq) ? -1 : 1));
+  }
   async function ensureChat() {
     if (id) return id;
     if (creating.current) return creating.current;
@@ -163,6 +187,13 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
         '/v1/conversations',
         json('POST', { model_id: homeModel }),
       );
+      if (params.project) {
+        const attached = await api<Conversation>(
+          `/v1/conversations/${value.id}`,
+          json('PATCH', { project_id: params.project }, value.version),
+        );
+        Object.assign(value, attached);
+      }
       cache.setQueryData(['conversation', value.id], value);
       setCreatedChat(value);
       void cache.invalidateQueries({ queryKey: ['conversations'] });
@@ -540,8 +571,53 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
           <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0 }}>{sidebar()}</View>
         </View>
       )}
-      <View style={{ flex: 1, minWidth: 0 }}>
+      {evidence && (
+        <Dialog visible title="Source evidence" close={() => setEvidence(null)}>
+          {evidenceSnapshot.data?.sources
+            .filter((s) => s.citation_id === evidence.citation)
+            .map((s) => (
+              <SourceCard key={s.citation_id} source={s} onError={setError} initiallyOpen />
+            ))}
+          {evidenceSnapshot.data &&
+            !evidenceSnapshot.data.sources.some((s) => s.citation_id === evidence.citation) && (
+              <Copy>No stored source matches this citation.</Copy>
+            )}
+          <ErrorNotice error={evidenceSnapshot.error} />
+        </Dialog>
+      )}
+      {branchMessage && (
+        <Dialog visible title="Edit message into a branch" close={() => setBranchMessage(null)}>
+          <Field
+            accessibilityLabel="Edited message"
+            multiline
+            value={title}
+            onChangeText={setTitle}
+          />
+          <Copy small>Original chat is preserved. Reattach any files explicitly.</Copy>
+          <Button
+            disabled={busy || !title.trim()}
+            onPress={() => {
+              setBusy(true);
+              void api<{ conversation_id: string; draft: string }>(
+                `/v1/messages/${branchMessage}/branch`,
+                json('POST', { text: title }),
+              )
+                .then((v) => {
+                  setBranchMessage(null);
+                  if (profile.data?.id) transferDraft(profile.data.id, v.conversation_id, v.draft);
+                  router.push({ pathname: '/chat/[id]', params: { id: v.conversation_id } });
+                })
+                .catch(setError)
+                .finally(() => setBusy(false));
+            }}
+          >
+            Create branch
+          </Button>
+        </Dialog>
+      )}
+      <View style={{ flex: 1, minWidth: 0, paddingRight: wide && workToolsOpen ? 420 : 0 }}>
         <View
+          testID="chat-header"
           style={{
             minHeight: 72,
             paddingHorizontal: wide ? 28 : 16,
@@ -585,6 +661,16 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
             </Text>
           </Pressable>
         </View>
+        <ChatExtras
+          chat={chat.data}
+          messages={visibleMessages}
+          draft={draft}
+          fileIds={selectedFiles}
+          onDraft={setDraft}
+          running={running}
+          documentSeed={documentSeed}
+          onOpenChange={setWorkToolsOpen}
+        />
         {!routeId && !visibleMessages.length ? (
           <KeyboardAvoidingView
             style={{ flex: 1 }}
@@ -686,7 +772,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
               }}
               scrollEventThrottle={150}
               onContentSizeChange={() => {
-                if (atBottom) scroll.current?.scrollToEnd({ animated: false });
+                if (atBottom && !params.message) scroll.current?.scrollToEnd({ animated: false });
               }}
             >
               {messages.hasNextPage && (
@@ -722,10 +808,19 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                 <View
                   key={message.id}
                   testID="chat-message"
+                  onLayout={(event) => {
+                    if (params.message === message.id)
+                      scroll.current?.scrollTo({
+                        y: Math.max(0, event.nativeEvent.layout.y - 30),
+                        animated: false,
+                      });
+                  }}
                   style={{
                     alignSelf: message.role === 'user' ? 'flex-end' : 'stretch',
                     maxWidth: message.role === 'user' ? '90%' : '100%',
                     gap: 8,
+                    borderLeftWidth: params.message === message.id ? 3 : 0,
+                    borderColor: c.accent,
                   }}
                 >
                   <View
@@ -750,7 +845,14 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                       )}
                     </Text>
                     {message.content ? (
-                      <Markdown text={message.content} />
+                      <Markdown
+                        text={message.content}
+                        onCitation={
+                          message.run_id
+                            ? (id) => setEvidence({ run: message.run_id!, citation: id })
+                            : undefined
+                        }
+                      />
                     ) : message.status === 'pending' ? (
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                         <FoolSpinner size={24} label="Generating response" />
@@ -781,6 +883,30 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                       </Copy>
                     )}
                   </View>
+                  {message.role === 'assistant' &&
+                    message.status !== 'pending' &&
+                    !!message.content && (
+                      <PassageActions
+                        text={message.content}
+                        onDraft={setDraft}
+                        onSave={() =>
+                          setDocumentSeed({ text: message.content, key: Crypto.randomUUID() })
+                        }
+                      />
+                    )}
+                  {message.role === 'user' && (
+                    <Button
+                      secondary
+                      disabled={running}
+                      onPress={() => {
+                        const text = message.content;
+                        setTitle(text);
+                        setBranchMessage(message.id);
+                      }}
+                    >
+                      Edit into a new branch
+                    </Button>
+                  )}
                   {(message.content ||
                     (message.role === 'assistant' && message.status !== 'pending')) && (
                     <MessageActions
@@ -817,29 +943,11 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                     Sources
                   </Copy>
                   {snapshot.data.sources.map((source) => (
-                    <Pressable
-                      key={source.citation_id}
-                      accessibilityRole="link"
-                      onPress={() => {
-                        if (source.url && safeUrl(source.url)) void Linking.openURL(source.url);
-                        else if (source.file_id)
-                          void api<{ url: string }>(`/v1/files/${source.file_id}/download`)
-                            .then((value) => Linking.openURL(value.url))
-                            .catch(setError);
-                      }}
-                    >
-                      <Text style={{ color: c.accent, lineHeight: 23, fontSize: 14 }}>
-                        [{source.citation_id}] {source.title}
-                        {source.page
-                          ? ` · page ${source.page}`
-                          : source.section
-                            ? ` · ${source.section}`
-                            : ''}
-                      </Text>
-                    </Pressable>
+                    <SourceCard key={source.citation_id} source={source} onError={setError} />
                   ))}
                 </Panel>
               )}
+              <RunUsage run={snapshot.data?.run} />
               {snapshot.data?.run.error_code && (
                 <ErrorNotice
                   error={new Error(snapshot.data.run.error_code.replaceAll('_', ' ').toLowerCase())}
@@ -1004,49 +1112,5 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
         ))}
       </Dialog>
     </View>
-  );
-}
-function ModelList({
-  models,
-  selected,
-  onSelect,
-}: {
-  models: Model[];
-  selected: string | null;
-  onSelect: (model: Model) => void;
-}) {
-  const { colors: c } = useTheme();
-  return (
-    <>
-      {models.map((model) => (
-        <Pressable
-          key={model.id}
-          accessibilityRole="button"
-          onPress={() => onSelect(model)}
-          style={{
-            padding: 14,
-            borderRadius: 10,
-            borderWidth: 1,
-            borderColor: selected === model.id ? c.accent : c.border,
-            backgroundColor: selected === model.id ? c.raised : c.surface,
-            gap: 4,
-          }}
-        >
-          <Text translate={false} style={{ color: c.text, fontSize: 16, fontWeight: '600' }}>
-            {model.name}
-          </Text>
-          <Copy small muted>
-            {model.supports_tools ? 'Tools supported' : 'Text chat'}
-            {model.supports_images ? ' · Photos' : ''} ·{' '}
-            {model.context_length?.toLocaleString() ?? 'Unknown'} {'context'}
-          </Copy>
-          <Copy small muted>
-            Input ${model.input_price_per_million_usd ?? '?'} / Output $
-            {model.output_price_per_million_usd ?? '?'} per 1M tokens
-            {model.catalog_stale ? ' · Cached catalog' : ''}
-          </Copy>
-        </Pressable>
-      ))}
-    </>
   );
 }

@@ -64,6 +64,11 @@ export const modelSchema = z.object({
 export const conversationSchema = z.object({
   id: z.uuid(),
   title: z.string(),
+  project_id: z.uuid().nullable().optional(),
+  context_note: z.string().optional(),
+  context_through_seq: z.string().optional(),
+  research_mode: z.boolean().optional(),
+  budget_usd: z.string().nullable().optional(),
   model_id: z.string().nullable(),
   enabled_tools: z.array(toolGroup),
   version: z.number().int(),
@@ -81,6 +86,14 @@ export const createConversationSchema = z
 export const conversationPatchSchema = z
   .object({
     title: z.string().trim().min(1).max(LIMITS.manualTitleCodePoints).optional(),
+    project_id: z.uuid().nullable().optional(),
+    research_mode: z.boolean().optional(),
+    budget_usd: z
+      .string()
+      .regex(/^(?:0|[1-9]\d{0,2})(?:\.\d{1,9})?$/)
+      .refine((v) => Number(v) > 0 && Number(v) <= 100)
+      .nullable()
+      .optional(),
     model_id: z.string().min(1).max(200).nullable().optional(),
     enabled_tools: z.array(toolGroup).optional(),
   })
@@ -196,3 +209,83 @@ export const healthReadySchema = z.object({
     queue: z.enum(['ok', 'unconfigured', 'unavailable']),
   }),
 });
+
+export const projectInputSchema = z
+  .object({
+    name: z.string().trim().min(1).max(100),
+    memory: z.string().max(24000).default(''),
+  })
+  .strict();
+export const projectSchema = projectInputSchema.extend({
+  id: z.uuid(),
+  version: z.number().int(),
+  created_at: timestamp,
+  updated_at: timestamp,
+});
+export const documentInputSchema = z
+  .object({
+    title: z.string().trim().min(1).max(200),
+    content: z.string().max(200000),
+    project_id: z.uuid().nullable().default(null),
+  })
+  .strict();
+export const documentSchema = documentInputSchema.extend({
+  id: z.uuid(),
+  version: z.number().int(),
+  created_at: timestamp,
+  updated_at: timestamp,
+});
+export const rangeEditSchema = z
+  .object({
+    start: z.number().int().nonnegative(),
+    end: z.number().int().nonnegative(),
+    expected: z.string().max(200000),
+    replacement: z.string().max(200000),
+  })
+  .strict()
+  .refine((v) => v.end >= v.start, 'Invalid range');
+export const branchSchema = z.object({ text: z.string().trim().min(1).max(32000) }).strict();
+export const compactSchema = z
+  .object({
+    note: z.string().trim().min(1).max(24000),
+    through_seq: z.string().regex(/^\d+$/),
+  })
+  .strict();
+export const approvalRevisionSchema = z
+  .object({ args_hash: z.string().min(1), arguments: z.record(z.string(), z.unknown()) })
+  .strict();
+export const scheduleInputSchema = z.object({
+  title: z.string().trim().min(1).max(100),
+  prompt: z.string().trim().min(1).max(16000),
+  model_id: z.string().min(1).max(200),
+  enabled_tools: z.array(toolGroup),
+  project_id: z.uuid().nullable().default(null),
+  timezone: z.string().min(1).max(100),
+  local_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  weekday: z.number().int().min(0).max(6).nullable().default(null),
+  budget_usd: z
+    .string()
+    .regex(/^(?:0|[1-9]\d{0,2})(?:\.\d{1,9})?$/)
+    .refine((v) => Number(v) > 0 && Number(v) <= 100),
+});
+export const scheduleSchema = scheduleInputSchema.extend({
+  id: z.uuid(),
+  paused: z.boolean(),
+  next_at: timestamp,
+  last_error: z.string().nullable(),
+  version: z.number().int(),
+  created_at: timestamp,
+  updated_at: timestamp,
+});
+export const meetingSlotsSchema = z
+  .object({
+    time_min: timestamp,
+    time_max: timestamp,
+    timezone: z.string().min(1).max(100),
+    duration_minutes: z.number().int().min(5).max(480).default(30),
+    buffer_minutes: z.number().int().min(0).max(120).default(15),
+    work_start: z.number().int().min(0).max(23).default(9),
+    work_end: z.number().int().min(1).max(24).default(18),
+  })
+  .strict()
+  .refine((v) => v.work_end > v.work_start, 'Invalid working hours');

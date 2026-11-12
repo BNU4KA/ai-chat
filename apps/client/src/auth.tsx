@@ -1,3 +1,4 @@
+import {clearDraftTransfer} from './draft-transfer';
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { AppState, Platform } from 'react-native';
 import type { Session } from '@supabase/supabase-js';
@@ -17,7 +18,7 @@ export function AuthProvider({children}: {children: ReactNode}) {
     let mounted = true;let authEvent=false;
     const update = (next: Session | null) => {
       if (!mounted) return;
-      if (user.current !== undefined && user.current !== (next?.user.id ?? null)) cache.clear();
+      if (user.current !== undefined && user.current !== (next?.user.id ?? null)) {cache.clear();clearDraftTransfer();}
       user.current = next?.user.id ?? null;
       setSession(next); setReady(true);
     };
@@ -31,7 +32,7 @@ export function AuthProvider({children}: {children: ReactNode}) {
     return () => {mounted = false; data.subscription.unsubscribe(); subscription.remove();};
   }, [cache]);
   async function signOut() {
-    cache.clear();
+    cache.clear();clearDraftTransfer();
     if (supabase) await supabase.auth.signOut({scope: 'local'});
     setSession(null);
   }

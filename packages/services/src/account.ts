@@ -17,9 +17,9 @@ export async function purgeAccount(owner:string){
  // provisioning checks Auth.getUser when a profile does not exist.
  await deleteAuthUser(owner);
  await withWorker(async tx=>{
-  for(const table of ['message_files','document_chunks','run_sources','approvals','tool_calls','run_events'])await tx.query(`delete from ${table} where owner_id=$1`,[owner]);
+  for(const table of ['run_sources','notices','schedule_occurrences','schedules','document_revisions','documents','project_files','message_files','document_chunks','approvals','tool_calls','run_events'])await tx.query(`delete from ${table} where owner_id=$1`,[owner]);
   await tx.query('update messages set run_id=null where owner_id=$1',[owner]);
-  for(const table of ['runs','messages','files','oauth_states','encrypted_credentials','credential_revisions','integration_revocations','idempotency_records','rate_limits','integrations','conversations','outbox'])await tx.query(`delete from ${table} where owner_id=$1`,[owner]);
+  for(const table of ['runs','messages','files','oauth_states','encrypted_credentials','credential_revisions','integration_revocations','idempotency_records','rate_limits','integrations','conversations','projects','outbox'])await tx.query(`delete from ${table} where owner_id=$1`,[owner]);
   await tx.query('delete from profiles where id=$1 and deletion_requested_at is not null',[owner]);
  });
 }

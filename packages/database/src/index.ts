@@ -7,3 +7,4 @@ export * from './repo.ts';
 export { locked, readRun, readThreadInputs, renewLease } from './lease.ts';
 export { purgeConversation, recoverExpiredRuns } from './cleanup.ts';
 export * from './files.ts';
+export * from './workspace.ts';

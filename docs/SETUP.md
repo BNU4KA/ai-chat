@@ -175,3 +175,31 @@ The API and worker must both run for processing. No additional service credentia
 After installing dependencies, Sharp's platform-specific prebuilt package must be available
 on the worker's OS/architecture. Real OpenRouter inference incurs the user's normal model
 charges; synthetic tests do not prove a live provider request.
+
+## Workspace expansion
+
+Apply all migrations with `pnpm migrate` before starting the updated API/worker. Migration 0004
+adds owned workspace tables and conversation/run fields; it creates no external resources.
+Restart API and worker together and rebuild the Expo web/native client for the new routes.
+Keep the separate durable worker running: it checks due daily/weekly schedules approximately
+every ten seconds and dispatches ordinary runs through the transactional outbox. Tasks require
+the account's current OpenRouter credential, chosen model, known catalog prices for capped
+runs and current consent for each selected Google capability. At most 20 schedules per account.
+There is no separate scheduling service, external push provider or operator model-key fallback.
+
+Use Projects & tasks for projects, explicit file sharing, document versions/export, message
+search, schedules and notices. Use Work tools in a chat to select a project, review/edit a context
+note, refine a document, choose a workflow/research mode, estimate/cap model use or suggest meeting
+times. Context warnings are conservative and draft quotes exclude project/tool material; the worker
+checks the full prepared request before each submission. A budget controls catalog estimates,
+not the provider's eventual invoice. Export requires current application authorization.
+
+Removing a project keeps chats/documents and pauses its schedules; deleting a document removes
+its revisions. Revoking a shared file cancels active project consumers. Original file/chat deletion
+revokes project access and clears source excerpts. Account cleanup removes all new owned tables.
+Drafts handed between document/branch screens stay account-bound in memory, never URL parameters.
+
+Review corrections add migration 0005 for document-source ownership. The worker must include the
+updated project-document tools as well as the shared contracts/runtime. Schedule maintenance is
+independent of the outbox timer. Apply all pending migrations before starting an authorized target
+release; this task tested them only against disposable local PostgreSQL.

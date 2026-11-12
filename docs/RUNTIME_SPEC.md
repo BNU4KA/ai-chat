@@ -164,3 +164,40 @@ Original history is never discarded to make an undocumented request fit.
 | Expired OAuth refresh token | Mark reauth_required, no silent SSO/token substitution |
 | Ambiguous time/recipient | Ask user for clarification before proposing a write |
 | Provider write outcome unknown | Persist unknown result; do not auto-resend, even after restart |
+
+## Owner-approved workspace expansion — 2026-11-11
+
+The explicit reviewed context note and sequence boundary replace earlier covered turns for
+subsequent requests, without changing message history or making an automatic paid summary.
+Project membership and explicit file shares are rechecked before material is supplied. A
+research instruction requests claim-specific stored citations and uncertainty; source storage
+and inspection never establish that a claim was independently verified.
+
+Every model submission reserves a conservative catalog-price estimate on the fenced run.
+A capped task fails BUDGET_PRICE_UNKNOWN or BUDGET_EXCEEDED before submission. Estimates
+remain separate from confirmed provider charges and are not a billing guarantee. Model/tools
+are explicit and never switched. Scheduled tasks use the same creation, recovery, concurrency,
+quota and confirmation paths. A missed period coalesces; daily local times skip DST gaps and
+do not repeat on a folded wall-clock time. No uncertain generation is automatically retried.
+
+Proposal revision cancels the original approval/tool record, inserts a new record with the
+same provider-call identity and updated canonical arguments in the continuation checkpoint,
+and requires a fresh confirmation. Original arguments remain in the cancelled audit record.
+The expiry deadline is preserved. Existing grant checks, ETags, fencing and unknown-outcome
+handling still apply. See EXPANSION_SPEC.md for full expansion acceptance.
+
+### Review fixes — 2026-11-12
+
+Scheduled run creation locks/rechecks the schedule and occurrence inside the message/run
+transaction. Pause/delete commits before this boundary prevent a new run; a run already created
+before pause remains an existing task. Paused work is excluded before the batch limit. Invalid
+schedules are paused individually, queued periods coalesce, and schedule maintenance has a
+separate worker timer so metadata I/O cannot block outbox delivery. Weekly DST gaps can skip
+a whole week; the next-occurrence search spans 21 days.
+
+Files tools now include list_project_documents(offset,limit) and
+read_project_document(document_id,offset,limit,version?). The list paginates; reads return at
+most 8000 Unicode characters, total_characters and next_offset. Pin a version while paging;
+a changed version requires relisting. Every call rechecks current ownership/project membership.
+Sources retain document_id and version/range in section; deletion clears source links/excerpts.
+Project previews are explicitly incomplete and never substitute for reading the requested text.

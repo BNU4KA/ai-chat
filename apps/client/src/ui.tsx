@@ -1,6 +1,6 @@
 import { Pressable, Text, TextInput } from './locale-ui';
 import { FoolSpinner } from './fool-spinner';
-import type { ReactNode, Ref, ComponentRef } from 'react';
+import { Children, type ReactNode, type Ref, type ComponentRef } from 'react';
 import { ScrollView, View, type TextInputProps, type ViewStyle } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from './theme';
@@ -11,6 +11,7 @@ export function Button({
   secondary = false,
   danger = false,
   label,
+  quiet = false,
 }: {
   children: ReactNode;
   onPress: () => void;
@@ -18,6 +19,7 @@ export function Button({
   secondary?: boolean;
   danger?: boolean;
   label?: string;
+  quiet?: boolean;
 }) {
   const { colors: c } = useTheme();
   return (
@@ -27,22 +29,42 @@ export function Button({
       disabled={disabled}
       onPress={onPress}
       style={({ pressed, hovered }) => ({
-        minHeight: 44,
-        paddingHorizontal: 16,
-        paddingVertical: 11,
+        minHeight: quiet ? 36 : 44,
+        paddingHorizontal: quiet ? 10 : 16,
+        paddingVertical: quiet ? 8 : 11,
         borderRadius: 24,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: secondary ? (hovered ? c.hover : c.control) : danger ? c.danger : c.accent,
+        backgroundColor: quiet
+          ? hovered
+            ? c.hover
+            : 'transparent'
+          : secondary
+            ? hovered
+              ? c.hover
+              : c.control
+            : danger
+              ? c.danger
+              : c.accent,
         opacity: disabled ? 0.45 : pressed ? 0.75 : 1,
       })}
     >
-      {typeof children === 'string' ? (
+      {Children.toArray(children).every(
+        (child) => typeof child === 'string' || typeof child === 'number',
+      ) ? (
         <Text
           style={{
             fontWeight: '500',
-            fontSize: 14,
-            color: secondary ? c.text : danger ? c.dangerText : c.accentText,
+            fontSize: quiet ? 13 : 14,
+            color: quiet
+              ? danger
+                ? c.danger
+                : c.muted
+              : secondary
+                ? c.text
+                : danger
+                  ? c.dangerText
+                  : c.accentText,
           }}
         >
           {children}
@@ -175,6 +197,77 @@ export function Page({ title, children }: { title: string; children: ReactNode }
         <Text style={{ fontSize: 25, fontWeight: '700', color: c.text }}>{title}</Text>
       </View>
       {children}
+    </ScrollView>
+  );
+}
+
+/** The same outlined selection treatment used in Settings. */
+export function Choice({
+  children,
+  selected,
+  onPress,
+  disabled = false,
+  label,
+}: {
+  children: ReactNode;
+  selected: boolean;
+  onPress: () => void;
+  disabled?: boolean;
+  label?: string;
+}) {
+  const { colors: c } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected, disabled }}
+      aria-pressed={selected}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ hovered, pressed }) => ({
+        minHeight: 44,
+        paddingHorizontal: 16,
+        paddingVertical: 11,
+        borderRadius: 22,
+        borderWidth: 1,
+        borderColor: selected ? c.accent : c.border,
+        backgroundColor: selected ? c.selected : hovered ? c.hover : 'transparent',
+        opacity: disabled ? 0.45 : pressed ? 0.75 : 1,
+      })}
+    >
+      <Text style={{ fontSize: 14, color: c.text, fontWeight: '500' }}>{children}</Text>
+    </Pressable>
+  );
+}
+export function TabBar({
+  items,
+  value,
+  onChange,
+  label,
+}: {
+  items: { value: string; label: string }[];
+  value: string;
+  onChange: (value: string) => void;
+  label: string;
+}) {
+  const { colors: c } = useTheme();
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      accessibilityLabel={label}
+      style={{ flexGrow: 0, borderBottomWidth: 1, borderColor: c.border }}
+      contentContainerStyle={{ gap: 8, paddingBottom: 12 }}
+    >
+      {items.map((item) => (
+        <Choice
+          key={item.value}
+          selected={item.value === value}
+          onPress={() => onChange(item.value)}
+        >
+          {item.label}
+        </Choice>
+      ))}
     </ScrollView>
   );
 }

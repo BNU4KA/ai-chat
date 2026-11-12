@@ -65,11 +65,11 @@ export async function disconnectGoogle(owner:string,cap:GoogleCapability,version
 export async function revokeConnection(id:string){const row=await withWorker(async tx=>(await tx.query('select * from integration_revocations where id=$1',[id])).rows[0]);if(!row)return;let failure=false;try{const grant=JSON.parse(decrypt(row,String(row.owner_id),'google',Number(row.credential_version))) as Grant;await revokeGoogle(grant.refresh_token);}catch{failure=true;if(Date.now()<new Date(String(row.deadline)).getTime())throw new Error('Google revocation pending');}
  await withWorker(async tx=>{await tx.query('delete from integration_revocations where id=$1',[id]);await tx.query("update integrations set status='disconnected',last_error_code=$2,updated_at=now() where owner_id=$1 and status='disconnecting' and capabilities->>'gmail'='false' and capabilities->>'calendar'='false'",[row.owner_id,failure?'REVOCATION_UNCONFIRMED':null]);});
 }
-async function accessGoogle(owner:string,capability:GoogleCapability,runId?:string){
+async function accessGoogle(owner:string,capability:GoogleCapability,runId?:string,allowWaiting=false){
  const result=await withWorker(async tx=>{
   const row=(await tx.query("select g.*,i.account_email,i.google_subject,i.capabilities,i.status from encrypted_credentials g join integrations i on i.id=g.integration_id join profiles p on p.id=i.owner_id where g.owner_id=$1 and g.provider='google' and p.deletion_requested_at is null for update of g",[owner])).rows[0];
   if(!row||row.status!=='connected'||!capabilities(row)[capability])throw new GoogleError('INTEGRATION_REAUTH_REQUIRED','Connect this Google service in Settings.');
-  if(runId){const run=(await tx.query('select tool_snapshot,status,cancel_requested_at from runs where id=$1 and owner_id=$2',[runId,owner])).rows[0];const snapshot=(run?.tool_snapshot??{}) as {googleSubject?:string;googleIntegrationId?:string};if(!run||run.status!=='running'||run.cancel_requested_at||snapshot.googleSubject!==row.google_subject||snapshot.googleIntegrationId!==row.integration_id)throw new GoogleError('INTEGRATION_REAUTH_REQUIRED','The connected account or task changed. Start a new request.');}
+  if(runId){const run=(await tx.query('select tool_snapshot,status,cancel_requested_at from runs where id=$1 and owner_id=$2',[runId,owner])).rows[0];const snapshot=(run?.tool_snapshot??{}) as {googleSubject?:string;googleIntegrationId?:string};if(!run||(!allowWaiting?run.status!=='running':!['running','waiting_approval'].includes(run.status))||run.cancel_requested_at||snapshot.googleSubject!==row.google_subject||snapshot.googleIntegrationId!==row.integration_id)throw new GoogleError('INTEGRATION_REAUTH_REQUIRED','The connected account or task changed. Start a new request.');}
   let grant=JSON.parse(decrypt(row,owner,'google',Number(row.credential_version))) as Grant;
   if(grant.expires_at<Date.now()+60000){try{const fresh=await refreshGoogle(grant.refresh_token);grant={...grant,access_token:fresh.access_token,expires_at:Date.now()+fresh.expires_in*1000};const secret=seal(loadKeyring(process.env.ENCRYPTION_KEYS),JSON.stringify(grant),credentialAad(owner,'google',Number(row.credential_version)));await tx.query('update encrypted_credentials set ciphertext=$2,nonce=$3,auth_tag=$4,encryption_key_version=$5,updated_at=now() where id=$1',[row.id,secret.ciphertext,secret.nonce,secret.authTag,secret.encryptionKeyVersion]);}catch(error){if(error instanceof GoogleError&&error.code==='INTEGRATION_REAUTH_REQUIRED'){await tx.query("update integrations set status='reauth_required',last_error_code='INTEGRATION_REAUTH_REQUIRED',updated_at=now() where id=$1",[row.integration_id]);return null;}throw error;}}
   return {token:grant.access_token,email:String(row.account_email),subject:String(row.google_subject),integrationId:String(row.integration_id)};
@@ -77,7 +77,7 @@ async function accessGoogle(owner:string,capability:GoogleCapability,runId?:stri
  if(!result)throw new GoogleError('INTEGRATION_REAUTH_REQUIRED','Reconnect Google in Settings.');return result;
 }
 export async function prepareGoogleWrite(owner:string,runId:string,name:string,args:unknown){
- const cap=name.includes('mail')?'gmail':'calendar';const grant=await accessGoogle(owner,cap,runId);
+ const cap=name.includes('mail')?'gmail':'calendar';const grant=await accessGoogle(owner,cap,runId,true);
  if(cap==='gmail')return {args,preview:{kind:name,...args as object,google_account:grant.email}};
  const value=args as Partial<EventArgs>;let full:EventArgs;
  if(name==='update_calendar_event'){
@@ -119,4 +119,9 @@ export async function authorizeTool(owner:string,runId:string,name:ToolName){
  const snapshot=row.tool_snapshot as {googleSubject?:string;googleIntegrationId?:string};
  if(snapshot.googleSubject!==row.google_subject||snapshot.googleIntegrationId!==row.id)throw new GoogleError('INTEGRATION_REAUTH_REQUIRED','The connected account changed. Start a new request.');
  return String(row.id);
+}
+
+export async function currentCalendarAvailability(owner:string,input:{time_min:string;time_max:string;timezone:string}){
+ const grant=await accessGoogle(owner,'calendar');
+ return googleFreeBusy(grant.token,input.time_min,input.time_max,input.timezone);
 }

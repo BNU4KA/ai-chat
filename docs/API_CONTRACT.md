@@ -169,3 +169,13 @@ MODEL_UNAVAILABLE, CONTEXT_LIMIT, PROVIDER_RATE_LIMIT, PROVIDER_TIMEOUT, PROVIDE
 RUN_LIMIT_REACHED, INTEGRATION_REAUTH_REQUIRED, WORKER_INTERRUPTED, TOOL_OUTCOME_UNKNOWN,
 APPROVAL_EXPIRED. A failure after the POST was accepted is a persisted run failure, not a retroactive
 HTTP error. Never retry it as though the initial POST had not created a run.
+
+## Owner-approved workspace expansion — 2026-11-11
+
+The generated `/openapi.json` includes projects and explicit shares; documents, exact-range
+edits, revisions/export; context-note controls; message search/context/branch; workflow starters;
+proposal revision; draft estimates; schedules/history/notices; and meeting-slot suggestions.
+Project/document/schedule changes use quoted If-Match versions. Range edits verify expected
+UTF-16 text and document version. Proposal revisions use the pending argument hash. Search
+returns message IDs for loading old-message context. Exports require bearer authorization.
+See shared Zod schemas and EXPANSION_SPEC.md. New routes follow the existing error envelope.

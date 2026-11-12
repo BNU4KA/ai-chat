@@ -207,3 +207,29 @@ increases its visibility. Loading is a gentle 22-major-arcana journey from 0 (Th
 XXI (The World), with an overlapping crossfade/card draw and no numeric progress claim.
 Home-only background cards drift slowly around the edges behind a pointer-transparent layer.
 Respect reduced motion with static artwork and pause decorative motion while the app is hidden.
+
+## Owner-approved workspace expansion — 2026-11-11
+
+EXPANSION_SPEC.md supersedes the original no-branching/no-proposal-editing and isolated-file
+rules for the explicitly listed features. `/workspace` contains projects, documents, full-text
+message search, daily/weekly tasks and persisted notices. Chat Work tools exposes project
+membership, reviewed context boundaries, documents, workflow starters, research, run budgets
+and primary-calendar meeting suggestions. Selection actions prepare drafts without submitting.
+Original chats and document versions remain available. Source citations open saved evidence;
+PDF links use actual stored page references. Scheduled results use in-app notices; background
+push outside the application is not claimed. Export is Markdown or escaped standalone HTML.
+
+### Shared workspace styling and proposal edits — 2026-11-12
+
+Workspace and chat work tools use shared horizontally scrollable section navigation, outlined
+selected controls matching Settings, theme tokens and the existing rounded fields/panels.
+Only primary save/create/confirm actions use filled accents. Secondary response/editor actions
+use subdued compact controls. Scheduled model selection reuses the chat's searchable catalog
+inside the same dialog; it never renders the full catalog as a long stack of primary buttons.
+Work tools close with Escape on web or Back on native. Layout remains usable without page-wide
+horizontal overflow in narrow viewports. Russian chrome keeps original model/document/user text.
+
+When editing a proposal, show full preview values but send only fields explicitly changed from
+the edit baseline, preserving absent PATCH fields and untouched recipient names. Clearing an
+existing recipient list is explicit; untouched optional attendees/description are never emptied.
+Saving still invalidates the old approval and requires review/confirmation of the new preview.

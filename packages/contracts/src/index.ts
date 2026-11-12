@@ -34,5 +34,31 @@ export {
   usageSchema,
 } from './schemas.ts';
 export { canonicalJson, codePointLength, truncateCodePoints } from './text.ts';
-export type { z } from 'zod';
-export {applicationOpenApi} from './openapi.ts';
+export { z } from 'zod';
+export { applicationOpenApi } from './openapi.ts';
+export {
+  projectInputSchema,
+  projectSchema,
+  documentInputSchema,
+  documentSchema,
+  rangeEditSchema,
+  branchSchema,
+  compactSchema,
+  approvalRevisionSchema,
+  scheduleInputSchema,
+  scheduleSchema,
+  meetingSlotsSchema,
+} from './schemas.ts';
+export {
+  estimateTokens,
+  estimateCost,
+  decimalNano,
+  formatNano,
+  nextScheduleAt,
+  meetingSlots,
+  replaceRange,
+  workflowPrompts,
+} from './workspace.ts';
+export { addDecimal } from './workspace.ts';
+
+export { approvalFields, revisedArguments } from './approval-edit.ts';

@@ -79,3 +79,17 @@ Start with the [documentation index](docs/README.md). Implementation instruction
 Setup commands are in [docs/SETUP.md](docs/SETUP.md). Provider checks require local credentials and explicitly authorized test data.
 
 No license has been selected yet. Public source visibility does not by itself grant a software license.
+
+## Workspace expansion
+
+The local implementation now includes projects with reviewed memory and explicitly shared files,
+context-note controls for long chats, editable documents with immutable versions and Markdown/HTML
+export, guided workflows/research, source evidence inspection, proposal revision with fresh approval,
+run-cost guards, daily/weekly tasks, message-content search, preserved branches, selected-passage
+follow-ups and primary-calendar meeting suggestions. Open **Projects & tasks** or chat **Work tools**.
+
+Scheduled results use persisted in-app notifications; external push delivery is not configured.
+Context compression requires reviewing a note. Model costs are estimates until confirmed by the
+provider; a submission budget is not a provider billing guarantee. The expansion has synthetic
+verification and is not yet deployed or newly verified on native devices/real provider accounts.
+See [expansion specification](docs/EXPANSION_SPEC.md) and [progress](docs/PROGRESS.md).

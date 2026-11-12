@@ -40,15 +40,24 @@ export type ToolOutcome = {
     title: string;
     url?: string;
     file_id?: string;
+    document_id?: string;
     page?: number;
     section?: string;
     excerpt?: string;
+    retrieved_at?: string;
   }[];
   error?: { code: string; message: string; retryable: boolean };
   reference?: string;
 };
 
 export type ToolPorts = {
+  listProjectDocuments?(offset: number, limit: number): Promise<ToolOutcome>;
+  readProjectDocument?(input: {
+    documentId: string;
+    offset: number;
+    limit: number;
+    version?: number;
+  }): Promise<ToolOutcome>;
   searchWeb?(query: string, max: number): Promise<ToolOutcome>;
   readPage?(url: string): Promise<ToolOutcome>;
   listFiles?(conversationId: string, ownerId: string): Promise<ToolOutcome>;

@@ -17,7 +17,13 @@ export function safeUrl(value: string) {
 }
 type Token = ReturnType<typeof parser.parse>[number];
 type Cell = { token: Token; header: boolean; align: 'left' | 'center' | 'right' };
-export function Markdown({ text }: { text: string }) {
+export function Markdown({
+  text,
+  onCitation,
+}: {
+  text: string;
+  onCitation?: (id: string) => void;
+}) {
   const { colors: c } = useTheme();
   const tokens = parser.parse(text, {});
   function inline(children: Token[] = []): ReactNode {
@@ -75,7 +81,23 @@ export function Markdown({ text }: { text: string }) {
             backgroundColor: child.type === 'code_inline' ? c.raised : undefined,
           }}
         >
-          {child.content}
+          {onCitation && child.type === 'text'
+            ? child.content.split(/(\[S\d+\])/g).map((part, n) =>
+                /^\[S\d+\]$/.test(part) ? (
+                  <Text
+                    key={n}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Show evidence ${part}`}
+                    style={{ color: c.accent, textDecorationLine: 'underline' }}
+                    onPress={() => onCitation(part.slice(1, -1))}
+                  >
+                    {part}
+                  </Text>
+                ) : (
+                  part
+                ),
+              )
+            : child.content}
         </Text>
       );
     });

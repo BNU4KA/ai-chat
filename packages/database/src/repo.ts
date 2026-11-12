@@ -1,3 +1,4 @@
+import { cancelFileConsumers } from './workspace.ts';
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import {
   AppError,
@@ -55,9 +56,13 @@ function usageOf(value: unknown): UsageRow {
 }
 
 async function lockProfile(tx: Tx, ownerId: string): Promise<void> {
-  const found = await tx.query('select id,deletion_requested_at from profiles where id = $1 for update', [ownerId]);
+  const found = await tx.query(
+    'select id,deletion_requested_at from profiles where id = $1 for update',
+    [ownerId],
+  );
   if (!found.rowCount) throw new AppError(404, 'NOT_FOUND', 'Profile not found');
-  if(found.rows[0]?.deletion_requested_at)throw new AppError(404,'NOT_FOUND','Profile not found');
+  if (found.rows[0]?.deletion_requested_at)
+    throw new AppError(404, 'NOT_FOUND', 'Profile not found');
 }
 
 export async function ensureProfile(
@@ -76,8 +81,10 @@ export async function ensureProfile(
        on conflict(id) do nothing returning *`,
       [ownerId, input.displayName, input.avatarUrl, input.timezone],
     );
-    const row=inserted.rows[0]??(await tx.query('select * from profiles where id=$1',[ownerId])).rows[0];
-    if(!row||row.deletion_requested_at)throw new AppError(404,'NOT_FOUND','Profile not found');
+    const row =
+      inserted.rows[0] ?? (await tx.query('select * from profiles where id=$1', [ownerId])).rows[0];
+    if (!row || row.deletion_requested_at)
+      throw new AppError(404, 'NOT_FOUND', 'Profile not found');
     return row as Row;
   });
 }
@@ -131,9 +138,18 @@ export async function getOpenRouter(ownerId: string): Promise<Row | null> {
       `select credential_version, last_four, validated_at,true as configured from encrypted_credentials
        where provider = 'openrouter'`,
     );
-    if(found.rows[0])return found.rows[0] as Row;
-    const revision=(await tx.query('select revision from credential_revisions where owner_id=$1',[ownerId])).rows[0];
-    return revision?{configured:false,credential_version:Number(revision.revision),last_four:null,validated_at:null}:null;
+    if (found.rows[0]) return found.rows[0] as Row;
+    const revision = (
+      await tx.query('select revision from credential_revisions where owner_id=$1', [ownerId])
+    ).rows[0];
+    return revision
+      ? {
+          configured: false,
+          credential_version: Number(revision.revision),
+          last_four: null,
+          validated_at: null,
+        }
+      : null;
   });
 }
 
@@ -149,17 +165,30 @@ export async function saveOpenRouter(
   },
 ): Promise<Row> {
   return withOwner(ownerId, async (tx) => {
-    await lockProfile(tx,ownerId);
-    await tx.query(`insert into credential_revisions(owner_id,revision) select $1,coalesce(max(credential_version),0) from encrypted_credentials where owner_id=$1 and provider='openrouter' on conflict(owner_id) do nothing`,[ownerId]);
-    const revision=(await tx.query('select revision from credential_revisions where owner_id=$1 for update',[ownerId])).rows[0];
-    const current = await tx.query(`select credential_version from encrypted_credentials where provider='openrouter' for update`);
-    const version=Number(revision?.revision??0);
+    await lockProfile(tx, ownerId);
+    await tx.query(
+      `insert into credential_revisions(owner_id,revision) select $1,coalesce(max(credential_version),0) from encrypted_credentials where owner_id=$1 and provider='openrouter' on conflict(owner_id) do nothing`,
+      [ownerId],
+    );
+    const revision = (
+      await tx.query('select revision from credential_revisions where owner_id=$1 for update', [
+        ownerId,
+      ])
+    ).rows[0];
+    const current = await tx.query(
+      `select credential_version from encrypted_credentials where provider='openrouter' for update`,
+    );
+    const version = Number(revision?.revision ?? 0);
     if (version !== expectedVersion) {
       throw new AppError(409, 'VERSION_CONFLICT', 'Key was updated', { version });
     }
     const next = version + 1;
-    await tx.query('update credential_revisions set revision=$2 where owner_id=$1',[ownerId,next]);
-    if(current.rowCount)await cancelKeyRuns(tx,ownerId,Number(current.rows[0]?.credential_version));
+    await tx.query('update credential_revisions set revision=$2 where owner_id=$1', [
+      ownerId,
+      next,
+    ]);
+    if (current.rowCount)
+      await cancelKeyRuns(tx, ownerId, Number(current.rows[0]?.credential_version));
     if (!current.rowCount) {
       const inserted = await tx.query(
         `insert into encrypted_credentials (
@@ -199,18 +228,29 @@ export async function saveOpenRouter(
 
 export async function deleteOpenRouter(ownerId: string, expectedVersion: number): Promise<void> {
   await withOwner(ownerId, async (tx) => {
-    await lockProfile(tx,ownerId);
-    await tx.query(`insert into credential_revisions(owner_id,revision) select $1,coalesce(max(credential_version),0) from encrypted_credentials where owner_id=$1 and provider='openrouter' on conflict(owner_id) do nothing`,[ownerId]);
-    const revision=(await tx.query('select revision from credential_revisions where owner_id=$1 for update',[ownerId])).rows[0];
-    const current = await tx.query(`select credential_version from encrypted_credentials where provider='openrouter' for update`);
-    const version=Number(revision?.revision??0);
+    await lockProfile(tx, ownerId);
+    await tx.query(
+      `insert into credential_revisions(owner_id,revision) select $1,coalesce(max(credential_version),0) from encrypted_credentials where owner_id=$1 and provider='openrouter' on conflict(owner_id) do nothing`,
+      [ownerId],
+    );
+    const revision = (
+      await tx.query('select revision from credential_revisions where owner_id=$1 for update', [
+        ownerId,
+      ])
+    ).rows[0];
+    const current = await tx.query(
+      `select credential_version from encrypted_credentials where provider='openrouter' for update`,
+    );
+    const version = Number(revision?.revision ?? 0);
     if (version !== expectedVersion) {
       throw new AppError(409, 'VERSION_CONFLICT', 'Key was updated', { version });
     }
     if (!current.rowCount) return;
     await tx.query(`delete from encrypted_credentials where provider = 'openrouter'`);
-    await tx.query('update credential_revisions set revision=revision+1 where owner_id=$1',[ownerId]);
-    await cancelKeyRuns(tx,ownerId,version);
+    await tx.query('update credential_revisions set revision=revision+1 where owner_id=$1', [
+      ownerId,
+    ]);
+    await cancelKeyRuns(tx, ownerId, version);
     await tx.query(
       `update runs set cancel_requested_at = coalesce(cancel_requested_at, now()), updated_at = now()
        where status in ${ACTIVE} and credential_version = $1`,
@@ -252,6 +292,11 @@ function conversationFrom(row: Row) {
   return {
     id: String(row.id),
     title: String(row.title),
+    project_id: (row.project_id as string | null) ?? null,
+    context_note: String(row.context_note ?? ''),
+    context_through_seq: String(row.context_through_seq ?? 0),
+    research_mode: Boolean(row.research_mode),
+    budget_usd: row.budget_usd == null ? null : String(row.budget_usd),
     model_id: (row.model_id as string | null) ?? null,
     enabled_tools: (row.enabled_tools as ToolGroup[]) ?? [],
     version: Number(row.version),
@@ -324,7 +369,14 @@ export async function updateConversation(
   ownerId: string,
   id: string,
   version: number,
-  patch: { title?: string; modelId?: string | null; enabledTools?: ToolGroup[] },
+  patch: {
+    title?: string;
+    modelId?: string | null;
+    enabledTools?: ToolGroup[];
+    projectId?: string | null;
+    researchMode?: boolean;
+    budgetUsd?: string | null;
+  },
 ) {
   return withOwner(ownerId, async (tx) => {
     const current = await tx.query('select * from conversations where id = $1 for update', [id]);
@@ -335,12 +387,26 @@ export async function updateConversation(
         version: Number(row.version),
       });
     }
+    if (patch.projectId) {
+      const project = await tx.query('select id from projects where id=$1', [patch.projectId]);
+      if (!project.rowCount) throw new AppError(404, 'NOT_FOUND', 'Project not found');
+    }
+    if (
+      patch.projectId !== undefined &&
+      (
+        await tx.query(
+          "select id from runs where conversation_id=$1 and status in ('queued','running','waiting_approval')",
+          [id],
+        )
+      ).rowCount
+    )
+      throw new AppError(409, 'ACTIVE_RUN_EXISTS', 'Wait for the current task');
     const updated = await tx.query(
       `update conversations set
          title = $2,
          title_source = case when $3::bool then 'manual' else title_source end,
          model_id = $4,
-         enabled_tools = $5,
+         enabled_tools = $5, project_id=$6, research_mode=$7,budget_usd=$8,
          version = version + 1,
          updated_at = now()
        where id = $1 returning *`,
@@ -350,6 +416,9 @@ export async function updateConversation(
         patch.title !== undefined,
         patch.modelId === undefined ? row.model_id : patch.modelId,
         patch.enabledTools ?? row.enabled_tools,
+        patch.projectId === undefined ? row.project_id : patch.projectId,
+        patch.researchMode ?? row.research_mode,
+        patch.budgetUsd === undefined ? row.budget_usd : patch.budgetUsd,
       ],
     );
     return conversationFrom(updated.rows[0] as Row);
@@ -382,6 +451,15 @@ export async function deleteConversation(ownerId: string, id: string): Promise<v
       `update messages set status = 'cancelled'
        where conversation_id = $1 and status = 'pending'`,
       [id],
+    );
+    const sharedFiles = await tx.query(
+      'select id from files where conversation_id=$1 and owner_id=$2',
+      [id, ownerId],
+    );
+    for (const file of sharedFiles.rows) await cancelFileConsumers(tx, ownerId, String(file.id));
+    await tx.query(
+      'update run_sources set excerpt=null where owner_id=$2 and file_id in (select id from files where conversation_id=$1 and owner_id=$2)',
+      [id, ownerId],
     );
     const updated = await tx.query(
       `update conversations set deleted_at = now(), updated_at = now(), version = version + 1 where id = $1 and owner_id = $2`,
@@ -511,7 +589,18 @@ export async function createMessageRun(
   ownerId: string,
   conversationId: string,
   idempotencyKey: string,
-  input: { clientMessageId: string; text: string; fileIds: string[]; contextLength?:number|null; maxOutputTokens?:number|null; googleSubject?:string; googleIntegrationId?:string },
+  input: {
+    clientMessageId: string;
+    text: string;
+    fileIds: string[];
+    contextLength?: number | null;
+    maxOutputTokens?: number | null;
+    googleSubject?: string;
+    googleIntegrationId?: string;
+    inputPrice?: string | null;
+    outputPrice?: string | null;
+    scheduleOccurrenceId?: string;
+  },
 ): Promise<CreatedRun> {
   if (!input.text.trim() && input.fileIds.length === 0) {
     throw new AppError(422, 'VALIDATION_ERROR', 'A message needs text or a ready file');
@@ -539,6 +628,16 @@ export async function createMessageRun(
       return { replayed: true, status: replay.status, body: replay.body as CreatedRun['body'] };
     }
     await lockProfile(tx, ownerId);
+    if (input.scheduleOccurrenceId) {
+      const occurrence = (
+        await tx.query(
+          `select o.id,s.paused from schedules s join schedule_occurrences o on o.schedule_id=s.id and o.owner_id=s.owner_id where o.id=$1 and o.owner_id=$2 and o.conversation_id=$3 and o.status='pending' for update of s,o`,
+          [input.scheduleOccurrenceId, ownerId, conversationId],
+        )
+      ).rows[0];
+      if (!occurrence || occurrence.paused)
+        throw new AppError(409, 'SCHEDULE_INACTIVE', 'Schedule was paused or removed');
+    }
     await takeRate(tx, ownerId, 'runs', 'minute', LIMITS.runsPerMinute);
     const activeUser = await tx.query(
       `select count(*)::int as count from runs where status in ${ACTIVE}`,
@@ -616,7 +715,18 @@ export async function createMessageRun(
         userId,
         assistantId,
         chat.model_id,
-        JSON.stringify({ groups: chat.enabled_tools, model_id: chat.model_id, contextLength:input.contextLength??null,maxOutputTokens:input.maxOutputTokens,googleSubject:input.googleSubject,googleIntegrationId:input.googleIntegrationId }),
+        JSON.stringify({
+          groups: chat.enabled_tools,
+          model_id: chat.model_id,
+          contextLength: input.contextLength ?? null,
+          maxOutputTokens: input.maxOutputTokens,
+          googleSubject: input.googleSubject,
+          googleIntegrationId: input.googleIntegrationId,
+          inputPrice: input.inputPrice,
+          outputPrice: input.outputPrice,
+          budgetUsd: chat.budget_usd,
+          researchMode: chat.research_mode,
+        }),
         credential.rows[0]?.credential_version,
       ],
     );
@@ -651,6 +761,11 @@ export async function createMessageRun(
       message: messageFrom(userRow.rows[0] as Row, input.fileIds),
       run: runFrom(runInsert.rows[0] as Row, '0'),
     };
+    if (input.scheduleOccurrenceId)
+      await tx.query(
+        "update schedule_occurrences set status='queued',run_id=$2 where id=$1 and owner_id=$3",
+        [input.scheduleOccurrenceId, runId, ownerId],
+      );
     await finishIdempotency(tx, ownerId, 'POST /messages', idempotencyKey, 202, body);
     return { replayed: false, status: 202, body };
   });
@@ -741,7 +856,10 @@ async function loadSnapshot(tx: Tx, runId: string) {
   const tools = await tx.query('select * from tool_calls where run_id = $1 order by ordinal', [
     runId,
   ]);
-  const approvals = await tx.query('select a.*,t.name as tool_name,t.preview as structured_preview from approvals a join tool_calls t on t.id=a.tool_call_id where a.run_id = $1', [runId]);
+  const approvals = await tx.query(
+    'select a.*,t.name as tool_name,t.arguments as editable_arguments,t.preview as structured_preview from approvals a join tool_calls t on t.id=a.tool_call_id where a.run_id = $1',
+    [runId],
+  );
   const sources = await tx.query(
     'select * from run_sources where run_id = $1 order by citation_id',
     [runId],
@@ -755,9 +873,39 @@ async function loadSnapshot(tx: Tx, runId: string) {
       message.rows[0] as Row,
       links.rows.map((item) => String(item.file_id)),
     ),
-    tool_calls: tools.rows.map(t=>({id:String(t.id),name:String(t.name),status:String(t.status),arguments:t.arguments,safe_result:t.safe_result,provider_reference:t.provider_reference,error_code:t.error_code})),
-    approvals: approvals.rows.map(a=>({id:String(a.id),run_id:String(a.run_id),tool_call_id:String(a.tool_call_id),tool_name:String(a.tool_name),args_hash:String(a.args_hash),structured_preview:a.structured_preview,status:String(a.status),expires_at:iso(a.expires_at as Date),decided_at:iso(a.decided_at as Date)})),
-    sources: sources.rows.map(source=>({citation_id:source.citation_id,kind:source.kind,title:source.title,url:source.url,file_id:source.file_id,page:source.page,section:source.section,retrieved_at:iso(source.retrieved_at as Date)})),
+    tool_calls: tools.rows.map((t) => ({
+      id: String(t.id),
+      name: String(t.name),
+      status: String(t.status),
+      arguments: t.arguments,
+      safe_result: t.safe_result,
+      provider_reference: t.provider_reference,
+      error_code: t.error_code,
+    })),
+    approvals: approvals.rows.map((a) => ({
+      id: String(a.id),
+      run_id: String(a.run_id),
+      tool_call_id: String(a.tool_call_id),
+      tool_name: String(a.tool_name),
+      arguments: a.editable_arguments,
+      args_hash: String(a.args_hash),
+      structured_preview: a.structured_preview,
+      status: String(a.status),
+      expires_at: iso(a.expires_at as Date),
+      decided_at: iso(a.decided_at as Date),
+    })),
+    sources: sources.rows.map((source) => ({
+      citation_id: source.citation_id,
+      kind: source.kind,
+      title: source.title,
+      url: source.url,
+      file_id: source.file_id,
+      document_id: source.document_id,
+      page: source.page,
+      section: source.section,
+      excerpt: source.excerpt,
+      retrieved_at: iso(source.retrieved_at as Date),
+    })),
   };
 }
 
@@ -878,9 +1026,10 @@ export async function decideApproval(
   argsHash: string,
 ) {
   return withOwner(ownerId, async (tx) => {
-    const parent=(await tx.query('select run_id from approvals where id=$1',[approvalId])).rows[0];
-    if(!parent)throw new AppError(404,'NOT_FOUND','Approval not found');
-    await tx.query('select id from runs where id=$1 for update',[parent.run_id]);
+    const parent = (await tx.query('select run_id from approvals where id=$1', [approvalId]))
+      .rows[0];
+    if (!parent) throw new AppError(404, 'NOT_FOUND', 'Approval not found');
+    await tx.query('select id from runs where id=$1 for update', [parent.run_id]);
     const current = await tx.query('select * from approvals where id = $1 for update', [
       approvalId,
     ]);
@@ -937,7 +1086,14 @@ export async function retryMessage(
   messageId: string,
   idempotencyKey: string,
   requestHash: string,
-  modelMeta?:{contextLength:number|null;maxOutputTokens?:number|null;googleSubject?:string;googleIntegrationId?:string},
+  modelMeta?: {
+    contextLength: number | null;
+    maxOutputTokens?: number | null;
+    googleSubject?: string;
+    googleIntegrationId?: string;
+    inputPrice?: string | null;
+    outputPrice?: string | null;
+  },
 ) {
   return withOwner(ownerId, async (tx) => {
     const replay = await claimIdempotency(
@@ -1022,7 +1178,13 @@ export async function retryMessage(
         assistantId,
         attempt.rows[0]?.attempt,
         chat.model_id,
-        JSON.stringify({ groups: chat.enabled_tools, model_id: chat.model_id,...modelMeta }),
+        JSON.stringify({
+          groups: chat.enabled_tools,
+          model_id: chat.model_id,
+          ...modelMeta,
+          budgetUsd: chat.budget_usd,
+          researchMode: chat.research_mode,
+        }),
         credential.rows[0]?.credential_version,
       ],
     );
@@ -1107,21 +1269,86 @@ export async function compactOldDeltas(): Promise<number> {
 
 export { usageOf, randomUUID };
 
-export async function latestMessages(ownerId:string,conversationId:string,limit:number,before?:string){
- return withOwner(ownerId,async tx=>{
-  const chat=await tx.query('select id from conversations where id=$1',[conversationId]);
-  if(!chat.rowCount)throw new AppError(404,'NOT_FOUND','Conversation not found');
-  const found=await tx.query(`select * from messages where conversation_id=$1 ${before?'and seq < $3::bigint':''} order by seq desc limit $2`,before?[conversationId,limit+1,before]:[conversationId,limit+1]);
-  const rows=found.rows.slice(0,limit).reverse();const ids=rows.map(row=>row.id);
-  const links=await tx.query('select message_id,file_id from message_files where message_id=any($1::uuid[])',[ids]);
-  return {items:rows.map(row=>messageFrom(row,links.rows.filter(link=>link.message_id===row.id).map(link=>String(link.file_id)))),next:found.rows.length>limit?String(rows[0]?.seq):null};
- });
+export async function latestMessages(
+  ownerId: string,
+  conversationId: string,
+  limit: number,
+  before?: string,
+) {
+  return withOwner(ownerId, async (tx) => {
+    const chat = await tx.query('select id from conversations where id=$1', [conversationId]);
+    if (!chat.rowCount) throw new AppError(404, 'NOT_FOUND', 'Conversation not found');
+    const found = await tx.query(
+      `select * from messages where conversation_id=$1 ${before ? 'and seq < $3::bigint' : ''} order by seq desc limit $2`,
+      before ? [conversationId, limit + 1, before] : [conversationId, limit + 1],
+    );
+    const rows = found.rows.slice(0, limit).reverse();
+    const ids = rows.map((row) => row.id);
+    const links = await tx.query(
+      'select message_id,file_id from message_files where message_id=any($1::uuid[])',
+      [ids],
+    );
+    return {
+      items: rows.map((row) =>
+        messageFrom(
+          row,
+          links.rows
+            .filter((link) => link.message_id === row.id)
+            .map((link) => String(link.file_id)),
+        ),
+      ),
+      next: found.rows.length > limit ? String(rows[0]?.seq) : null,
+    };
+  });
 }
 
-async function cancelKeyRuns(tx:Tx,owner:string,version:number){
- const rows=await tx.query(`update runs set cancel_requested_at=coalesce(cancel_requested_at,now()),status=case when status='waiting_approval' then 'queued' else status end,updated_at=now() where owner_id=$1 and credential_version=$2 and status in ('queued','running','waiting_approval') returning id`,[owner,version]);
- for(const row of rows.rows){await tx.query("update approvals set status='cancelled' where run_id=$1 and consumed_at is null and status in ('pending','approved')",[row.id]);await tx.query("insert into outbox(owner_id,topic,payload) values($1,'run.execute',$2::jsonb)",[owner,JSON.stringify({runId:row.id})]);}
+async function cancelKeyRuns(tx: Tx, owner: string, version: number) {
+  const rows = await tx.query(
+    `update runs set cancel_requested_at=coalesce(cancel_requested_at,now()),status=case when status='waiting_approval' then 'queued' else status end,updated_at=now() where owner_id=$1 and credential_version=$2 and status in ('queued','running','waiting_approval') returning id`,
+    [owner, version],
+  );
+  for (const row of rows.rows) {
+    await tx.query(
+      "update approvals set status='cancelled' where run_id=$1 and consumed_at is null and status in ('pending','approved')",
+      [row.id],
+    );
+    await tx.query(
+      "insert into outbox(owner_id,topic,payload) values($1,'run.execute',$2::jsonb)",
+      [owner, JSON.stringify({ runId: row.id })],
+    );
+  }
 }
 
-export function messageRequestHash(conversationId:string,input:{clientMessageId:string;text:string;fileIds:string[]}){return sha256(JSON.stringify({conversationId,clientMessageId:input.clientMessageId,text:input.text,fileIds:[...input.fileIds].sort()}));}
-export async function requestReplay(owner:string,route:string,key:string,hash:string){return withOwner(owner,async tx=>{const row=(await tx.query('select request_hash,response_status,response_body from idempotency_records where owner_id=$1 and route=$2 and key=$3 and expires_at>now()',[owner,route,key])).rows[0];if(!row)return null;if(row.request_hash!==hash)throw new AppError(409,'IDEMPOTENCY_CONFLICT','Idempotency key was reused with a different body');if(row.response_status==null)throw new AppError(409,'REQUEST_IN_PROGRESS','The request is still being processed');return {status:Number(row.response_status),body:row.response_body};});}
+export function messageRequestHash(
+  conversationId: string,
+  input: { clientMessageId: string; text: string; fileIds: string[] },
+) {
+  return sha256(
+    JSON.stringify({
+      conversationId,
+      clientMessageId: input.clientMessageId,
+      text: input.text,
+      fileIds: [...input.fileIds].sort(),
+    }),
+  );
+}
+export async function requestReplay(owner: string, route: string, key: string, hash: string) {
+  return withOwner(owner, async (tx) => {
+    const row = (
+      await tx.query(
+        'select request_hash,response_status,response_body from idempotency_records where owner_id=$1 and route=$2 and key=$3 and expires_at>now()',
+        [owner, route, key],
+      )
+    ).rows[0];
+    if (!row) return null;
+    if (row.request_hash !== hash)
+      throw new AppError(
+        409,
+        'IDEMPOTENCY_CONFLICT',
+        'Idempotency key was reused with a different body',
+      );
+    if (row.response_status == null)
+      throw new AppError(409, 'REQUEST_IN_PROGRESS', 'The request is still being processed');
+    return { status: Number(row.response_status), body: row.response_body };
+  });
+}

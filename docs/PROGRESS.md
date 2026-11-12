@@ -447,3 +447,114 @@ Git publication was explicitly requested by the owner after completing this upda
 Live browser SSO was refreshed during the final smoke check and returned successfully to the
 hosted home screen with the restored English preference. Russian and English homepage previews
 were captured locally and are not included in the public repository.
+
+## T15–T19 — Functional expansion — 2026-11-11 (in progress)
+
+Owner requested all eight main and five additional proposals. Scope and acceptance are recorded
+in EXPANSION_SPEC.md. Existing foundation inspected; Git working tree was clean. Context Engine
+is unavailable in this session, so source inspection uses rg and direct reads. No deployment,
+provider writes, paid model request, commit or push is part of this implementation pass.
+
+## T15–T19 — Implemented workspace expansion — 2026-11-12 (local, unpublished)
+
+Implemented T15: migration 0004, forced RLS/composite ownership, project CRUD and editable memory,
+explicit ready-file shares/revocation, opt-in conversation membership, owned message search with
+snippets/context links, non-destructive message-edit branches and reviewed context-note boundaries.
+Original messages remain intact. Conservative long-context warnings offer review before overflow.
+Project material is re-read before model requests and remains untrusted data. Shared-file removal
+cancels active consumers; original-chat purge clears cross-chat source FKs/excerpts. Account purge
+removes all new owned records. No automatic paid summarization is introduced.
+
+Implemented T16: persisted editable documents, optimistic versions and immutable revisions,
+verified UTF-16 range replacement, Markdown/escaped HTML export, model-assisted revision drafts,
+and response save/Explain/Shorten/Check controls. Desktop uses a side dock; narrow screens use a
+full working panel. Private draft handoffs are one-use/account-bound memory, cleared on account
+change/sign-out, and are never put in URLs. Export shares text through native Share and downloads
+files on web. Native runtime has not been exercised.
+
+Implemented T17: editable workflow starters for meeting preparation, research comparison, daily
+planning and weekly review; research-mode runtime instructions; claim citations open persisted
+source evidence with excerpts/retrieval dates; PDF downloads retain actual page fragments.
+Revising an action validates strict tool arguments and the current grant, cancels the old proposal,
+preserves an audit record/expiry, replaces the continuation's arguments and requires fresh approval.
+Concurrent confirmations execute only the revised action once in synthetic tests.
+
+Implemented T18: decimal catalog-price estimates, per-run caps checked/reserved before every
+model submission, unknown-price refusal for capped work, exact aggregation of confirmed provider
+usage (including scientific-notation decimal inputs) and unknown-total preservation. Estimates and
+actual provider charges remain separate. Daily/weekly schedules use local wall times/IANA zones,
+DST-gap skip/fold deduplication, occurrence-scoped idempotency plus durable run reconciliation,
+pause/delete/history and persisted completion/failure/approval notices. Missed periods coalesce.
+Primary-calendar slot suggestions respect duration, buffers, working hours and timezone and never
+guess attendees' availability. A selected slot prepares a draft; writing still requires approval.
+
+T19 automated verification: commands/results are recorded in verification/WORKSPACE_EXPANSION.md.
+Initial checks ran on shell Node 24.13.0; final checks were deliberately repeated with the pinned
+Node 26.13.0 / pnpm 12.18.0. Tests use a disposable localhost PostgreSQL 15 database and synthetic
+keys/OAuth/model/tool/storage fixtures, with business operations under app_api/app_worker roles.
+No real model generation, email, calendar mutation, deployment, paid provisioning, commit or push.
+
+Issues found and fixed during validation: a deletion-path patch regression; test fixtures using the
+wrong scripted-model call shape; synthetic tests exhausting their own per-minute run quota; an
+incorrect dialog selector and hidden Expo-screen locator; raw text arrays in RN buttons; source
+cleanup after cross-chat file sharing; partial usage being mistaken for a fully confirmed total.
+Offline dependency installation lacked a local tarball; an approved install restored dependencies
+and linked only the already-existing internal runtime package into API. No new external dependency.
+
+External configuration/remaining limitations: real-provider journeys require authorized sandbox
+OpenRouter/Tavily/Google credentials and test accounts; no real writes were used as evidence.
+Native iOS/Android builds/smoke and original release/restore gates remain unverified. Notifications
+are in-app, context compression uses a reviewed note, exports are Markdown/escaped HTML, and PDF
+page opening depends on the platform viewer. Existing quotes remain in historical answers when a
+source file is deleted. Budget checks guard estimates and do not guarantee provider billing.
+
+Next task: T19 native/live acceptance and owner-reviewed deployment. Apply migration 0004 only
+when preparing an authorized target release; this pass migrated the disposable test DB only.
+
+Final results on Node 26.13.0 / pnpm 12.18.0: typecheck passed, lint passed, 45 unit tests passed,
+35 integration tests passed, 26 browser tests passed with two opt-in live-health skips, production
+web build/export passed, and git diff --check passed. Synthetic desktop/mobile screenshots were
+visually inspected after the dynamic-button/rendering fix. Full evidence and limitations are in
+verification/WORKSPACE_EXPANSION.md. New functionality is implemented with automated evidence;
+T19 remains live/native/release-blocked, not a production-readiness claim.
+
+## T19 — Review regressions and shared styling — 2026-11-12 (local, in progress)
+
+Owner requested fixes for all six review findings and a visual consistency check. Implemented:
+weekly DST-gap search across a skipped week and isolated invalid schedules; atomic pause/delete
+checks inside run creation; paused-before-limit filtering; owner-scoped deletion of projects with
+soft-deleted chats; unchanged/omitted calendar PATCH preservation; paginated project-document
+listing/reading with version/ownership checks and source references (migration 0005).
+
+Schedule maintenance now has a separate worker timer and pending quota-delayed periods coalesce.
+The existing chat model catalog renderer is shared with schedules. Workspace navigation and
+selected controls reuse Settings colors/outlines, editor/response secondary actions are quieter,
+and layout is checked on desktop/mobile in both themes. Native runtime and live providers remain
+outside this local verification. No deployment, real provider write, commit or push is authorized.
+
+Initial new checks: 19 expansion API/runtime integration scenarios passed on disposable
+PostgreSQL 15 with synthetic provider/storage/Auth fixtures. A visual test initially selected two
+Settings buttons on desktop; scoped it to the header. Shared proposal-form helpers were moved
+to contracts after API typechecking correctly rejected importing client CommonJS sources.
+Current typecheck passes; final full checks and screenshot evidence are recorded below when done.
+
+T19 correction results: all six review regressions now pass. Final Node 26.13.0 / pnpm 12.18.0
+checks: typecheck and lint passed; 48 unit tests passed; 41 integration tests passed (19 expansion
+scenarios) on disposable PostgreSQL 15; 36 desktop/mobile browser tests passed with two optional
+live-health skips. Production web build/export and git diff --check passed. Shared Settings versus
+workspace screenshots were visually inspected in light/dark desktop/mobile layouts; the final
+workflow-label cleanup refreshes six focused visual scenarios. Evidence is in
+verification/WORKSPACE_EXPANSION.md. Migration 0005 and two scoped project-document read tools
+are new; account/document/source deletion paths are covered. All providers and Auth/Storage
+cleanup are synthetic in these checks. No deployment, production migration, commit or push.
+
+Next task remains T19 native/live acceptance and owner-reviewed release. Do not repeat the six
+fixed defects as unresolved findings; retain the regression scenarios when editing these paths.
+
+## Git publication — 2026-11-12
+
+Owner explicitly requested commit and push of the expansion and review fixes. Publishing to
+`codex/workspace-expansion`; `origin/master` has newer independent UI changes and an automatic
+web deployment workflow. This branch preserves both histories without changing master or
+triggering its deployment. Merge/integration with those newer UI changes remains a separate step.
+The verification evidence above applies to this branch before integration with master.

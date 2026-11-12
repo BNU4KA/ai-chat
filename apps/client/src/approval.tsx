@@ -1,10 +1,11 @@
+import { approvalFields, revisedArguments } from '@ai-chat/contracts';
 import { Text } from './locale-ui';
 import { useState } from 'react';
 import { View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import type { Approval } from './types';
 import { api, json } from './api';
-import { Button, Copy, ErrorNotice, Panel } from './ui';
+import { Button, Copy, ErrorNotice, Panel, Field } from './ui';
 import { useTheme } from './theme';
 function show(value: unknown): string {
   if (Array.isArray(value))
@@ -20,6 +21,37 @@ export function ApprovalCard({ approval }: { approval: Approval }) {
   const cache = useQueryClient();
   const { colors: c } = useTheme();
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [fields, setFields] = useState<Record<string, string>>({});
+  const [initialFields, setInitialFields] = useState<Record<string, string>>({});
+  function edit() {
+    const initial = approvalFields(
+      approval.tool_name,
+      approval.arguments ?? {},
+      approval.structured_preview,
+    );
+    setInitialFields(initial);
+    setFields(initial);
+    setEditing(true);
+  }
+  async function revise() {
+    setBusy(true);
+    setError(null);
+    try {
+      const args = revisedArguments(approval.arguments ?? {}, initialFields, fields);
+      await api(
+        `/v1/approvals/${approval.id}/revise`,
+        json('POST', { args_hash: approval.args_hash, arguments: args }),
+      );
+      setEditing(false);
+      await cache.invalidateQueries({ queryKey: ['run', approval.run_id] });
+    } catch (e) {
+      setError(e);
+      void cache.invalidateQueries({ queryKey: ['run', approval.run_id] });
+    } finally {
+      setBusy(false);
+    }
+  }
   const [error, setError] = useState<unknown>(null);
   const expired = new Date(approval.expires_at).getTime() < Date.now();
   async function decide(decision: 'approve' | 'reject') {
@@ -58,9 +90,38 @@ export function ApprovalCard({ approval }: { approval: Approval }) {
           ? 'Expired — ask the agent to prepare a new action.'
           : `Expires ${new Date(approval.expires_at).toLocaleString()}`}
       </Copy>
+      {editing && (
+        <View style={{ gap: 10 }}>
+          {Object.entries(fields)
+            .filter(([key]) => !['event_id', 'expected_etag'].includes(key))
+            .map(([key, value]) => (
+              <View key={key}>
+                <Copy small>{key.replaceAll('_', ' ')}</Copy>
+                <Field
+                  accessibilityLabel={`Edit ${key.replaceAll('_', ' ')}`}
+                  multiline={['body_text', 'description'].includes(key)}
+                  value={value}
+                  onChangeText={(text) => setFields({ ...fields, [key]: text })}
+                />
+              </View>
+            ))}
+          <Button disabled={busy} onPress={() => void revise()}>
+            Save revised proposal
+          </Button>
+          <Button secondary onPress={() => setEditing(false)}>
+            Cancel editing
+          </Button>
+          <Copy small muted>
+            Saving cancels the old approval. Review and confirm the new preview separately.
+          </Copy>
+        </View>
+      )}
       <ErrorNotice error={error} />
-      {approval.status === 'pending' && !expired ? (
-        <View style={{ flexDirection: 'row', gap: 10 }}>
+      {approval.status === 'pending' && !expired && !editing ? (
+        <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
+          <Button disabled={busy} secondary onPress={edit}>
+            Edit proposal
+          </Button>
           <Button disabled={busy} onPress={() => void decide('approve')}>
             Confirm action
           </Button>

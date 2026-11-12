@@ -1,5 +1,7 @@
 import {
-  attachmentMessages,
+  workspaceMessages,
+  projectDocumentPorts,
+  maintainSchedules,
   processFile,
   purgeFile,
   filePorts,
@@ -66,10 +68,11 @@ await boss.work('run.execute', async (jobs) => {
     await executeRun(runId, {
       authorizeTool,
       prepareWrite: prepareGoogleWrite,
-      prepareMessages: attachmentMessages(),
+      prepareMessages: workspaceMessages(),
       now: () => new Date(),
       model,
       ports: {
+        ...projectDocumentPorts(String(run.owner_id), String(run.conversation_id)),
         ...filePorts(String(run.owner_id), String(run.conversation_id)),
         ...googlePorts(String(run.owner_id), runId),
         searchWeb: process.env.TAVILY_API_KEY
@@ -137,6 +140,18 @@ const timer = setInterval(() => {
     });
 }, 1000);
 
+// Provider metadata checks for scheduled work must not delay outbox delivery.
+let scheduling = false;
+const scheduleTimer = setInterval(() => {
+  if (scheduling) return;
+  scheduling = true;
+  void maintainSchedules()
+    .catch(() => console.log({ service: 'worker', status: 'schedule_maintenance_error' }))
+    .finally(() => {
+      scheduling = false;
+    });
+}, 10000);
+
 let maintainedAt = 0;
 async function dispatch(): Promise<void> {
   if (Date.now() - maintainedAt > 10000) {
@@ -177,6 +192,7 @@ console.log({ service: 'worker', status: 'listening' });
 await new Promise<void>((resolve) => {
   const stop = () => {
     clearInterval(timer);
+    clearInterval(scheduleTimer);
     void boss.stop().finally(() => resolve());
   };
   process.on('SIGINT', stop);

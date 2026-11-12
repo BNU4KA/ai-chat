@@ -30,6 +30,8 @@ export async function readThreadInputs(runId: string): Promise<{
   messages: Row[];
   attempts: Row[];
   tools: Row[];
+  contextNote: string;
+  contextThroughSeq: string;
 } | null> {
   return withWorker(async (tx) => {
     const found = await tx.query('select * from runs where id = $1', [runId]);
@@ -61,7 +63,16 @@ export async function readThreadInputs(runId: string): Promise<{
           filename: String(file.original_name),
         }));
     }
+    const chat = (
+      await tx.query(
+        'select context_note,context_through_seq from conversations where id=$1 and owner_id=$2 and deleted_at is null',
+        [run.conversation_id, run.owner_id],
+      )
+    ).rows[0];
+    if (!chat) return null;
     return {
+      contextNote: String(chat.context_note ?? ''),
+      contextThroughSeq: String(chat.context_through_seq ?? 0),
       run,
       messages: messages.rows as Row[],
       attempts: attempts.rows as Row[],

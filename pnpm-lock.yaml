@@ -190,6 +190,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@ai-chat/agent-runtime':
+        specifier: workspace:*
+        version: link:../../packages/agent-runtime
       '@ai-chat/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts

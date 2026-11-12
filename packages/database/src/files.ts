@@ -1,3 +1,4 @@
+import { cancelFileConsumers } from './workspace.ts';
 import { randomUUID } from 'node:crypto';
 import { AppError, LIMITS } from '@ai-chat/contracts';
 import { withOwner, withWorker, type Tx } from './pool.ts';
@@ -62,7 +63,11 @@ export async function reserveFile(
     const id = randomUUID();
     const name = input.filename.replace(/[\\/\u0000-\u001f\u007f]/g, '_');
     if (!/\.(pdf|txt|md|doc|docx|png|jpe?g|webp|gif)$/i.test(name))
-      throw new AppError(422, 'UNSUPPORTED_FILE', 'Choose a photo (JPG, PNG, WebP, GIF), Word document (DOC, DOCX), PDF, TXT, or Markdown file.');
+      throw new AppError(
+        422,
+        'UNSUPPORTED_FILE',
+        'Choose a photo (JPG, PNG, WebP, GIF), Word document (DOC, DOCX), PDF, TXT, or Markdown file.',
+      );
     return (
       await tx.query(
         `insert into files(id,owner_id,conversation_id,object_key,original_name,byte_size,status) values($1,$2,$3,$4,$5,$6,'pending_upload') returning *`,
@@ -138,6 +143,7 @@ export async function deleteFile(owner: string, id: string, version: number) {
       throw new AppError(409, 'VERSION_CONFLICT', 'File was updated', {
         version: Number(row.version),
       });
+    await cancelFileConsumers(tx, owner, id);
     await tx.query(
       "update files set deleted_at=now(),status='deleted',version=version+1,updated_at=now() where id=$1",
       [id],
