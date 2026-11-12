@@ -2,7 +2,7 @@ import { Pressable, Text, TextInput } from './locale-ui';
 import { FoolSpinner } from './fool-spinner';
 import { Children, type ReactNode, type Ref, type ComponentRef } from 'react';
 import { ScrollView, View, type TextInputProps, type ViewStyle } from 'react-native';
-import { useRouter } from 'expo-router';
+import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useTheme } from './theme';
 export function Button({
   children,
@@ -168,6 +168,13 @@ export function Panel({
     >
       {children}
     </View>
+  );
+}
+export function PanelRedirect({ panel }: { panel: string }) {
+  const params = useLocalSearchParams<{ document?: string | string[] }>();
+  const document = Array.isArray(params.document) ? params.document[0] : params.document;
+  return (
+    <Redirect href={{ pathname: '/', params: document ? { panel, document } : { panel } }} />
   );
 }
 export function Page({ title, children }: { title: string; children: ReactNode }) {

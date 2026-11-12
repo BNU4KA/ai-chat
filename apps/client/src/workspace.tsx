@@ -13,7 +13,7 @@ import {
   type scheduleSchema,
 } from '@ai-chat/contracts';
 import { api, authorizedFetch, json } from './api';
-import { Button, Copy, ErrorNotice, Field, Page, Panel, Choice, TabBar } from './ui';
+import { Button, Copy, ErrorNotice, Field, Panel, Choice, TabBar } from './ui';
 import { Markdown } from './markdown';
 import { useModels, useCredential, useProfile, useCapabilities } from './queries';
 import { useLocale } from './locale';
@@ -192,7 +192,7 @@ export function DocumentEditor({
     </Panel>
   );
 }
-export default function WorkspacePage() {
+export function WorkspacePage() {
   const params = useLocalSearchParams<{ document?: string }>();
   const router = useRouter(),
     cache = useQueryClient(),
@@ -307,7 +307,7 @@ export default function WorkspacePage() {
     }
   }
   return (
-    <Page title={language === 'ru' ? 'Рабочее пространство' : 'Workspace'}>
+    <View style={{ gap: 16 }}>
       <TabBar
         label="Workspace sections"
         value={tab}
@@ -844,6 +844,6 @@ export default function WorkspacePage() {
           ))}
         </>
       )}
-    </Page>
+    </View>
   );
 }

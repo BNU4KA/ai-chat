@@ -35,12 +35,12 @@ not a status signal. Use native pickers where appropriate.
 | --------------------- | ---------------------------------------------------------------------------- |
 | /sign-in              | App name, short purpose, Continue with Google, privacy/data-flow explanation |
 | /auth/callback        | Web OAuth completion, spinner, recoverable error with Back to sign in        |
-| /onboarding/key       | Masked key entry, Show/Hide, Save and continue, Skip for now                 |
+| /onboarding/key       | Redirects to `/?panel=key`. Dialog: masked key, Show/Hide, Save, Skip        |
 | /                     | Conversation list/new chat; redirect to selected conversation after creation |
 | /chat/:id             | Header, messages, tool cards, composer, sources, active-run state            |
-| /settings             | Profile, key, connections, theme, data controls, sign out                    |
-| /settings/connections | Independent Gmail/Calendar capability status and consent actions             |
-| /settings/data        | Conversation deletion and account deletion explanation                       |
+| /settings             | Redirects to `/?panel=settings`. Dialog over the current chat                |
+| /settings/connections | Redirects to `/?panel=connections`. Back returns to settings in the dialog   |
+| /settings/data        | Redirects to `/?panel=data`. Typed account deletion stays in the dialog      |
 
 Native paths map to Expo Router dynamic files. Unauthenticated deep links resume the intended
 owned route after login. Unauthorized/missing conversation IDs show a generic Not found screen.
@@ -211,8 +211,9 @@ Respect reduced motion with static artwork and pause decorative motion while the
 ## Owner-approved workspace expansion — 2026-11-11
 
 EXPANSION_SPEC.md supersedes the original no-branching/no-proposal-editing and isolated-file
-rules for the explicitly listed features. `/workspace` contains projects, documents, full-text
-message search, daily/weekly tasks and persisted notices. Chat Work tools exposes project
+rules for the explicitly listed features. Workspace opens as a wide dialog over the current chat
+(`panel=workspace`): projects, documents, full-text message search, daily/weekly tasks and
+persisted notices. `/workspace` redirects there and keeps a `document` query when present. Chat Work tools exposes project
 membership, reviewed context boundaries, documents, workflow starters, research, run budgets
 and primary-calendar meeting suggestions. Selection actions prepare drafts without submitting.
 Original chats and document versions remain available. Source citations open saved evidence;

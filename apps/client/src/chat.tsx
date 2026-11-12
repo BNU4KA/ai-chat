@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ChatExtras, PassageActions, RunUsage } from './chat-extras';
+import { Panels } from './panels';
 import { SourceCard } from './source-card';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Crypto from 'expo-crypto';
@@ -406,7 +407,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
         </Copy>
       )}
       {!credential.data?.configured && (
-        <Button secondary onPress={() => router.push('/onboarding/key')}>
+        <Button secondary onPress={() => router.setParams({ panel: 'key' })}>
           Add your OpenRouter key to send a message
         </Button>
       )}
@@ -637,7 +638,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
       }}
       onSettings={() => {
         setDrawer(false);
-        router.push('/settings');
+        router.setParams({ panel: 'settings' });
       }}
       displayName={profile.data?.display_name}
       busy={busy || pendingFiles.length > 0}
@@ -749,7 +750,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Settings"
-            onPress={() => router.push('/settings')}
+            onPress={() => router.setParams({ panel: 'settings' })}
             style={{
               width: 40,
               height: 40,
@@ -1227,6 +1228,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
           </Panel>
         ))}
       </Dialog>
+      <Panels />
     </View>
   );
 }

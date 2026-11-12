@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { Linking, Platform } from 'react-native';
+import { Linking, Platform, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, json } from '../../src/api';
-import { Button, Copy, ErrorNotice, Page, Panel } from '../../src/ui';
+import { Button, Copy, ErrorNotice, Panel, PanelRedirect } from '../../src/ui';
 import type { Integration } from '../../src/types';
-export default function Connections() {
+export function ConnectionsScreen() {
+  const router = useRouter();
   const cache = useQueryClient();
   const status = useQuery({
     queryKey: ['integration'],
@@ -42,7 +44,10 @@ export default function Connections() {
     }
   }
   return (
-    <Page title="Google connections">
+    <View style={{ gap: 12 }}>
+      <Button secondary onPress={() => router.setParams({ panel: 'settings' })}>
+        ← Back
+      </Button>
       <Copy>
         Connect only the services you want the agent to use. Writes require a separate confirmation
         in the chat.
@@ -78,6 +83,9 @@ export default function Connections() {
         Disconnecting stops new actions immediately. Already submitted operations may finish. When
         the last service is disconnected, the server also attempts to revoke its Google grant.
       </Copy>
-    </Page>
+    </View>
   );
+}
+export default function ConnectionsRoute() {
+  return <PanelRedirect panel="connections" />;
 }

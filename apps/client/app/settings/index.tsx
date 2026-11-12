@@ -9,8 +9,8 @@ import { useTheme, type ThemeChoice } from '../../src/theme';
 import { useCredential, useProfile } from '../../src/queries';
 import { api, json } from '../../src/api';
 import { showToast } from '../../src/toast';
-import { Button, Copy, ErrorNotice, Field, Page, Panel } from '../../src/ui';
-export default function Settings() {
+import { Button, Copy, ErrorNotice, Field, Panel, PanelRedirect } from '../../src/ui';
+export function SettingsScreen() {
   const router = useRouter();
   const { choice, saveLanguage, t } = useLocale();
   const [languageBusy, setLanguageBusy] = useState(false);
@@ -66,7 +66,7 @@ export default function Settings() {
     }
   }
   return (
-    <Page title="Settings">
+    <View style={{ gap: 12 }}>
       <ErrorNotice error={error ?? profile.error ?? saved.error} />
       <Panel>
         <Copy translate={false}>
@@ -175,7 +175,7 @@ export default function Settings() {
         <Copy small muted>
           Google sign-in and access to your mail or calendar are separate.
         </Copy>
-        <Button secondary onPress={() => router.push('/settings/connections')}>
+        <Button secondary onPress={() => router.setParams({ panel: 'connections' })}>
           Manage Gmail & Calendar
         </Button>
       </Panel>
@@ -208,10 +208,13 @@ export default function Settings() {
         <Copy small muted>
           Manage your account and delete your stored conversations.
         </Copy>
-        <Button secondary onPress={() => router.push('/settings/data')}>
+        <Button secondary onPress={() => router.setParams({ panel: 'data' })}>
           Data & account
         </Button>
       </Panel>
-    </Page>
+    </View>
   );
+}
+export default function SettingsRoute() {
+  return <PanelRedirect panel="settings" />;
 }
