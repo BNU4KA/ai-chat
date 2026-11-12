@@ -1,16 +1,77 @@
 import { Text } from '../src/locale-ui';
-import { useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { useAuth } from '../src/auth';
-import { TarotBackground } from '../src/tarot-background';
-import { useTheme } from '../src/theme';
+import { radii, spacing, typography, useTheme, type ThemeColors } from '../src/theme';
 import { Button, Copy, ErrorNotice } from '../src/ui';
+
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    screen: {
+      backgroundColor: colors.background,
+      flex: 1,
+    },
+    content: {
+      alignItems: 'center',
+      flexGrow: 1,
+      justifyContent: 'center',
+      padding: spacing.xl,
+    },
+    card: {
+      alignItems: 'center',
+      gap: spacing.xl,
+      maxWidth: 420,
+      width: '100%',
+    },
+    brand: {
+      alignItems: 'center',
+      gap: spacing.md,
+    },
+    mark: {
+      alignItems: 'center',
+      backgroundColor: colors.text,
+      borderRadius: radii.md,
+      height: 48,
+      justifyContent: 'center',
+      width: 48,
+    },
+    markText: {
+      color: colors.background,
+      fontSize: typography.title,
+      fontWeight: '700',
+    },
+    title: {
+      color: colors.text,
+      fontSize: typography.display,
+      fontWeight: '600',
+      lineHeight: 36,
+      textAlign: 'center',
+    },
+    subtitle: {
+      maxWidth: 360,
+      textAlign: 'center',
+    },
+    actions: {
+      gap: spacing.md,
+      width: '100%',
+    },
+    privacy: {
+      color: colors.quiet,
+      fontSize: typography.caption,
+      lineHeight: 18,
+      textAlign: 'center',
+    },
+  });
+}
+
 export default function SignInScreen() {
   const { signIn, configured } = useAuth();
   const { colors: c } = useTheme();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
-  async function login() {
+  const styles = useMemo(() => createStyles(c), [c]);
+
+  const login = useCallback(async () => {
     setBusy(true);
     setError(null);
     try {
@@ -20,30 +81,31 @@ export default function SignInScreen() {
     } finally {
       setBusy(false);
     }
-  }
+  }, [signIn]);
+
   return (
-    <View style={{ flex: 1, backgroundColor: c.background }}>
-      <TarotBackground />
+    <View style={styles.screen}>
       <ScrollView
-        style={{ flex: 1, backgroundColor: 'transparent' }}
-        contentContainerStyle={{
-          flexGrow: 1,
-          justifyContent: 'center',
-          alignItems: 'center',
-          padding: 24,
-        }}
+        style={styles.screen}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
       >
-        <View style={{ width: '100%', maxWidth: 440, gap: 24 }}>
-          <View style={{ gap: 12 }}>
-            <Text style={{ fontSize: 38, fontWeight: '700', lineHeight: 45, color: c.text }}>
-              A little more than a conversation.
-            </Text>
-            <Copy muted>Your models. Your tools. One place to think and get things done.</Copy>
+        <View style={styles.card}>
+          <View style={styles.brand}>
+            <View style={styles.mark}>
+              <Text translate={false} style={styles.markText}>
+                AI
+              </Text>
+            </View>
+            <Text style={styles.title}>Welcome to AI Chat</Text>
+            <Copy muted>
+              <Text style={styles.subtitle}>
+                Sign in to continue to your conversations, models, and connected tools.
+              </Text>
+            </Copy>
           </View>
-          <View style={{ gap: 14 }}>
+          <View style={styles.actions}>
             <Button
-              testID="sign-in-button"
-              secondary
               disabled={busy || !configured}
               onPress={() => void login()}
             >
@@ -56,6 +118,10 @@ export default function SignInScreen() {
               </Copy>
             )}
           </View>
+          <Text style={styles.privacy}>
+            Google sign-in only identifies your account. Gmail and Calendar access are requested
+            separately when you connect those tools.
+          </Text>
         </View>
       </ScrollView>
     </View>

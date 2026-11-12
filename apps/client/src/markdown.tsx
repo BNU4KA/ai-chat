@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Linking, Platform, ScrollView, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useReducedMotion } from './motion';
-import { revealStep } from './smooth-text';
+import { revealStep, splitStreamTail } from './smooth-text';
 import { useTheme } from './theme';
 import { Button } from './ui';
 const parser = new MarkdownIt({ html: false, linkify: false, breaks: true });
@@ -73,11 +73,34 @@ export function Markdown({
   const shown = useSmoothText(text, smooth);
   const { colors: c } = useTheme();
   const tokens = parser.parse(shown, {});
-  function inline(children: Token[] = []): ReactNode {
+  const streaming = smooth || shown.length < text.length;
+  const lastInlineIndex = streaming
+    ? tokens.reduce((last, token, index) => (token.type === 'inline' ? index : last), -1)
+    : -1;
+  function citationText(value: string, keyPrefix: string): ReactNode {
+    if (!onCitation) return value;
+    return value.split(/(\[S\d+\])/g).map((part, index) =>
+      /^\[S\d+\]$/.test(part) ? (
+        <Text
+          key={`${keyPrefix}-${index}`}
+          accessibilityRole="button"
+          accessibilityLabel={`Show evidence ${part}`}
+          style={{ color: c.accent, textDecorationLine: 'underline' }}
+          onPress={() => onCitation(part.slice(1, -1))}
+        >
+          {part}
+        </Text>
+      ) : (
+        part
+      ),
+    );
+  }
+  function inline(children: Token[] = [], animateTail = false): ReactNode {
     let bold = 0,
       italic = 0,
       strike = 0;
     let href: string | null = null;
+    const lastTextIndex = children.findLastIndex((child) => child.type === 'text');
     return children.map((child, i) => {
       if (child.type === 'strong_open') {
         bold++;
@@ -114,6 +137,10 @@ export function Markdown({
       if (child.type === 'image') return <Text key={i}>[Image omitted]</Text>;
       if (child.type === 'softbreak' || child.type === 'hardbreak') return '\n';
       const url = href;
+      const streamTail =
+        animateTail && child.type === 'text' && i === lastTextIndex
+          ? splitStreamTail(child.content)
+          : null;
       return (
         <Text
           key={i}
@@ -128,23 +155,18 @@ export function Markdown({
             backgroundColor: child.type === 'code_inline' ? c.raised : undefined,
           }}
         >
-          {onCitation && child.type === 'text'
-            ? child.content.split(/(\[S\d+\])/g).map((part, n) =>
-                /^\[S\d+\]$/.test(part) ? (
-                  <Text
-                    key={n}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Show evidence ${part}`}
-                    style={{ color: c.accent, textDecorationLine: 'underline' }}
-                    onPress={() => onCitation(part.slice(1, -1))}
-                  >
-                    {part}
-                  </Text>
-                ) : (
-                  part
-                ),
-              )
-            : child.content}
+          {streamTail ? (
+            <>
+              {citationText(streamTail[0], `prefix-${i}`)}
+              <Text key={`stream-${text.length}`} testID="streaming-text-tail">
+                {citationText(streamTail[1], `tail-${i}`)}
+              </Text>
+            </>
+          ) : child.type === 'text' ? (
+            citationText(child.content, `text-${i}`)
+          ) : (
+            child.content
+          )}
         </Text>
       );
     });
@@ -293,7 +315,7 @@ export function Markdown({
         result.push(
           <View
             key={key}
-            style={{ borderRadius: 10, backgroundColor: c.raised, padding: 12, gap: 8 }}
+            style={{ borderRadius: 10, backgroundColor: c.code, padding: 12, gap: 8 }}
           >
             <View
               style={{
@@ -336,6 +358,7 @@ export function Markdown({
       }
       if (token.type === 'heading_open') {
         const level = Number(token.tag.slice(1));
+        const contentIndex = cursor;
         const content = tokens[cursor++];
         cursor++;
         result.push(
@@ -351,7 +374,7 @@ export function Markdown({
               marginTop: 8,
             }}
           >
-            {inline(content?.children ?? [])}
+            {inline(content?.children ?? [], contentIndex === lastInlineIndex)}
           </Text>,
         );
         continue;
@@ -359,7 +382,7 @@ export function Markdown({
       if (token.type === 'inline')
         result.push(
           <Text key={key} selectable style={{ color: c.text, fontSize: 16, lineHeight: 25 }}>
-            {inline(token.children ?? [])}
+            {inline(token.children ?? [], key === lastInlineIndex)}
           </Text>,
         );
     }

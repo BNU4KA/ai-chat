@@ -1,7 +1,7 @@
 import { ModelList } from './model-list';
 import { transferDraft, consumeDraft } from './draft-transfer';
 import { useLocale } from './locale';
-import { Pressable, Text } from './locale-ui';
+import { Pressable, Text, type TextInput } from './locale-ui';
 import { useEffect, useRef, useState, type ComponentRef } from 'react';
 import {
   KeyboardAvoidingView,
@@ -21,16 +21,18 @@ import { api, apiEnvelope, json } from './api';
 import { useTheme } from './theme';
 import { useCredential, useCapabilities, useModels, useProfile } from './queries';
 import { useRun, activeStatus } from './use-run';
-import { Button, Copy, ErrorNotice, Field, IconButton, Loading, Panel } from './ui';
+import { Button, Copy, ErrorNotice, Field, Loading, Panel } from './ui';
 import { Dialog } from './dialog';
-import { ConversationSidebar, ConversationDrawer, MenuMark, useSidebarTransition } from './sidebar';
+import { ConversationSidebar, ConversationDrawer, useSidebarTransition } from './sidebar';
+import { ChatHeader } from './chat-header';
 import { Markdown } from './markdown';
 import { ApprovalCard } from './approval';
 import { Attachment } from './attachment';
 import { MessageActions } from './message-actions';
-import { TarotBackground } from './tarot-background';
 import { ComposerFrame } from './composer-frame';
-import { FoolSpinner } from './fool-spinner';
+import { Skeleton, SkeletonGroup } from './skeleton';
+import { ChatComposer } from './chat-composer';
+import { MessageList } from './message-list';
 import { ThinkingTrace } from './thinking';
 import { pickFile, uploadPicked } from './upload';
 import type { Conversation, Message, Run, FileRecord, Snapshot } from './types';
@@ -42,7 +44,7 @@ const groupLabels: Record<Group, string> = {
   calendar: 'Google Calendar',
 };
 export function ChatWorkspace({ id: routeId }: { id?: string }) {
-  const { t, language } = useLocale();
+  const { t } = useLocale();
   const params = useLocalSearchParams<{ draft?: string; project?: string; message?: string }>();
   const [documentSeed, setDocumentSeed] = useState<{ text: string; key: string }>();
   const [evidence, setEvidence] = useState<{ run: string; citation: string } | null>(null);
@@ -67,6 +69,8 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
   const [sidebarSearchFocused, setSidebarSearchFocused] = useState(false);
   const [search, setSearch] = useState('');
   const [draft, setDraft] = useState('');
+  const draftRef = useRef<ComponentRef<typeof TextInput>>(null);
+  const [draftHeight, setDraftHeight] = useState(32);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<{ id: string; name: string }[]>([]);
@@ -382,6 +386,22 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     files.data?.some((file) => file.id === fileId && file.status === 'ready'),
   );
   const composerInk = isDark ? '#ffffff' : c.text;
+  function fitDraft() {
+    const node = draftRef.current as unknown as {
+      style: { height: string };
+      scrollHeight: number;
+    } | null;
+    if (!node || Platform.OS !== 'web') return;
+    node.style.height = '0px';
+    const next = Math.min(200, Math.max(32, node.scrollHeight));
+    node.style.height = `${next}px`;
+    setDraftHeight((current) => (current === next ? current : next));
+  }
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const frame = requestAnimationFrame(fitDraft);
+    return () => cancelAnimationFrame(frame);
+  }, [draft]);
   const sendLocked =
     busy ||
     pendingFiles.length > 0 ||
@@ -392,93 +412,57 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     !fileReady ||
     (!draft.trim() && !selectedFiles.length);
   const composer = (
-    <View
-      style={{
-        width: '100%',
-        maxWidth: 856,
-        alignSelf: 'center',
-        padding: wide ? 20 : 12,
-        gap: 8,
-      }}
+    <ChatComposer
+      wide={wide}
+      reconnecting={snapshot.reconnecting}
+      credentialConfigured={!!credential.data?.configured}
+      incompatibleError={
+        incompatible
+          ? 'This model does not support the selected tools. Choose another model or turn off tools.'
+          : undefined
+      }
+      imageError={
+        imageIncompatible
+          ? 'This model cannot see photos. Choose a model with photo support.'
+          : undefined
+      }
+      error={error}
+      onOpenKey={() => router.setParams({ panel: 'key' })}
     >
-      {snapshot.reconnecting && (
-        <Copy small muted>
-          Connection interrupted. Reconnecting…
-        </Copy>
-      )}
-      {!credential.data?.configured && (
-        <Button secondary onPress={() => router.setParams({ panel: 'key' })}>
-          Add your OpenRouter key to send a message
-        </Button>
-      )}
-      {incompatible && (
-        <ErrorNotice error="This model does not support the selected tools. Choose another model or turn off tools." />
-      )}
-      {(!!selectedFiles.length || !!pendingFiles.length) && (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {pendingFiles.map((file) => (
-            <View
-              key={file.id}
-              style={{
-                maxWidth: 220,
-                borderRadius: 16,
-                borderWidth: 1,
-                borderColor: c.border,
-                paddingHorizontal: 12,
-                paddingVertical: 8,
-                gap: 2,
-              }}
-            >
-              <Text translate={false} numberOfLines={1} style={{ color: c.text, fontSize: 13 }}>
-                {file.name}
-              </Text>
-              <Text style={{ color: c.muted, fontSize: 12 }}>Uploading…</Text>
-            </View>
-          ))}
-          {selectedFiles.map((fileId) => (
-            <Attachment
-              key={fileId}
-              id={fileId}
-              file={files.data?.find((file) => file.id === fileId)}
-              compact
-              onRemove={() => setSelectedFiles((old) => old.filter((value) => value !== fileId))}
-            />
-          ))}
-        </View>
-      )}
-
       <ComposerFrame focused={composerFocused}>
-        <Field
-          accessibilityLabel="Message"
-          placeholder="Ask AI Chat"
-          value={draft}
-          onChangeText={setDraft}
-          multiline
-          onFocus={() => setComposerFocused(true)}
-          onBlur={() => setComposerFocused(false)}
-          style={{
-            borderWidth: 0,
-            minHeight: 64,
-            maxHeight: 180,
-            backgroundColor: 'transparent',
-            outlineWidth: 0,
-            paddingHorizontal: 8,
-          }}
-          onKeyPress={(event) => {
-            if (Platform.OS === 'web') {
-              const key = event.nativeEvent as unknown as {
-                key: string;
-                shiftKey?: boolean;
-                isComposing?: boolean;
-              };
-              if (key.key === 'Enter' && !key.shiftKey && !key.isComposing) {
-                event.preventDefault();
-                void send();
-              }
-            }
-          }}
-        />
-        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+        {!!selectedFiles.length || !!pendingFiles.length ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {pendingFiles.map((file) => (
+              <View
+                key={file.id}
+                style={{
+                  maxWidth: 220,
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: c.border,
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                  gap: 2,
+                }}
+              >
+                <Text translate={false} numberOfLines={1} style={{ color: c.text, fontSize: 13 }}>
+                  {file.name}
+                </Text>
+                <Text style={{ color: c.muted, fontSize: 12 }}>Uploading…</Text>
+              </View>
+            ))}
+            {selectedFiles.map((fileId) => (
+              <Attachment
+                key={fileId}
+                id={fileId}
+                file={files.data?.find((file) => file.id === fileId)}
+                compact
+                onRemove={() => setSelectedFiles((old) => old.filter((value) => value !== fileId))}
+              />
+            ))}
+          </View>
+        ) : null}
+        <View style={{ flexDirection: 'row', gap: 6, alignItems: 'flex-end' }}>
           <Pressable
             testID="composer-attach"
             accessibilityRole="button"
@@ -491,17 +475,57 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
             }
             onPress={() => void upload()}
             style={({ pressed, hovered }) => ({
-              width: 32,
-              height: 32,
-              borderRadius: 16,
+              width: 44,
+              height: 44,
+              borderRadius: 22,
               alignItems: 'center',
               justifyContent: 'center',
               backgroundColor: pressed || hovered ? c.hover : 'transparent',
               opacity: pendingFiles.length > 0 ? 0.45 : 1,
             })}
           >
-            <Text style={{ color: composerInk, fontSize: 18, lineHeight: 20 }}>＋</Text>
+            <Text style={{ color: composerInk, fontSize: 24, lineHeight: 26 }}>＋</Text>
           </Pressable>
+          <Field
+            ref={draftRef}
+            accessibilityLabel="Message"
+            placeholder="Ask AI Chat"
+            value={draft}
+            onChangeText={setDraft}
+            multiline
+            onFocus={() => setComposerFocused(true)}
+            onBlur={() => setComposerFocused(false)}
+            onContentSizeChange={(event) => {
+              if (Platform.OS === 'web') return;
+              const next = Math.min(200, Math.max(32, event.nativeEvent.contentSize.height));
+              setDraftHeight((current) => (current === next ? current : next));
+            }}
+            style={{
+              borderWidth: 0,
+              flex: 1,
+              minWidth: 0,
+              height: draftHeight,
+              minHeight: 32,
+              maxHeight: 200,
+              backgroundColor: 'transparent',
+              outlineWidth: 0,
+              paddingHorizontal: 4,
+              paddingVertical: 4,
+            }}
+            onKeyPress={(event) => {
+              if (Platform.OS === 'web') {
+                const key = event.nativeEvent as unknown as {
+                  key: string;
+                  shiftKey?: boolean;
+                  isComposing?: boolean;
+                };
+                if (key.key === 'Enter' && !key.shiftKey && !key.isComposing) {
+                  event.preventDefault();
+                  void send();
+                }
+              }
+            }}
+          />
           <Pressable
             testID="composer-tools"
             accessibilityRole="button"
@@ -515,17 +539,19 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                 .catch(setError)
             }
             style={({ pressed, hovered }) => ({
-              minHeight: 32,
-              paddingHorizontal: 12,
-              borderRadius: 16,
+              minHeight: 44,
+              width: wide ? undefined : 44,
+              paddingHorizontal: wide ? 12 : 0,
+              borderRadius: 22,
               alignItems: 'center',
               justifyContent: 'center',
               backgroundColor: pressed || hovered ? c.hover : 'transparent',
             })}
           >
-            <Text style={{ color: composerInk, fontSize: 13, fontWeight: '600' }}>Tools</Text>
+            <Text style={{ color: composerInk, fontSize: wide ? 13 : 20, fontWeight: '600' }}>
+              {wide ? 'Tools' : '⋯'}
+            </Text>
           </Pressable>
-          <View style={{ flex: 1 }} />
           <Pressable
             testID="composer-model"
             accessibilityRole="button"
@@ -535,17 +561,20 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
               setDialog('models');
             }}
             style={({ pressed, hovered }) => ({
-              minHeight: 32,
-              maxWidth: wide ? 200 : 120,
+              minHeight: 44,
+              width: wide ? undefined : 44,
+              maxWidth: wide ? 200 : 44,
               flexShrink: 1,
-              borderRadius: 16,
-              paddingHorizontal: 12,
+              borderRadius: 22,
+              paddingHorizontal: wide ? 12 : 0,
               justifyContent: 'center',
               backgroundColor: pressed || hovered ? c.hover : 'transparent',
             })}
           >
-            <Text numberOfLines={1} style={{ color: composerInk, fontSize: 13 }}>
-              {(currentModel?.name ?? 'Gemini 3.8 Flash').replace('Google: ', '')} ▾
+            <Text numberOfLines={1} style={{ color: composerInk, fontSize: wide ? 13 : 18 }}>
+              {wide
+                ? `${(currentModel?.name ?? 'Gemini 3.8 Flash').replace('Google: ', '')} ▾`
+                : '⌄'}
             </Text>
           </Pressable>
           {running ? (
@@ -554,15 +583,15 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
               accessibilityLabel="Stop"
               onPress={() => void stop()}
               style={{
-                minHeight: 32,
-                paddingHorizontal: 12,
-                borderRadius: 16,
+                width: 44,
+                height: 44,
+                borderRadius: 22,
                 alignItems: 'center',
                 justifyContent: 'center',
-                backgroundColor: c.danger,
+                backgroundColor: c.send,
               }}
             >
-              <Text style={{ color: c.dangerText, fontSize: 13, fontWeight: '600' }}>Stop</Text>
+              <Text style={{ color: c.sendText, fontSize: 16, fontWeight: '700' }}>■</Text>
             </Pressable>
           ) : (
             <Pressable
@@ -572,36 +601,23 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
               disabled={sendLocked}
               onPress={() => void send()}
               style={({ pressed }) => ({
-                width: 32,
-                height: 32,
-                borderRadius: 16,
+                width: 44,
+                height: 44,
+                borderRadius: 22,
                 flexShrink: 0,
                 alignItems: 'center',
                 justifyContent: 'center',
-                backgroundColor: pressed ? c.hover : 'transparent',
+                backgroundColor: c.send,
                 opacity: sendLocked ? 0.4 : 1,
+                transform: [{ scale: pressed ? 0.94 : 1 }],
               })}
             >
-              <Text style={{ fontSize: 16, color: composerInk }}>↑</Text>
+              <Text style={{ fontSize: 20, color: c.sendText }}>↑</Text>
             </Pressable>
           )}
         </View>
       </ComposerFrame>
-      {imageIncompatible && (
-        <ErrorNotice error="This model cannot see photos. Choose a model with photo support." />
-      )}
-      <ErrorNotice error={error} />
-      <Text
-        style={{
-          textAlign: 'center',
-          color: c.quiet,
-          fontSize: 13,
-          lineHeight: 20,
-        }}
-      >
-        Uses your OpenRouter balance. Review external actions before confirming.
-      </Text>
-    </View>
+    </ChatComposer>
   );
   const sidebar = (mobile = false) => (
     <ConversationSidebar
@@ -668,7 +684,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
           }}
           onPointerLeave={() => setSidebarHovered(false)}
           style={[
-            { width: sidebarExpanded ? 280 : 72, flexShrink: 0, zIndex: 20 },
+            { width: sidebarExpanded ? 260 : 60, flexShrink: 0, zIndex: 20 },
             sidebarTransition,
           ]}
         >
@@ -720,77 +736,16 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
         </Dialog>
       )}
       <View style={{ flex: 1, minWidth: 0, paddingRight: wide && workToolsOpen ? 420 : 0 }}>
-        <View
-          testID="chat-header"
-          style={{
-            minHeight: 72,
-            paddingHorizontal: wide ? 28 : 16,
-            paddingVertical: 12,
-            flexDirection: 'row',
-            gap: 10,
-            alignItems: 'center',
-            borderBottomWidth: 0,
-            borderColor: c.border,
-            backgroundColor: c.background,
-          }}
-        >
-          {!wide && (
-            <Button secondary label="Open conversation history" onPress={() => setDrawer(true)}>
-              <MenuMark color={c.text} />
-            </Button>
-          )}
-          <View style={{ flex: 1 }}>
-            <Text numberOfLines={1} style={{ color: c.text, fontWeight: '500', fontSize: 22 }}>
-              AI Chat
-            </Text>
-            <Text style={{ color: c.muted, fontSize: 12, marginTop: 3 }}>
-              {running ? 'Agent is working' : (chat.data?.title ?? 'Your workspace')}
-            </Text>
-          </View>
-          {width >= 900 ? (
-            <>
-              <Button quiet label="Work tools" onPress={() => setWorkToolsOpen((open) => !open)}>
-                Work tools
-              </Button>
-              <Button
-                quiet
-                label="Projects & tasks"
-                onPress={() => router.setParams({ panel: 'workspace', document: '' })}
-              >
-                Projects & tasks
-              </Button>
-            </>
-          ) : (
-            <>
-              <IconButton label="Work tools" onPress={() => setWorkToolsOpen((open) => !open)}>
-                ▣
-              </IconButton>
-              <IconButton
-                label="Projects & tasks"
-                onPress={() => router.setParams({ panel: 'workspace', document: '' })}
-              >
-                ⧉
-              </IconButton>
-            </>
-          )}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Settings"
-            onPress={() => router.setParams({ panel: 'settings' })}
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 20,
-              backgroundColor: c.accent,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Text style={{ color: c.accentText, fontWeight: '600', fontSize: 16 }}>
-              {(profile.data?.display_name ?? 'A').slice(0, 1).toUpperCase()}
-            </Text>
-          </Pressable>
-        </View>
+        <ChatHeader
+          wide={wide}
+          compactActions={width < 900}
+          title="AI Chat"
+          avatar={(profile.data?.display_name ?? 'A').slice(0, 1).toUpperCase()}
+          onOpenSidebar={() => setDrawer(true)}
+          onWorkTools={() => setWorkToolsOpen((open) => !open)}
+          onWorkspace={() => router.setParams({ panel: 'workspace', document: '' })}
+          onSettings={() => router.setParams({ panel: 'settings' })}
+        />
         <ChatExtras
           chat={chat.data}
           messages={visibleMessages}
@@ -807,7 +762,6 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
             style={{ flex: 1 }}
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           >
-            <TarotBackground />
             <ScrollView
               contentContainerStyle={{
                 flexGrow: 1,
@@ -821,43 +775,34 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
               <View
                 style={{
                   width: '100%',
-                  maxWidth: 760,
-                  gap: 8,
-                  marginBottom: 24,
+                  maxWidth: 768,
+                  marginBottom: 20,
                   alignItems: 'center',
                 }}
               >
                 <Text
                   style={{
-                    fontSize: wide ? 44 : 32,
-                    lineHeight: wide ? 56 : 42,
-                    fontWeight: '400',
-                    letterSpacing: -1,
-                    color: c.greeting,
-                  }}
-                >
-                  Hello, {profile.data?.display_name?.split(' ')[0] ?? 'there'}
-                </Text>
-                <Text
-                  style={{
-                    fontSize: wide ? 34 : 25,
-                    lineHeight: wide ? 44 : 34,
-                    fontWeight: '400',
-                    color: c.muted,
+                    fontSize: wide ? 30 : 26,
+                    lineHeight: wide ? 38 : 34,
+                    fontWeight: '600',
+                    letterSpacing: -0.4,
+                    color: c.text,
                     textAlign: 'center',
                   }}
                 >
-                  What’s on your mind?
+                  What can I help with?
                 </Text>
               </View>
               {composer}
               <View
                 style={{
+                  width: '100%',
+                  maxWidth: 768,
+                  marginTop: 12,
                   flexDirection: 'row',
-                  justifyContent: 'center',
                   flexWrap: 'wrap',
-                  gap: 10,
-                  marginTop: 16,
+                  justifyContent: 'center',
+                  gap: 8,
                 }}
               >
                 {['Summarize a document', 'Explain a photo', 'Help me write'].map((prompt) => (
@@ -866,15 +811,15 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                     accessibilityRole="button"
                     onPress={() => setDraft(t(prompt))}
                     style={({ pressed, hovered }) => ({
-                      paddingHorizontal: 18,
-                      paddingVertical: 12,
-                      borderRadius: 22,
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
                       borderWidth: 1,
                       borderColor: c.border,
-                      backgroundColor: pressed || hovered ? c.hover : 'transparent',
+                      borderRadius: 18,
+                      backgroundColor: pressed || hovered ? c.hover : c.surface,
                     })}
                   >
-                    <Text style={{ fontSize: 14, color: c.text }}>{prompt}</Text>
+                    <Text style={{ fontSize: 13, color: c.muted }}>{prompt}</Text>
                   </Pressable>
                 ))}
               </View>
@@ -885,25 +830,22 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
             style={{ flex: 1 }}
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           >
-            <ScrollView
+            <MessageList
               ref={scroll}
-              style={{ flex: 1 }}
-              contentContainerStyle={{
-                padding: wide ? 28 : 16,
-                gap: 26,
-                maxWidth: 856,
-                width: '100%',
-                alignSelf: 'center',
-              }}
+              wide={wide}
+              atBottom={atBottom}
               onScroll={(event) => {
                 const n = event.nativeEvent;
                 setAtBottom(
                   n.contentOffset.y + n.layoutMeasurement.height >= n.contentSize.height - 100,
                 );
               }}
-              scrollEventThrottle={150}
               onContentSizeChange={() => {
                 if (atBottom && !params.message) scroll.current?.scrollToEnd({ animated: false });
+              }}
+              onJumpToLatest={() => {
+                setAtBottom(true);
+                scroll.current?.scrollToEnd();
               }}
             >
               {messages.hasNextPage && (
@@ -948,7 +890,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                   }}
                   style={{
                     alignSelf: message.role === 'user' ? 'flex-end' : 'stretch',
-                    maxWidth: message.role === 'user' ? '90%' : '100%',
+                    maxWidth: message.role === 'user' ? '78%' : '100%',
                     gap: 8,
                     borderLeftWidth: params.message === message.id ? 3 : 0,
                     borderColor: c.accent,
@@ -960,21 +902,11 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                     }
                     style={{
                       gap: 8,
-                      padding: message.role === 'user' ? 16 : 0,
-                      borderRadius: 24,
-                      backgroundColor: message.role === 'user' ? c.composer : 'transparent',
+                      padding: message.role === 'user' ? 12 : 0,
+                      borderRadius: 18,
+                      backgroundColor: message.role === 'user' ? c.control : 'transparent',
                     }}
                   >
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: c.muted }}>
-                      {message.role === 'user' ? 'YOU' : 'AI CHAT'} ·{' '}
-                      {new Date(message.created_at).toLocaleTimeString(
-                        language === 'ru' ? 'ru-RU' : 'en-US',
-                        {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        },
-                      )}
-                    </Text>
                     {message.role === 'assistant' &&
                       message.id === snapshot.data?.assistant_message.id && (
                         <ThinkingTrace
@@ -1036,17 +968,20 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                       />
                     )}
                   {message.role === 'user' && (
-                    <Button
-                      secondary
-                      disabled={running}
-                      onPress={() => {
-                        const text = message.content;
-                        setTitle(text);
-                        setBranchMessage(message.id);
-                      }}
-                    >
-                      Edit into a new branch
-                    </Button>
+                    <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+                      <Button
+                        quiet
+                        label="Edit into a new branch"
+                        disabled={running}
+                        onPress={() => {
+                          const text = message.content;
+                          setTitle(text);
+                          setBranchMessage(message.id);
+                        }}
+                      >
+                        ✎
+                      </Button>
+                    </View>
                   )}
                   {(message.content ||
                     (message.role === 'assistant' && message.status !== 'pending')) && (
@@ -1085,20 +1020,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                 />
               )}
               <ErrorNotice error={messages.error ?? runs.error} />
-            </ScrollView>
-            {!atBottom && (
-              <View style={{ alignSelf: 'center', margin: 8 }}>
-                <Button
-                  secondary
-                  onPress={() => {
-                    setAtBottom(true);
-                    scroll.current?.scrollToEnd();
-                  }}
-                >
-                  Jump to latest ↓
-                </Button>
-              </View>
-            )}
+            </MessageList>
             {composer}
           </KeyboardAvoidingView>
         )}
@@ -1115,7 +1037,11 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
         />
         <ErrorNotice error={models.error} />
         {models.isPending && credential.data?.configured && (
-          <FoolSpinner size={28} label="Loading models" />
+          <SkeletonGroup label="Loading models">
+            <Skeleton height={64} />
+            <Skeleton height={64} />
+            <Skeleton height={64} />
+          </SkeletonGroup>
         )}
         <ModelList
           models={(models.data ?? [])

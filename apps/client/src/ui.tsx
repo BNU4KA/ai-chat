@@ -1,9 +1,9 @@
 import { Pressable, Text, TextInput } from './locale-ui';
-import { FoolSpinner } from './fool-spinner';
 import { Children, type ReactNode, type Ref, type ComponentRef } from 'react';
 import { ScrollView, View, type TextInputProps, type ViewStyle } from 'react-native';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useTheme } from './theme';
+import { AppSkeleton } from './skeleton';
+import { radii, spacing, typography, useTheme } from './theme';
 export function Button({
   children,
   onPress,
@@ -32,25 +32,28 @@ export function Button({
       disabled={disabled}
       onPress={onPress}
       style={({ pressed, hovered }) => ({
-        minHeight: quiet ? 28 : 34,
-        paddingHorizontal: quiet ? 8 : 12,
-        paddingVertical: quiet ? 4 : 6,
-        borderRadius: 10,
-        borderWidth: quiet || !secondary ? 0 : 1,
+        minHeight: quiet ? 32 : 40,
+        paddingHorizontal: quiet ? spacing.sm : spacing.lg,
+        paddingVertical: quiet ? spacing.xs : spacing.sm,
+        borderRadius: radii.md,
+        borderWidth: secondary ? 1 : 0,
         borderColor: danger ? c.danger : c.border,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: quiet
-          ? hovered
-            ? c.hover
-            : 'transparent'
-          : danger
-            ? c.danger
-            : secondary
+        backgroundColor:
+          secondary
+            ? hovered || pressed
+              ? c.hover
+              : c.surface
+            : quiet
               ? hovered || pressed
                 ? c.hover
                 : 'transparent'
-              : c.accent,
+            : danger
+              ? c.danger
+              : hovered || pressed
+                ? c.text
+                : c.accent,
         opacity: disabled ? 0.45 : pressed ? 0.85 : 1,
       })}
     >
@@ -60,7 +63,7 @@ export function Button({
         <Text
           style={{
             fontWeight: '600',
-            fontSize: 13,
+            fontSize: typography.body,
             color: quiet
               ? danger
                 ? c.danger
@@ -99,7 +102,7 @@ export function IconButton({
       style={({ pressed, hovered }) => ({
         width: 36,
         height: 36,
-        borderRadius: 18,
+        borderRadius: radii.round,
         alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: hovered || pressed ? c.hover : 'transparent',
@@ -124,11 +127,11 @@ export function Field(props: TextInputProps & { ref?: Ref<ComponentRef<typeof Te
           minHeight: 46,
           borderWidth: 1,
           borderColor: c.border,
-          borderRadius: 24,
-          padding: 12,
+          borderRadius: radii.md,
+          padding: spacing.md,
           color: c.text,
           backgroundColor: c.surface,
-          fontSize: 16,
+          fontSize: typography.input,
         },
         props.style,
       ]}
@@ -163,26 +166,25 @@ export function Copy({
 export function ErrorNotice({ error }: { error: unknown }) {
   const { colors: c } = useTheme();
   return error ? (
-    <Text accessibilityRole="alert" style={{ color: c.danger, lineHeight: 22 }}>
-      {error instanceof Error ? error.message : String(error)}
-    </Text>
+    <View
+      accessibilityRole="alert"
+      style={{
+        borderWidth: 1,
+        borderColor: c.danger,
+        borderRadius: radii.lg,
+        backgroundColor: c.surface,
+        paddingHorizontal: spacing.md,
+        paddingVertical: spacing.sm,
+      }}
+    >
+      <Text style={{ color: c.danger, lineHeight: 22 }}>
+        {error instanceof Error ? error.message : String(error)}
+      </Text>
+    </View>
   ) : null;
 }
 export function Loading() {
-  const { colors: c } = useTheme();
-  return (
-    <View
-      style={{
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: c.background,
-        padding: 32,
-      }}
-    >
-      <FoolSpinner size={56} />
-    </View>
-  );
+  return <AppSkeleton />;
 }
 export function Panel({
   children,
@@ -199,11 +201,11 @@ export function Panel({
       testID={testID}
       style={[
         {
-          padding: 20,
-          gap: 14,
+          padding: spacing.lg,
+          gap: spacing.md,
           borderWidth: 1,
           borderColor: c.border,
-          borderRadius: 24,
+          borderRadius: radii.lg,
           backgroundColor: c.surface,
         },
         style,
@@ -246,7 +248,6 @@ export function Page({ title, children }: { title: string; children: ReactNode }
   );
 }
 
-/** The same outlined selection treatment used in Settings. */
 export function Choice({
   children,
   selected,
@@ -270,14 +271,13 @@ export function Choice({
       disabled={disabled}
       onPress={onPress}
       style={({ hovered, pressed }) => ({
-        minHeight: 32,
+        minHeight: 36,
         paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 10,
-        borderWidth: 1,
-        borderColor: selected ? c.accent : c.border,
-        backgroundColor: selected ? c.selected : hovered ? c.hover : 'transparent',
-        opacity: disabled ? 0.45 : pressed ? 0.75 : 1,
+        paddingVertical: 8,
+        borderRadius: 14,
+        borderWidth: 0,
+        backgroundColor: selected ? c.selected : hovered || pressed ? c.hover : 'transparent',
+        opacity: disabled ? 0.45 : 1,
       })}
     >
       <Text style={{ fontSize: 13, color: c.text, fontWeight: '500' }}>{children}</Text>

@@ -36,12 +36,9 @@ export function ToastHost() {
           paddingVertical: 12,
           paddingLeft: 16,
           paddingRight: 14,
-          borderRadius: 16,
-          backgroundColor: c.surface,
-          borderWidth: 1,
-          borderColor: c.border,
-          borderLeftWidth: 3,
-          borderLeftColor: c.greeting,
+          borderRadius: 12,
+          backgroundColor: c.text,
+          borderWidth: 0,
           shadowColor: '#000',
           shadowOffset: { width: 0, height: 8 },
           shadowOpacity: 0.16,
@@ -49,7 +46,7 @@ export function ToastHost() {
           elevation: 8,
         }}
       >
-        <Text style={{ color: c.text, fontSize: 14, lineHeight: 20 }}>{toast.message}</Text>
+        <Text style={{ color: c.background, fontSize: 14, lineHeight: 20 }}>{toast.message}</Text>
       </View>
     </View>
   );

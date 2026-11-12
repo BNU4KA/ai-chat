@@ -17,6 +17,7 @@ import { Button, Copy, ErrorNotice, Field, Choice, TabBar } from './ui';
 import { Markdown } from './markdown';
 import { useModels, useCredential, useProfile, useCapabilities } from './queries';
 import { useLocale } from './locale';
+import { useTheme } from './theme';
 export type Project = z.infer<typeof projectSchema>;
 export type Document = z.infer<typeof documentSchema>;
 export type Schedule = z.infer<typeof scheduleSchema>;
@@ -49,6 +50,7 @@ export function DocumentEditor({
   onSaved: (doc: Document) => void;
   onRefine?: (prompt: string) => void;
 }) {
+  const { colors: c } = useTheme();
   const [title, setTitle] = useState(doc.title),
     [content, setContent] = useState(doc.content),
     [preview, setPreview] = useState(false);
@@ -97,7 +99,17 @@ export function DocumentEditor({
     }
   }
   return (
-    <View testID="document-editor" style={{ gap: 10 }}>
+    <View
+      testID="document-editor"
+      style={{
+        gap: 10,
+        backgroundColor: c.surface,
+        borderColor: c.border,
+        borderRadius: 16,
+        borderWidth: 1,
+        padding: 16,
+      }}
+    >
       <Copy>Document · version {doc.version}</Copy>
       <Field accessibilityLabel="Document title" value={title} onChangeText={setTitle} />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
