@@ -68,17 +68,18 @@ async function fixture(
     const req = route.request();
     const path = new URL(req.url()).pathname;
     const method = req.method();
+    const origin = req.headers()['origin'] ?? 'http://localhost:8092';
     const data = (value: unknown, status = 200) =>
       route.fulfill({
         status,
         json: { data: value, next_cursor: null },
-        headers: { 'access-control-allow-origin': 'http://localhost:8092' },
+        headers: { 'access-control-allow-origin': origin },
       });
     if (method === 'OPTIONS')
       return route.fulfill({
         status: 204,
         headers: {
-          'access-control-allow-origin': 'http://localhost:8092',
+          'access-control-allow-origin': origin,
           'access-control-allow-headers': '*',
           'access-control-allow-methods': 'GET,POST,PATCH,PUT,DELETE,OPTIONS',
         },
@@ -713,7 +714,7 @@ async function workspaceFixture(page: Page) {
       route.fulfill({
         status,
         json: { data: value },
-        headers: { 'access-control-allow-origin': 'http://localhost:8092' },
+        headers: { 'access-control-allow-origin': req.headers()['origin'] ?? 'http://localhost:8092' },
       });
     if (method === 'OPTIONS') return route.fallback();
     if (path === '/v1/projects') {

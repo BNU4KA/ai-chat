@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
+import { View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useCredential } from '../../src/queries';
 import { api, json } from '../../src/api';
-import { Button, Copy, ErrorNotice, Field, Page, Panel, Loading } from '../../src/ui';
-export default function KeyOnboarding() {
+import { Button, Copy, ErrorNotice, Field, Panel, Loading, PanelRedirect } from '../../src/ui';
+export function KeyScreen() {
   const saved = useCredential();
   const cache = useQueryClient();
   const router = useRouter();
@@ -13,7 +14,7 @@ export default function KeyOnboarding() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   useEffect(() => {
-    if (saved.data?.configured) router.replace('/');
+    if (saved.data?.configured) router.setParams({ panel: '' });
   }, [saved.data?.configured, router]);
   async function save() {
     setBusy(true);
@@ -25,7 +26,7 @@ export default function KeyOnboarding() {
       );
       setKey('');
       await cache.invalidateQueries({ queryKey: ['credential'] });
-      router.replace('/');
+      router.setParams({ panel: '' });
     } catch (e) {
       setError(e);
     } finally {
@@ -34,7 +35,7 @@ export default function KeyOnboarding() {
   }
   if (saved.isPending) return <Loading />;
   return (
-    <Page title="Connect your model key">
+    <View style={{ gap: 12 }}>
       <Panel>
         <Copy>
           Use your own OpenRouter balance. Your key is encrypted on the server so tasks can continue
@@ -56,10 +57,13 @@ export default function KeyOnboarding() {
         <Button disabled={busy || !key.trim()} onPress={() => void save()}>
           {busy ? 'Validating…' : 'Save and continue'}
         </Button>
-        <Button secondary onPress={() => router.replace('/')}>
+        <Button secondary onPress={() => router.setParams({ panel: '' })}>
           Skip for now
         </Button>
       </Panel>
-    </Page>
+    </View>
   );
+}
+export default function KeyRoute() {
+  return <PanelRedirect panel="key" />;
 }

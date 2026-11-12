@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { BackHandler, Platform, ScrollView, View, useWindowDimensions } from 'react-native';
-import { useRouter, type Href } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { workflowPrompts } from '@ai-chat/contracts';
 import { useTheme } from './theme';
@@ -167,7 +167,7 @@ export function ChatExtras({
         <Button secondary onPress={() => setOpen(!open)}>
           {open ? 'Close work tools' : 'Work tools'}
         </Button>
-        <Button secondary onPress={() => router.push('/workspace' as Href)}>
+        <Button secondary onPress={() => router.setParams({ panel: 'workspace', document: '' })}>
           Projects & tasks
         </Button>
         {chat?.project_id && (

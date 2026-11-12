@@ -8,11 +8,13 @@ export function Dialog({
   visible,
   close,
   children,
+  wide = false,
 }: {
   title: string;
   visible: boolean;
   close: () => void;
   children: ReactNode;
+  wide?: boolean;
 }) {
   const { colors: c } = useTheme();
   return (
@@ -31,7 +33,10 @@ export function Dialog({
           onPress={close}
           style={{ position: 'absolute', inset: 0 }}
         />
-        <Panel testID="dialog-panel" style={{ width: '100%', maxWidth: 640, maxHeight: '85%' }}>
+        <Panel
+          testID="dialog-panel"
+          style={{ width: '100%', maxWidth: wide ? 960 : 640, maxHeight: wide ? '92%' : '85%' }}
+        >
           <View
             style={{
               flexDirection: 'row',

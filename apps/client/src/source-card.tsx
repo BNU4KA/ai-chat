@@ -20,7 +20,7 @@ export function SourceCard({
     try {
       if (s.url && safeUrl(s.url)) await Linking.openURL(s.url);
       else if (s.document_id)
-        router.push({ pathname: '/workspace', params: { document: s.document_id } });
+        router.setParams({ panel: 'workspace', document: s.document_id });
       else if (s.file_id) {
         const result = await api<{ url: string }>(`/v1/files/${s.file_id}/download`);
         await Linking.openURL(result.url + (s.page ? `#page=${s.page}` : ''));

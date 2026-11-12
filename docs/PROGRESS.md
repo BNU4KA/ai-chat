@@ -605,3 +605,22 @@ worker, and client. ESLint passed on `chat.tsx`, `markdown.tsx`, and `ui.tsx`. `
 49 tests. Node v24.2.0; the pinned pnpm 12.18.0 shim returns ENOEXEC on this machine, so
 `pnpm typecheck` itself was not the runner. Integration and browser suites were not rerun.
 
+## Secondary screens as dialogs — 2026-11-12
+
+Settings, the OpenRouter key, Gmail/Calendar connections, account deletion, and the workspace
+open in a dialog over the current chat. Old URLs redirect to `/?panel=...` and keep a document
+id. Google sign-in, `/auth/callback`, and `/auth/integration` are unchanged. Creating a project
+stays the form on the Projects tab inside the workspace dialog.
+
+Checks: client `tsc --noEmit` passed. ESLint passed on the touched client files. Playwright
+desktop scenario for settings, Gmail/Calendar, and typed account deletion passed against a
+synthetic API. Node v24.2.0. The full browser suite was not rerun.
+
+## Cool chrome, parchment on the cards — 2026-11-12
+
+Shared buttons, the new-chat control, suggestion chips, and language choices use the cool
+surfaces and blue accent. Parchment and gold remain on the tarot artwork and the loader.
+Client `tsc --noEmit` and ESLint on the touched files passed. The already-running web server
+was still serving the previous parchment button colors, so this pass was not rechecked in that
+browser session.
+

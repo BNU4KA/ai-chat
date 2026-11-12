@@ -1,9 +1,12 @@
 import { useState } from 'react';
+import { View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/auth';
 import { useProfile } from '../../src/queries';
 import { api, json } from '../../src/api';
-import { Button, Copy, ErrorNotice, Field, Page, Panel } from '../../src/ui';
-export default function DataSettings() {
+import { Button, Copy, ErrorNotice, Field, Panel, PanelRedirect } from '../../src/ui';
+export function DataScreen() {
+  const router = useRouter();
   const auth = useAuth();
   const profile = useProfile();
   const [confirmation, setConfirmation] = useState('');
@@ -21,7 +24,10 @@ export default function DataSettings() {
     }
   }
   return (
-    <Page title="Data & account">
+    <View style={{ gap: 12 }}>
+      <Button secondary onPress={() => router.setParams({ panel: 'settings' })}>
+        ← Back
+      </Button>
       <Panel>
         <Copy>Stored data</Copy>
         <Copy muted>
@@ -60,6 +66,9 @@ export default function DataSettings() {
           {busy ? 'Deleting…' : 'Permanently delete account'}
         </Button>
       </Panel>
-    </Page>
+    </View>
   );
+}
+export default function DataRoute() {
+  return <PanelRedirect panel="data" />;
 }
