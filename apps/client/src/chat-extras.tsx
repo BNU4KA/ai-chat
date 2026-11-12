@@ -216,7 +216,7 @@ export function ChatExtras({
                 <Copy>Project context</Copy>
                 <Help
                   title="Project context"
-                  text="Attach this chat to a project and keep a short note that replaces older messages in later requests. The original messages stay in the chat."
+                  text="Pick a project to let this chat use that project's memory and files you shared with it. Until you pick one, this chat stands alone. The note is a summary you edit yourself. After you use it, the model reads the note instead of the older messages it covers. Those messages stay visible here. Messages after the cutoff are still sent in full, so leave your latest question outside the note. Prepare excerpts drafts the note from older messages and sets the cutoff to the message before your latest question. Read it, edit it, then use the note. Restore full context clears the note and sends the whole chat again."
                 />
               </View>
               <Choice
@@ -237,11 +237,10 @@ export function ChatExtras({
                 </Choice>
               ))}
               {!chat && <Copy small>Send a first message to attach this chat to a project.</Copy>}
-              <Copy>Reviewed context note</Copy>
+              <Copy>Note the model will read</Copy>
               <Copy small muted>
-                Keep goals, constraints, decisions and open questions. Messages through the selected
-                boundary are replaced by this note in future model requests; originals remain in
-                history. Keep the latest turn in full.
+                Keep goals, constraints, decisions and open questions. The model reads this note
+                instead of the older messages it covers. The messages stay in the chat.
               </Copy>
               <Button
                 secondary
@@ -271,13 +270,29 @@ export function ChatExtras({
                 onChangeText={setNote}
                 style={{ minHeight: 150, textAlignVertical: 'top' }}
               />
-              <Field
-                accessibilityLabel="Context boundary sequence"
-                placeholder="Last covered message sequence"
-                value={through}
-                onChangeText={setThrough}
-                keyboardType="number-pad"
-              />
+              <Copy small>What the note replaces</Copy>
+              <Copy small muted>
+                {through === '0'
+                  ? 'No cutoff yet. Prepare excerpts to cover the older messages and keep your latest question in full.'
+                  : 'The note replaces every message through the line below. Later messages are still sent in full. The replaced messages stay visible in the chat.'}
+              </Copy>
+              {through !== '0' && (
+                <Copy small translate={false}>
+                  {messages
+                    .filter((message) => {
+                      try {
+                        return (
+                          message.status !== 'pending' && BigInt(message.seq) <= BigInt(through)
+                        );
+                      } catch {
+                        return false;
+                      }
+                    })
+                    .at(-1)
+                    ?.content.replace(/\s+/g, ' ')
+                    .slice(0, 120) ?? ''}
+                </Copy>
+              )}
               <Button
                 disabled={!chat || running || busy || !note.trim()}
                 onPress={() =>
@@ -316,7 +331,7 @@ export function ChatExtras({
               <View style={{ alignItems: 'flex-end' }}>
                 <Help
                   title="Documents"
-                  text="Save a response as a document or create one in Projects & tasks."
+                  text="A document is a note with saved versions. Open one here to edit it, or save an assistant answer as a new document from the actions under that answer. You can also create and organize documents in Projects & tasks."
                 />
               </View>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
@@ -343,7 +358,7 @@ export function ChatExtras({
               <View style={{ alignItems: 'flex-end' }}>
                 <Help
                   title="Workflows"
-                  text="Review the instruction and enable the needed tools before sending."
+                  text="Each button places a ready-made instruction in the message box. Nothing is sent until you press send. Research mode asks the model to cite sources. Turn on the tools that instruction needs, then send it yourself."
                 />
               </View>
               {Object.entries(workflowPrompts).map(([key, prompt]) => (
@@ -375,7 +390,7 @@ export function ChatExtras({
               <View style={{ alignItems: 'flex-end' }}>
                 <Help
                   title="Cost & limits"
-                  text="Draft estimates exclude tool results and project material. The worker checks each model request with its current context before submission. Provider charges may differ from catalog estimates. Unknown prices block capped tasks."
+                  text="A run budget caps the estimated model cost of one reply. The figure is a catalog estimate, not the final OpenRouter invoice. Leave it empty for no cap. If the model price is unknown, a capped run will not start. This preview skips tool results and project material; the server checks the full request before sending it."
                 />
               </View>
               <Field
@@ -431,7 +446,7 @@ export function ChatExtras({
                 <Copy>Find free time on your primary calendar</Copy>
                 <Help
                   title="Meeting times"
-                  text="Checks your calendar only. Attendee availability is not checked. Creating a meeting requires a separate confirmation."
+                  text="This searches your primary Google calendar for open times between the start and end you enter. It does not know if other people are free. Choosing a time only writes a draft in the message box. Creating the event still needs a separate confirmation in the chat."
                 />
               </View>
               <Field

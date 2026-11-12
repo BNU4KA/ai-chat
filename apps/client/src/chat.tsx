@@ -1,7 +1,7 @@
 import { ModelList } from './model-list';
 import { transferDraft, consumeDraft } from './draft-transfer';
 import { useLocale } from './locale';
-import { Pressable, Text } from './locale-ui';
+import { Pressable, Text, type TextInput } from './locale-ui';
 import { useEffect, useRef, useState, type ComponentRef } from 'react';
 import {
   KeyboardAvoidingView,
@@ -67,6 +67,8 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
   const [sidebarSearchFocused, setSidebarSearchFocused] = useState(false);
   const [search, setSearch] = useState('');
   const [draft, setDraft] = useState('');
+  const draftRef = useRef<ComponentRef<typeof TextInput>>(null);
+  const [draftHeight, setDraftHeight] = useState(64);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<{ id: string; name: string }[]>([]);
@@ -382,6 +384,22 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     files.data?.some((file) => file.id === fileId && file.status === 'ready'),
   );
   const composerInk = isDark ? '#ffffff' : c.text;
+  function fitDraft() {
+    const node = draftRef.current as unknown as {
+      style: { height: string };
+      scrollHeight: number;
+    } | null;
+    if (!node || Platform.OS !== 'web') return;
+    node.style.height = '0px';
+    const next = Math.min(200, Math.max(64, node.scrollHeight));
+    node.style.height = `${next}px`;
+    setDraftHeight((current) => (current === next ? current : next));
+  }
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const frame = requestAnimationFrame(fitDraft);
+    return () => cancelAnimationFrame(frame);
+  }, [draft]);
   const sendLocked =
     busy ||
     pendingFiles.length > 0 ||
@@ -449,6 +467,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
 
       <ComposerFrame focused={composerFocused}>
         <Field
+          ref={draftRef}
           accessibilityLabel="Message"
           placeholder="Ask AI Chat"
           value={draft}
@@ -456,10 +475,16 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
           multiline
           onFocus={() => setComposerFocused(true)}
           onBlur={() => setComposerFocused(false)}
+          onContentSizeChange={(event) => {
+            if (Platform.OS === 'web') return;
+            const next = Math.min(200, Math.max(64, event.nativeEvent.contentSize.height));
+            setDraftHeight((current) => (current === next ? current : next));
+          }}
           style={{
             borderWidth: 0,
+            height: draftHeight,
             minHeight: 64,
-            maxHeight: 180,
+            maxHeight: 200,
             backgroundColor: 'transparent',
             outlineWidth: 0,
             paddingHorizontal: 8,

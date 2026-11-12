@@ -21,6 +21,7 @@ const css = `
 }
 [data-testid="composer-frame"] textarea,[data-testid="composer-frame"] textarea:focus,[data-testid="composer-frame"] textarea:focus-visible {
  outline:none!important;outline-width:0!important;outline-style:none!important;box-shadow:none!important;border:0!important;
+ field-sizing:content;max-height:200px;overflow-y:auto;
 }
 [data-testid="nav-icon"] {opacity:.68;transition:opacity .16s ease;}
 [role="button"]:hover [data-testid="nav-icon"],[role="button"]:focus-visible [data-testid="nav-icon"] {opacity:1;}

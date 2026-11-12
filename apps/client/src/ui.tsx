@@ -36,20 +36,17 @@ export function Button({
         paddingHorizontal: quiet ? 8 : 12,
         paddingVertical: quiet ? 4 : 6,
         borderRadius: 10,
-        borderWidth: quiet || !secondary ? 0 : 1,
+        borderWidth: quiet || secondary ? 1 : 0,
         borderColor: danger ? c.danger : c.border,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: quiet
-          ? hovered
-            ? c.hover
-            : 'transparent'
-          : danger
-            ? c.danger
-            : secondary
-              ? hovered || pressed
-                ? c.hover
-                : 'transparent'
+        backgroundColor:
+          quiet || secondary
+            ? hovered || pressed
+              ? c.hover
+              : c.background
+            : danger
+              ? c.danger
               : c.accent,
         opacity: disabled ? 0.45 : pressed ? 0.85 : 1,
       })}

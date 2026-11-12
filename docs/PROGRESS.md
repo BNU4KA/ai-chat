@@ -639,3 +639,15 @@ Russian workspace navigation, and opening a document citation. Node v24.2.0. The
 suite was not rerun. No local API was listening on port 3001, so this was not checked against
 the hosted server.
 
+## Composer, settings density, and context copy — 2026-11-12
+
+The composer grows with the draft up to 200px. Quiet and secondary buttons keep a border and a
+raised fill so header and settings actions stay visible. Calendar timezone is a dropdown and saves
+on change. Settings puts the account, key actions, and the connections/data actions on rows.
+The context note explains the cutoff in words and no longer asks for a message sequence. The
+workspace “server does not support that request” text is still the 404 from an API without the
+workspace routes; this branch has the routes, and the published master API does not.
+
+Checks: client `tsc --noEmit` passed. ESLint passed on the touched client files. Playwright desktop
+passed settings, the context-note sidebar, and Russian workspace navigation. Node v24.2.0.
+

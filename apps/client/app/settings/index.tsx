@@ -10,7 +10,8 @@ import { useCredential, useProfile } from '../../src/queries';
 import { api, json } from '../../src/api';
 import { showToast } from '../../src/toast';
 import { Button, Copy, ErrorNotice, Field, PanelRedirect } from '../../src/ui';
-import { Section } from '../../src/dialog';
+import { Help, Section } from '../../src/dialog';
+import { TimezoneSelect } from '../../src/timezone-select';
 export function SettingsScreen() {
   const router = useRouter();
   const { choice, saveLanguage, t } = useLocale();
@@ -56,10 +57,11 @@ export function SettingsScreen() {
       setError(e);
     }
   }
-  async function saveTimezone() {
-    if (!profile.data) return;
+  async function saveTimezone(next: string) {
+    if (!profile.data || next === profile.data.timezone) return;
+    setTimezone(next);
     try {
-      await api('/v1/profile', json('PATCH', { timezone }, profile.data.version));
+      await api('/v1/profile', json('PATCH', { timezone: next }, profile.data.version));
       showToast('Timezone saved.');
       await cache.invalidateQueries({ queryKey: ['profile'] });
     } catch (e) {
@@ -67,25 +69,29 @@ export function SettingsScreen() {
     }
   }
   return (
-    <View style={{ gap: 12 }}>
+    <View style={{ gap: 18 }}>
       <ErrorNotice error={error ?? profile.error ?? saved.error} />
       <Section
         title="Account"
-        help="This is the Google account you use to sign in. Signing out ends the session on this device."
+        help="This is the Google account that signs you in. The name and email come from that account. Signing out ends the session on this device and does not delete your chats."
       >
-        <Copy translate={false}>
-          {profile.data?.display_name ?? auth.session?.user.email ?? t('Your account')}
-        </Copy>
-        <Copy small muted>
-          {auth.session?.user.email}
-        </Copy>
-        <Button quiet onPress={() => void auth.signOut()}>
-          Sign out
-        </Button>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <View style={{ flex: 1, gap: 2 }}>
+            <Copy translate={false}>
+              {profile.data?.display_name ?? auth.session?.user.email ?? t('Your account')}
+            </Copy>
+            <Copy small muted>
+              {auth.session?.user.email}
+            </Copy>
+          </View>
+          <Button secondary onPress={() => void auth.signOut()}>
+            Sign out
+          </Button>
+        </View>
       </Section>
       <Section
         title="Language"
-        help="Automatic language follows your device language and region. Your choice syncs across devices."
+        help="Automatic uses this device's language. Russian or English overrides it. The choice is saved on your account and follows you to every device."
       >
         <View
           role="radiogroup"
@@ -126,7 +132,7 @@ export function SettingsScreen() {
       </Section>
       <Section
         title="OpenRouter key"
-        help="Your key is encrypted on the server. Model requests use your OpenRouter balance. Other service costs are separate."
+        help="The agent calls models with your own OpenRouter key. The key is encrypted on the server and is not shown again after you save it. Model requests spend your OpenRouter balance. Mail, calendar, and other tools are not paid from that balance."
       >
         <Copy small muted>
           {saved.data?.configured ? `Connected · ••••${saved.data.last_four}` : 'No key connected'}
@@ -140,46 +146,40 @@ export function SettingsScreen() {
           autoCapitalize="none"
           autoCorrect={false}
         />
-        <Button quiet onPress={() => setShow(!show)}>
-          {show ? 'Hide key' : 'Show key'}
-        </Button>
-        <Button disabled={busy || !key.trim()} onPress={() => void saveKey()}>
-          {busy ? 'Validating…' : 'Save key'}
-        </Button>
-        {saved.data?.configured && (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          <Button secondary onPress={() => setShow(!show)}>
+            {show ? 'Hide key' : 'Show key'}
+          </Button>
+          <Button disabled={busy || !key.trim()} onPress={() => void saveKey()}>
+            {busy ? 'Validating…' : 'Save key'}
+          </Button>
+          {saved.data?.configured && (
+            <Button
+              secondary
+              onPress={() =>
+                void api('/v1/credentials/openrouter', json('DELETE', undefined, saved.data.version))
+                  .then(() => {
+                    showToast('Key removed. Active requests are stopping.');
+                    void cache.invalidateQueries({ queryKey: ['credential'] });
+                    cache.removeQueries({ queryKey: ['models'] });
+                  })
+                  .catch(setError)
+              }
+            >
+              Remove key and stop active tasks
+            </Button>
+          )}
           <Button
             secondary
-            onPress={() =>
-              void api('/v1/credentials/openrouter', json('DELETE', undefined, saved.data.version))
-                .then(() => {
-                  showToast('Key removed. Active requests are stopping.');
-                  void cache.invalidateQueries({ queryKey: ['credential'] });
-                  cache.removeQueries({ queryKey: ['models'] });
-                })
-                .catch(setError)
-            }
+            onPress={() => void Linking.openURL('https://openrouter.ai/settings/keys')}
           >
-            Remove key and stop active tasks
+            Manage OpenRouter balance & keys ↗
           </Button>
-        )}
-        <Button
-          secondary
-          onPress={() => void Linking.openURL('https://openrouter.ai/settings/keys')}
-        >
-          Manage OpenRouter balance & keys ↗
-        </Button>
-      </Section>
-      <Section
-        title="Connections"
-        help="Google sign-in and access to your mail or calendar are separate."
-      >
-        <Button quiet onPress={() => router.setParams({ panel: 'connections' })}>
-          Manage Gmail & Calendar
-        </Button>
+        </View>
       </Section>
       <Section
         title="Appearance"
-        help="Light, dark, or follow this device. The timezone is used for calendar times and scheduled tasks."
+        help="System follows this device. Light and dark stay fixed. The calendar timezone is used for scheduled tasks and for the times you see on the calendar. It does not change the language."
       >
         <View style={{ flexDirection: 'row', gap: 8 }}>
           {(['system', 'light', 'dark'] as ThemeChoice[]).map((theme) => (
@@ -192,25 +192,28 @@ export function SettingsScreen() {
             </Button>
           ))}
         </View>
-        <Copy>Calendar timezone</Copy>
-        <Field
-          accessibilityLabel="Calendar timezone"
-          placeholder="Europe/Warsaw"
-          value={timezone}
-          onChangeText={setTimezone}
-        />
-        <Button quiet onPress={() => void saveTimezone()}>
-          Save timezone
-        </Button>
+        <TimezoneSelect label="Calendar timezone" value={timezone} onChange={(next) => void saveTimezone(next)} />
       </Section>
-      <Section
-        title="Your data"
-        help="Manage your account and delete your stored conversations."
-      >
-        <Button quiet onPress={() => router.setParams({ panel: 'data' })}>
-          Data & account
-        </Button>
-      </Section>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <Button secondary onPress={() => router.setParams({ panel: 'connections' })}>
+            Manage Gmail & Calendar
+          </Button>
+          <Help
+            title="Connections"
+            text="Signing in with Google does not let the agent read mail or the calendar. Connect those separately. The agent still asks in the chat before it sends mail or changes an event."
+          />
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <Button secondary onPress={() => router.setParams({ panel: 'data' })}>
+            Data & account
+          </Button>
+          <Help
+            title="Your data"
+            text="Conversations and documents are stored so they sync between devices. Open this to see what is kept and to delete the account. Deleting the account does not unsend mail or undo calendar changes."
+          />
+        </View>
+      </View>
     </View>
   );
 }
