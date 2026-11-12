@@ -1,5 +1,25 @@
 export const russian: Record<string, string> = {
   Workspace: 'Рабочее пространство',
+  'More information': 'Подробнее',
+  Account: 'Аккаунт',
+  'This is the Google account you use to sign in. Signing out ends the session on this device.':
+    'Это аккаунт Google, через который вы входите. Выход завершает сессию на этом устройстве.',
+  'Account, language, model key, connections, appearance, and stored data.':
+    'Аккаунт, язык, ключ модели, подключения, оформление и сохранённые данные.',
+  'Light, dark, or follow this device. The timezone is used for calendar times and scheduled tasks.':
+    'Светлая, тёмная или как на устройстве. Часовой пояс используется для календаря и запланированных задач.',
+  'Projects, documents, message search, scheduled tasks, and notifications. A project note is used only in chats you attach to that project.':
+    'Проекты, документы, поиск по сообщениям, запланированные задачи и уведомления. Заметка проекта используется только в чатах, которые вы к нему подключили.',
+  'Attach this chat to a project and keep a short note that replaces older messages in later requests. The original messages stay in the chat.':
+    'Подключите чат к проекту и сохраните короткую заметку. В следующих запросах она заменит старые сообщения. Оригиналы останутся в чате.',
+  'Versioned notes you can edit, export, or revise from the chat. Deleting a document removes its versions.':
+    'Заметки с версиями: их можно править, экспортировать или попросить чат переписать. Удаление документа удаляет и версии.',
+  'Finds words in your messages across chats and opens the matching message.':
+    'Ищет слова в сообщениях всех чатов и открывает найденное сообщение.',
+  'Results from scheduled tasks. Open a result to read it in the chat.':
+    'Результаты запланированных задач. Откройте результат, чтобы прочитать его в чате.',
+  'This server does not support that request yet.': 'Этот сервер пока не поддерживает такой запрос.',
+  'The request failed': 'Запрос не выполнен. Попробуйте ещё раз.',
   'Workspace sections': 'Разделы рабочего пространства',
   'Work tools sections': 'Разделы рабочих инструментов',
   'Choose scheduled model': 'Выбрать модель для расписания',
@@ -56,6 +76,7 @@ export const russian: Record<string, string> = {
     'Сохранение отменит прежнее подтверждение. Проверьте и подтвердите новую версию отдельно.',
   'Projects & tasks': 'Проекты и задачи',
   Projects: 'Проекты',
+  'Shared files': 'Общие файлы',
   Documents: 'Документы',
   'Search messages': 'Поиск сообщений',
   'Scheduled tasks': 'Задачи по расписанию',

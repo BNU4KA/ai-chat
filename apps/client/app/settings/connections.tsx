@@ -3,7 +3,8 @@ import { Linking, Platform, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, json } from '../../src/api';
-import { Button, Copy, ErrorNotice, Panel, PanelRedirect } from '../../src/ui';
+import { Button, Copy, ErrorNotice, PanelRedirect } from '../../src/ui';
+import { Section } from '../../src/dialog';
 import type { Integration } from '../../src/types';
 export function ConnectionsScreen() {
   const router = useRouter();
@@ -45,23 +46,21 @@ export function ConnectionsScreen() {
   }
   return (
     <View style={{ gap: 12 }}>
-      <Button secondary onPress={() => router.setParams({ panel: 'settings' })}>
+      <Button quiet onPress={() => router.setParams({ panel: 'settings' })}>
         ← Back
       </Button>
-      <Copy>
-        Connect only the services you want the agent to use. Writes require a separate confirmation
-        in the chat.
-      </Copy>
       <ErrorNotice error={error ?? status.error} />
       {status.data?.account_email && <Copy>Connected account: {status.data.account_email}</Copy>}
       {(['gmail', 'calendar'] as const).map((capability) => (
-        <Panel key={capability}>
-          <Copy>{capability === 'gmail' ? 'Gmail' : 'Google Calendar'}</Copy>
-          <Copy small muted>
-            {capability === 'gmail'
+        <Section
+          key={capability}
+          title={capability === 'gmail' ? 'Gmail' : 'Google Calendar'}
+          help={
+            capability === 'gmail'
               ? 'Search and read messages, prepare drafts, and send approved plain-text emails.'
-              : 'Read primary-calendar events, check availability, and create or update approved events.'}
-          </Copy>
+              : 'Read primary-calendar events, check availability, and create or update approved events.'
+          }
+        >
           <Copy small>
             {status.data?.capabilities[capability]
               ? status.data.status === 'reauth_required'
@@ -77,7 +76,7 @@ export function ConnectionsScreen() {
           <Button disabled={busy} onPress={() => void connect(capability)}>
             {status.data?.capabilities[capability] ? 'Reconnect' : 'Connect'}
           </Button>
-        </Panel>
+        </Section>
       ))}
       <Copy small muted>
         Disconnecting stops new actions immediately. Already submitted operations may finish. When

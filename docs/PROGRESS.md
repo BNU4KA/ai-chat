@@ -624,3 +624,18 @@ Client `tsc --noEmit` and ESLint on the touched files passed. The already-runnin
 was still serving the previous parchment button colors, so this pass was not rechecked in that
 browser session.
 
+## Header tools and quieter dialogs — 2026-11-12
+
+Work tools and Projects & tasks sit in the chat header beside the profile control. The work-tools
+sidebar closes with a close control, not a selection-styled button. Dialog sections use a heading
+and an information control instead of nested bordered cards. Buttons are shorter. A missing server
+route now says the server does not support that request yet. `origin/master` still has no
+workspace routes, so a client of this branch talking to that API cannot load projects until the
+API is deployed. An empty or non-uuid document parameter no longer requests `/v1/documents/`.
+
+Checks: client `tsc --noEmit` passed. ESLint passed on the touched client files. Playwright desktop
+passed workspace persistence, work tools, settings and account deletion, long-context advice,
+Russian workspace navigation, and opening a document citation. Node v24.2.0. The full browser
+suite was not rerun. No local API was listening on port 3001, so this was not checked against
+the hosted server.
+

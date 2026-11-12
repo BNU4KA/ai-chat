@@ -1,12 +1,12 @@
 import { useEffect, useState, useRef } from 'react';
 import { BackHandler, Platform, ScrollView, View, useWindowDimensions } from 'react-native';
-import { useRouter } from 'expo-router';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { workflowPrompts } from '@ai-chat/contracts';
 import { useTheme } from './theme';
 import { useCredential } from './queries';
 import { api, json } from './api';
-import { Button, Copy, Field, Panel, ErrorNotice, Choice, TabBar } from './ui';
+import { Button, Copy, Field, ErrorNotice, Choice, TabBar, IconButton } from './ui';
+import { Help } from './dialog';
 import { DocumentEditor, useProjects, useDocuments, type Document } from './workspace';
 import type { Conversation, Message, Run } from './types';
 export function ChatExtras({
@@ -17,6 +17,7 @@ export function ChatExtras({
   onDraft,
   running,
   documentSeed,
+  open,
   onOpenChange,
 }: {
   chat?: Conversation;
@@ -26,17 +27,16 @@ export function ChatExtras({
   onDraft: (s: string) => void;
   running: boolean;
   documentSeed?: { text: string; key: string };
-  onOpenChange?: (open: boolean) => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
   const dimensions = useWindowDimensions(),
     wide = dimensions.width >= 1024,
     { colors: c } = useTheme();
-  const router = useRouter(),
-    cache = useQueryClient(),
+  const cache = useQueryClient(),
     projects = useProjects(),
     docs = useDocuments();
-  const [open, setOpen] = useState(false),
-    [tab, setTab] = useState('context'),
+  const [tab, setTab] = useState('context'),
     [error, setError] = useState<unknown>(),
     [busy, setBusy] = useState(false),
     [note, setNote] = useState(''),
@@ -69,29 +69,26 @@ export function ChatExtras({
     }
   }
   useEffect(() => {
-    onOpenChange?.(open);
-  }, [open, onOpenChange]);
-  useEffect(() => {
     if (!open) return;
     if (Platform.OS === 'web') {
       const close = (event: KeyboardEvent) => {
         if (event.key === 'Escape') {
           event.preventDefault();
-          setOpen(false);
+          onOpenChange(false);
         }
       };
       window.addEventListener('keydown', close);
       return () => window.removeEventListener('keydown', close);
     }
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      setOpen(false);
+      onOpenChange(false);
       return true;
     });
     return () => subscription.remove();
-  }, [open]);
+  }, [open, onOpenChange]);
   function draftAndClose(text: string) {
     onDraft(text);
-    setOpen(false);
+    onOpenChange(false);
   }
   const credential = useCredential();
   const contextAdvice = useQuery({
@@ -123,7 +120,7 @@ export function ChatExtras({
         {
           setDoc(d);
           setTab('documents');
-          setOpen(true);
+          onOpenChange(true);
           void cache.invalidateQueries({ queryKey: ['documents'] });
         }
       })
@@ -141,6 +138,10 @@ export function ChatExtras({
     cache.setQueryData(['conversation', chat.id], value);
     await cache.invalidateQueries({ queryKey: ['conversations'] });
   }
+  const crowded =
+    !!contextAdvice.data?.context_length &&
+    contextAdvice.data.input_tokens_estimated > contextAdvice.data.context_length * 0.7;
+  if (!open && !crowded) return null;
   return (
     <View
       style={{
@@ -163,38 +164,36 @@ export function ChatExtras({
           : {}),
       }}
     >
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-        <Button secondary onPress={() => setOpen(!open)}>
-          {open ? 'Close work tools' : 'Work tools'}
-        </Button>
-        <Button secondary onPress={() => router.setParams({ panel: 'workspace', document: '' })}>
-          Projects & tasks
-        </Button>
-        {chat?.project_id && (
+      {open && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <Copy small>
-            {projects.data?.find((p) => p.id === chat.project_id)?.name ?? 'Project'}
+            {chat?.project_id
+              ? (projects.data?.find((p) => p.id === chat.project_id)?.name ?? 'Project')
+              : chat?.context_note
+                ? 'Reviewed context note is active'
+                : 'Work tools'}
           </Copy>
-        )}
-        {chat?.context_note && <Copy small>Reviewed context note is active</Copy>}
-      </View>
-      {!open &&
-        contextAdvice.data?.context_length &&
-        contextAdvice.data.input_tokens_estimated > contextAdvice.data.context_length * 0.7 && (
-          <Panel>
+          <IconButton label="Close work tools" onPress={() => onOpenChange(false)}>
+            ×
+          </IconButton>
+        </View>
+      )}
+      {!open && crowded && (
+          <View style={{ gap: 8 }}>
             <Copy small>
               This conversation is getting long. Review a context note to keep room for the next
               answer.
             </Copy>
             <Button
-              secondary
+              quiet
               onPress={() => {
                 setTab('context');
-                setOpen(true);
+                onOpenChange(true);
               }}
             >
               Review context
             </Button>
-          </Panel>
+          </View>
         )}
       {open && (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ gap: 10, paddingBottom: 8 }}>
@@ -212,8 +211,14 @@ export function ChatExtras({
           />
           <ErrorNotice error={error} />
           {tab === 'context' && (
-            <Panel>
-              <Copy>Project context</Copy>
+            <View style={{ gap: 10 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Copy>Project context</Copy>
+                <Help
+                  title="Project context"
+                  text="Attach this chat to a project and keep a short note that replaces older messages in later requests. The original messages stay in the chat."
+                />
+              </View>
               <Choice
                 disabled={!chat || running || busy}
                 selected={!chat?.project_id}
@@ -304,10 +309,16 @@ export function ChatExtras({
                   Restore full context
                 </Button>
               )}
-            </Panel>
+            </View>
           )}
           {tab === 'documents' && (
-            <>
+            <View style={{ gap: 10 }}>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Help
+                  title="Documents"
+                  text="Save a response as a document or create one in Projects & tasks."
+                />
+              </View>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                 {docs.data?.map((d) => (
                   <Button key={d.id} secondary onPress={() => setDoc(d)}>
@@ -325,10 +336,16 @@ export function ChatExtras({
               ) : (
                 <Copy>Save a response as a document or create one in Projects & tasks.</Copy>
               )}
-            </>
+            </View>
           )}
           {tab === 'workflows' && (
-            <Panel>
+            <View style={{ gap: 10 }}>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Help
+                  title="Workflows"
+                  text="Review the instruction and enable the needed tools before sending."
+                />
+              </View>
               {Object.entries(workflowPrompts).map(([key, prompt]) => (
                 <Button key={key} secondary onPress={() => draftAndClose(prompt)}>
                   {
@@ -351,10 +368,16 @@ export function ChatExtras({
               >
                 {chat?.research_mode ? 'Research mode: on' : 'Research mode: off'}
               </Button>
-            </Panel>
+            </View>
           )}
           {tab === 'budget' && (
-            <Panel>
+            <View style={{ gap: 10 }}>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Help
+                  title="Cost & limits"
+                  text="Draft estimates exclude tool results and project material. The worker checks each model request with its current context before submission. Provider charges may differ from catalog estimates. Unknown prices block capped tasks."
+                />
+              </View>
               <Field
                 accessibilityLabel="Run budget USD"
                 placeholder="Maximum estimated USD per run (empty: no cap)"
@@ -400,11 +423,17 @@ export function ChatExtras({
                 model request with its current context before submission. Provider charges may
                 differ from catalog estimates. Unknown prices block capped tasks.
               </Copy>
-            </Panel>
+            </View>
           )}
           {tab === 'meetings' && (
-            <Panel>
-              <Copy>Find free time on your primary calendar</Copy>
+            <View style={{ gap: 10 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Copy>Find free time on your primary calendar</Copy>
+                <Help
+                  title="Meeting times"
+                  text="Checks your calendar only. Attendee availability is not checked. Creating a meeting requires a separate confirmation."
+                />
+              </View>
               <Field
                 accessibilityLabel="Meeting search start"
                 placeholder="Start, with timezone offset: 2026-11-12T09:00:00+01:00"
@@ -486,7 +515,7 @@ export function ChatExtras({
                   {new Date(s.start).toLocaleString(undefined, { timeZone: timezone })}
                 </Button>
               ))}
-            </Panel>
+            </View>
           )}
         </ScrollView>
       )}
