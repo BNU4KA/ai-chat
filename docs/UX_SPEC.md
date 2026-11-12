@@ -213,7 +213,7 @@ Respect reduced motion with static artwork and pause decorative motion while the
 EXPANSION_SPEC.md supersedes the original no-branching/no-proposal-editing and isolated-file
 rules for the explicitly listed features. Workspace opens as a wide dialog over the current chat
 (`panel=workspace`): projects, documents, full-text message search, daily/weekly tasks and
-persisted notices. `/workspace` redirects there and keeps a `document` query when present. Chat Work tools exposes project
+persisted notices. `/workspace` redirects there and keeps a `document` query when present. Work tools and Projects & tasks open from the chat header, beside the profile control. The work-tools sidebar closes with its own close control, Escape, or Back. Chat Work tools exposes project
 membership, reviewed context boundaries, documents, workflow starters, research, run budgets
 and primary-calendar meeting suggestions. Selection actions prepare drafts without submitting.
 Original chats and document versions remain available. Source citations open saved evidence;

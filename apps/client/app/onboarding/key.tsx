@@ -4,7 +4,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useCredential } from '../../src/queries';
 import { api, json } from '../../src/api';
-import { Button, Copy, ErrorNotice, Field, Panel, Loading, PanelRedirect } from '../../src/ui';
+import { Button, ErrorNotice, Field, Loading, PanelRedirect } from '../../src/ui';
+import { Section } from '../../src/dialog';
 export function KeyScreen() {
   const saved = useCredential();
   const cache = useQueryClient();
@@ -36,11 +37,10 @@ export function KeyScreen() {
   if (saved.isPending) return <Loading />;
   return (
     <View style={{ gap: 12 }}>
-      <Panel>
-        <Copy>
-          Use your own OpenRouter balance. Your key is encrypted on the server so tasks can continue
-          when you close the app.
-        </Copy>
+      <Section
+        title="OpenRouter key"
+        help="Use your own OpenRouter balance. Your key is encrypted on the server so tasks can continue when you close the app."
+      >
         <Field
           accessibilityLabel="OpenRouter API key"
           placeholder="OpenRouter API key"
@@ -50,17 +50,17 @@ export function KeyScreen() {
           autoCapitalize="none"
           autoCorrect={false}
         />
-        <Button secondary onPress={() => setShow(!show)}>
+        <Button quiet onPress={() => setShow(!show)}>
           {show ? 'Hide key' : 'Show key'}
         </Button>
         <ErrorNotice error={error ?? saved.error} />
         <Button disabled={busy || !key.trim()} onPress={() => void save()}>
           {busy ? 'Validating…' : 'Save and continue'}
         </Button>
-        <Button secondary onPress={() => router.setParams({ panel: '' })}>
+        <Button quiet onPress={() => router.setParams({ panel: '' })}>
           Skip for now
         </Button>
-      </Panel>
+      </Section>
     </View>
   );
 }

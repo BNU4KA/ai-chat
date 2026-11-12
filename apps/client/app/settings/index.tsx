@@ -9,7 +9,8 @@ import { useTheme, type ThemeChoice } from '../../src/theme';
 import { useCredential, useProfile } from '../../src/queries';
 import { api, json } from '../../src/api';
 import { showToast } from '../../src/toast';
-import { Button, Copy, ErrorNotice, Field, Panel, PanelRedirect } from '../../src/ui';
+import { Button, Copy, ErrorNotice, Field, PanelRedirect } from '../../src/ui';
+import { Section } from '../../src/dialog';
 export function SettingsScreen() {
   const router = useRouter();
   const { choice, saveLanguage, t } = useLocale();
@@ -68,24 +69,24 @@ export function SettingsScreen() {
   return (
     <View style={{ gap: 12 }}>
       <ErrorNotice error={error ?? profile.error ?? saved.error} />
-      <Panel>
+      <Section
+        title="Account"
+        help="This is the Google account you use to sign in. Signing out ends the session on this device."
+      >
         <Copy translate={false}>
           {profile.data?.display_name ?? auth.session?.user.email ?? t('Your account')}
         </Copy>
         <Copy small muted>
           {auth.session?.user.email}
         </Copy>
-        <Button secondary onPress={() => void auth.signOut()}>
+        <Button quiet onPress={() => void auth.signOut()}>
           Sign out
         </Button>
-      </Panel>
-      <Panel>
-        <Copy>Region</Copy>
-        <Copy>Language</Copy>
-        <Copy small muted>
-          Automatic language follows your device language and region. Your choice syncs across
-          devices.
-        </Copy>
+      </Section>
+      <Section
+        title="Language"
+        help="Automatic language follows your device language and region. Your choice syncs across devices."
+      >
         <View
           role="radiogroup"
           accessibilityLabel={t('Language')}
@@ -107,9 +108,9 @@ export function SettingsScreen() {
                   .finally(() => setLanguageBusy(false));
               }}
               style={{
-                paddingHorizontal: 16,
-                paddingVertical: 12,
-                borderRadius: 22,
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                borderRadius: 10,
                 borderWidth: 1,
                 borderColor: choice === value ? c.accent : c.border,
                 backgroundColor: choice === value ? c.selected : 'transparent',
@@ -122,9 +123,11 @@ export function SettingsScreen() {
             </Pressable>
           ))}
         </View>
-      </Panel>
-      <Panel>
-        <Copy>OpenRouter key</Copy>
+      </Section>
+      <Section
+        title="OpenRouter key"
+        help="Your key is encrypted on the server. Model requests use your OpenRouter balance. Other service costs are separate."
+      >
         <Copy small muted>
           {saved.data?.configured ? `Connected · ••••${saved.data.last_four}` : 'No key connected'}
         </Copy>
@@ -137,7 +140,7 @@ export function SettingsScreen() {
           autoCapitalize="none"
           autoCorrect={false}
         />
-        <Button secondary onPress={() => setShow(!show)}>
+        <Button quiet onPress={() => setShow(!show)}>
           {show ? 'Hide key' : 'Show key'}
         </Button>
         <Button disabled={busy || !key.trim()} onPress={() => void saveKey()}>
@@ -165,22 +168,19 @@ export function SettingsScreen() {
         >
           Manage OpenRouter balance & keys ↗
         </Button>
-        <Copy small muted>
-          Your key is encrypted on the server. Model requests use your OpenRouter balance. Other
-          service costs are separate.
-        </Copy>
-      </Panel>
-      <Panel>
-        <Copy>Connections</Copy>
-        <Copy small muted>
-          Google sign-in and access to your mail or calendar are separate.
-        </Copy>
-        <Button secondary onPress={() => router.setParams({ panel: 'connections' })}>
+      </Section>
+      <Section
+        title="Connections"
+        help="Google sign-in and access to your mail or calendar are separate."
+      >
+        <Button quiet onPress={() => router.setParams({ panel: 'connections' })}>
           Manage Gmail & Calendar
         </Button>
-      </Panel>
-      <Panel>
-        <Copy>Appearance</Copy>
+      </Section>
+      <Section
+        title="Appearance"
+        help="Light, dark, or follow this device. The timezone is used for calendar times and scheduled tasks."
+      >
         <View style={{ flexDirection: 'row', gap: 8 }}>
           {(['system', 'light', 'dark'] as ThemeChoice[]).map((theme) => (
             <Button
@@ -199,19 +199,18 @@ export function SettingsScreen() {
           value={timezone}
           onChangeText={setTimezone}
         />
-        <Button secondary onPress={() => void saveTimezone()}>
+        <Button quiet onPress={() => void saveTimezone()}>
           Save timezone
         </Button>
-      </Panel>
-      <Panel>
-        <Copy>Your data</Copy>
-        <Copy small muted>
-          Manage your account and delete your stored conversations.
-        </Copy>
-        <Button secondary onPress={() => router.setParams({ panel: 'data' })}>
+      </Section>
+      <Section
+        title="Your data"
+        help="Manage your account and delete your stored conversations."
+      >
+        <Button quiet onPress={() => router.setParams({ panel: 'data' })}>
           Data & account
         </Button>
-      </Panel>
+      </Section>
     </View>
   );
 }

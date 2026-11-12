@@ -21,7 +21,7 @@ import { api, apiEnvelope, json } from './api';
 import { useTheme } from './theme';
 import { useCredential, useCapabilities, useModels, useProfile } from './queries';
 import { useRun, activeStatus } from './use-run';
-import { Button, Copy, ErrorNotice, Field, Loading, Panel } from './ui';
+import { Button, Copy, ErrorNotice, Field, IconButton, Loading, Panel } from './ui';
 import { Dialog } from './dialog';
 import { ConversationSidebar, ConversationDrawer, MenuMark, useSidebarTransition } from './sidebar';
 import { Markdown } from './markdown';
@@ -747,6 +747,32 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
               {running ? 'Agent is working' : (chat.data?.title ?? 'Your workspace')}
             </Text>
           </View>
+          {width >= 900 ? (
+            <>
+              <Button quiet label="Work tools" onPress={() => setWorkToolsOpen((open) => !open)}>
+                Work tools
+              </Button>
+              <Button
+                quiet
+                label="Projects & tasks"
+                onPress={() => router.setParams({ panel: 'workspace', document: '' })}
+              >
+                Projects & tasks
+              </Button>
+            </>
+          ) : (
+            <>
+              <IconButton label="Work tools" onPress={() => setWorkToolsOpen((open) => !open)}>
+                ▣
+              </IconButton>
+              <IconButton
+                label="Projects & tasks"
+                onPress={() => router.setParams({ panel: 'workspace', document: '' })}
+              >
+                ⧉
+              </IconButton>
+            </>
+          )}
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Settings"
@@ -773,6 +799,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
           onDraft={setDraft}
           running={running}
           documentSeed={documentSeed}
+          open={workToolsOpen}
           onOpenChange={setWorkToolsOpen}
         />
         {!routeId && !shown.length ? (

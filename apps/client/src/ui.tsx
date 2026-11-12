@@ -32,12 +32,12 @@ export function Button({
       disabled={disabled}
       onPress={onPress}
       style={({ pressed, hovered }) => ({
-        minHeight: quiet ? 36 : 44,
-        paddingHorizontal: quiet ? 10 : 16,
-        paddingVertical: quiet ? 8 : 11,
-        borderRadius: 24,
-        borderWidth: quiet || secondary ? 1 : 0,
-        borderColor: danger ? c.danger : quiet || secondary ? c.border : c.accent,
+        minHeight: quiet ? 28 : 34,
+        paddingHorizontal: quiet ? 8 : 12,
+        paddingVertical: quiet ? 4 : 6,
+        borderRadius: 10,
+        borderWidth: quiet || !secondary ? 0 : 1,
+        borderColor: danger ? c.danger : c.border,
         alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: quiet
@@ -60,11 +60,11 @@ export function Button({
         <Text
           style={{
             fontWeight: '600',
-            fontSize: quiet ? 13 : 14,
+            fontSize: 13,
             color: quiet
               ? danger
                 ? c.danger
-                : c.muted
+                : c.text
               : danger
                 ? c.dangerText
                 : secondary
@@ -74,6 +74,39 @@ export function Button({
         >
           {children}
         </Text>
+      ) : (
+        children
+      )}
+    </Pressable>
+  );
+}
+export function IconButton({
+  label,
+  onPress,
+  children,
+}: {
+  label: string;
+  onPress: () => void;
+  children: ReactNode;
+}) {
+  const { colors: c } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      hitSlop={6}
+      style={({ pressed, hovered }) => ({
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: hovered || pressed ? c.hover : 'transparent',
+      })}
+    >
+      {typeof children === 'string' || typeof children === 'number' ? (
+        <Text style={{ color: c.text, fontSize: 18, lineHeight: 22 }}>{children}</Text>
       ) : (
         children
       )}
@@ -237,17 +270,17 @@ export function Choice({
       disabled={disabled}
       onPress={onPress}
       style={({ hovered, pressed }) => ({
-        minHeight: 44,
-        paddingHorizontal: 16,
-        paddingVertical: 11,
-        borderRadius: 22,
+        minHeight: 32,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 10,
         borderWidth: 1,
         borderColor: selected ? c.accent : c.border,
         backgroundColor: selected ? c.selected : hovered ? c.hover : 'transparent',
         opacity: disabled ? 0.45 : pressed ? 0.75 : 1,
       })}
     >
-      <Text style={{ fontSize: 14, color: c.text, fontWeight: '500' }}>{children}</Text>
+      <Text style={{ fontSize: 13, color: c.text, fontWeight: '500' }}>{children}</Text>
     </Pressable>
   );
 }
@@ -262,14 +295,13 @@ export function TabBar({
   onChange: (value: string) => void;
   label: string;
 }) {
-  const { colors: c } = useTheme();
   return (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
       accessibilityLabel={label}
-      style={{ flexGrow: 0, borderBottomWidth: 1, borderColor: c.border }}
-      contentContainerStyle={{ gap: 8, paddingBottom: 12 }}
+      style={{ flexGrow: 0 }}
+      contentContainerStyle={{ gap: 6 }}
     >
       {items.map((item) => (
         <Choice

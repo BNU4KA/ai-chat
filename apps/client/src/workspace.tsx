@@ -2,7 +2,7 @@ import { transferDraft } from './draft-transfer';
 import { useEffect, useState } from 'react';
 import { Platform, Share, View } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Dialog } from './dialog';
+import { Dialog, Section } from './dialog';
 import { ModelList } from './model-list';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -13,7 +13,7 @@ import {
   type scheduleSchema,
 } from '@ai-chat/contracts';
 import { api, authorizedFetch, json } from './api';
-import { Button, Copy, ErrorNotice, Field, Panel, Choice, TabBar } from './ui';
+import { Button, Copy, ErrorNotice, Field, Choice, TabBar } from './ui';
 import { Markdown } from './markdown';
 import { useModels, useCredential, useProfile, useCapabilities } from './queries';
 import { useLocale } from './locale';
@@ -97,7 +97,7 @@ export function DocumentEditor({
     }
   }
   return (
-    <Panel testID="document-editor">
+    <View testID="document-editor" style={{ gap: 10 }}>
       <Copy>Document · version {doc.version}</Copy>
       <Field accessibilityLabel="Document title" value={title} onChangeText={setTitle} />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
@@ -189,7 +189,7 @@ export function DocumentEditor({
           </Button>
         ))}
       <ErrorNotice error={error ?? versions.error} />
-    </Panel>
+    </View>
   );
 }
 export function WorkspacePage() {
@@ -226,10 +226,16 @@ export function WorkspacePage() {
     [docTitle, setDocTitle] = useState('');
   const [modelDialog, setModelDialog] = useState(false),
     [modelSearch, setModelSearch] = useState('');
+  const documentParam = Array.isArray(params.document) ? params.document[0] : params.document;
+  const sourceId =
+    documentParam &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(documentParam)
+      ? documentParam
+      : undefined;
   const sourceDocument = useQuery({
-    queryKey: ['document', params.document],
-    queryFn: () => api<Document>(`/v1/documents/${params.document}`),
-    enabled: !!params.document,
+    queryKey: ['document', sourceId],
+    queryFn: () => api<Document>(`/v1/documents/${sourceId}`),
+    enabled: !!sourceId,
   });
   useEffect(() => {
     if (sourceDocument.data) {
@@ -323,10 +329,10 @@ export function WorkspacePage() {
       <ErrorNotice error={error ?? projects.error ?? documents.error ?? sourceDocument.error} />
       {tab === 'projects' && (
         <>
-          <Copy>
-            Keep goals, decisions and shared files together. Chats use project memory only after you
-            attach them to that project.
-          </Copy>
+          <Section
+            title="Projects"
+            help="Keep goals, decisions and shared files together. Chats use project memory only after you attach them to that project."
+          >
           <Button
             secondary
             onPress={() => {
@@ -353,7 +359,6 @@ export function WorkspacePage() {
               </Choice>
             ))}
           </View>
-          <Panel>
             <Field
               accessibilityLabel="Project name"
               placeholder="Project name"
@@ -411,14 +416,12 @@ export function WorkspacePage() {
                 </Button>
               </>
             )}
-          </Panel>
+          </Section>
           {project && (
-            <Panel>
-              <Copy>Explicitly shared files</Copy>
-              <Copy small muted>
-                Removing a share stops future project reads. Deleting the original file or chat also
-                revokes access. Photos must be attached to the chat for visual analysis.
-              </Copy>
+            <Section
+              title="Shared files"
+              help="Removing a share stops future project reads. Deleting the original file or chat also revokes access. Photos must be attached to the chat for visual analysis."
+            >
               {shares.data?.map((f) => (
                 <View key={f.id}>
                   <Copy translate={false}>{f.filename}</Copy>
@@ -468,13 +471,16 @@ export function WorkspacePage() {
                     Share {f.filename}
                   </Button>
                 ))}
-            </Panel>
+            </Section>
           )}
         </>
       )}
       {tab === 'documents' && (
         <>
-          <Panel>
+          <Section
+            title="Documents"
+            help="Versioned notes you can edit, export, or revise from the chat. Deleting a document removes its versions."
+          >
             <Field
               accessibilityLabel="New document title"
               placeholder="Document title"
@@ -502,7 +508,7 @@ export function WorkspacePage() {
             >
               Create document
             </Button>
-          </Panel>
+          </Section>
           {documents.data?.map((d) => (
             <Button key={d.id} secondary onPress={() => setDoc(d)}>
               {d.title} · v{d.version}
@@ -537,7 +543,10 @@ export function WorkspacePage() {
         </>
       )}
       {tab === 'search' && (
-        <>
+        <Section
+          title="Search messages"
+          help="Finds words in your messages across chats and opens the matching message."
+        >
           <Field
             accessibilityLabel="Search message content"
             placeholder="Search all message text"
@@ -559,7 +568,7 @@ export function WorkspacePage() {
           </Button>
           <ErrorNotice error={results.error} />
           {results.data?.map((r) => (
-            <Panel key={r.id}>
+            <View key={r.id} style={{ gap: 6 }}>
               <Copy>{r.title}</Copy>
               <Copy translate={false}>{r.snippet}</Copy>
               <Button
@@ -573,7 +582,7 @@ export function WorkspacePage() {
               >
                 Open matching message
               </Button>
-            </Panel>
+            </View>
           ))}
           {results.data?.length === 0 && <Copy>No matching messages.</Copy>}
           <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -588,15 +597,14 @@ export function WorkspacePage() {
               </Button>
             )}
           </View>
-        </>
+        </Section>
       )}
       {tab === 'schedules' && (
         <>
-          <Copy>
-            Runs continue on the server. Results and confirmation requests appear in Notifications.
-            External actions still need your approval.
-          </Copy>
-          <Panel>
+          <Section
+            title="Scheduled tasks"
+            help="Runs continue on the server. Results and confirmation requests appear in Notifications. External actions still need your approval."
+          >
             <Field
               accessibilityLabel="Scheduled task title"
               placeholder="Task title"
@@ -753,10 +761,10 @@ export function WorkspacePage() {
               Daily or weekly. A missed period is coalesced into one run. The budget guards
               estimated model submissions; provider billing may differ.
             </Copy>
-          </Panel>
+          </Section>
           <ErrorNotice error={schedules.error} />
           {schedules.data?.map((s) => (
-            <Panel key={s.id}>
+            <View key={s.id} style={{ gap: 8 }}>
               <Copy>
                 {s.title} ·{' '}
                 {s.paused
@@ -814,16 +822,19 @@ export function WorkspacePage() {
                     )}
                   </View>
                 ))}
-            </Panel>
+            </View>
           ))}
         </>
       )}
       {tab === 'notifications' && (
-        <>
+        <Section
+          title="Notifications"
+          help="Results from scheduled tasks. Open a result to read it in the chat."
+        >
           <ErrorNotice error={notices.error} />
           {notices.data?.length === 0 && <Copy>No notifications yet.</Copy>}
           {notices.data?.map((n) => (
-            <Panel key={n.id}>
+            <View key={n.id} style={{ gap: 6 }}>
               <Copy>
                 {n.read_at ? '' : '● '}
                 {n.title}
@@ -840,9 +851,9 @@ export function WorkspacePage() {
               >
                 {n.conversation_id ? 'Open result' : 'Mark read'}
               </Button>
-            </Panel>
+            </View>
           ))}
-        </>
+        </Section>
       )}
     </View>
   );
