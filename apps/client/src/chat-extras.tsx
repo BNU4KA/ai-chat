@@ -127,7 +127,6 @@ export function ChatExtras({
       .catch(setError)
       .finally(() => setBusy(false));
 
-    // A new save request must create exactly one document, independent of chat refetches.
   }, [documentSeed?.key]);
   async function patch(body: unknown) {
     if (!chat) return;
@@ -152,7 +151,7 @@ export function ChatExtras({
         ...(open
           ? {
               position: 'absolute',
-              top: 72,
+              top: 60,
               bottom: 0,
               right: 0,
               ...(wide ? { width: 420 } : { left: 0 }),

@@ -1,36 +1,49 @@
 import { Pressable, Text } from './locale-ui';
+import { View } from 'react-native';
 import { useTheme } from './theme';
 import { Copy } from './ui';
 import type { Model } from './types';
+
+interface ModelListProps {
+  models: Model[];
+  selected: string | null;
+  onSelect: (model: Model) => void;
+}
+
 export function ModelList({
   models,
   selected,
   onSelect,
-}: {
-  models: Model[];
-  selected: string | null;
-  onSelect: (model: Model) => void;
-}) {
+}: ModelListProps) {
   const { colors: c } = useTheme();
   return (
-    <>
+    <View testID="selection-list" style={{ gap: 2 }}>
       {models.map((model) => (
         <Pressable
           key={model.id}
+          testID="selection-list-item"
           accessibilityRole="button"
+          accessibilityState={{ selected: selected === model.id }}
           onPress={() => onSelect(model)}
-          style={{
-            padding: 14,
-            borderRadius: 10,
-            borderWidth: 1,
-            borderColor: selected === model.id ? c.accent : c.border,
-            backgroundColor: selected === model.id ? c.raised : c.surface,
+          style={({ hovered, pressed }) => ({
+            minHeight: 44,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            borderRadius: 14,
+            backgroundColor:
+              selected === model.id ? c.selected : hovered || pressed ? c.hover : 'transparent',
             gap: 4,
-          }}
+          })}
         >
-          <Text translate={false} style={{ color: c.text, fontSize: 16, fontWeight: '600' }}>
-            {model.name}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text
+              translate={false}
+              style={{ color: c.text, flex: 1, fontSize: 16, fontWeight: '600' }}
+            >
+              {model.name}
+            </Text>
+            {selected === model.id ? <Text style={{ color: c.text }}>✓</Text> : null}
+          </View>
           <Copy small muted>
             {model.supports_tools ? 'Tools supported' : 'Text chat'}
             {model.supports_images ? ' · Photos' : ''} ·{' '}
@@ -43,6 +56,6 @@ export function ModelList({
           </Copy>
         </Pressable>
       ))}
-    </>
+    </View>
   );
 }

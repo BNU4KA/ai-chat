@@ -1,9 +1,19 @@
 import { Pressable, Text } from './locale-ui';
-import { FoolSpinner } from './fool-spinner';
 import { useEffect, useRef, useState, type ComponentRef, type ReactNode } from 'react';
-import { Modal, Platform, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import {
+  Animated,
+  Easing,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ActivityMark, Skeleton, SkeletonGroup } from './skeleton';
+import { useReducedMotion } from './motion';
 import { useTheme } from './theme';
 import { ErrorNotice, Field } from './ui';
 import type { Conversation } from './types';
@@ -21,8 +31,8 @@ export function useSidebarTransition() {
   return Platform.OS === 'web'
     ? {
         transitionProperty: 'width' as const,
-        transitionDuration: reduced ? '0ms' : '240ms',
-        transitionTimingFunction: 'cubic-bezier(0.2, 0, 0, 1)' as const,
+        transitionDuration: reduced ? '0ms' : '180ms',
+        transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)' as const,
       }
     : {};
 }
@@ -157,6 +167,7 @@ function NavIcon({
 export function ConversationSidebar(props: SidebarProps) {
   const { colors: c } = useTheme();
   const inset = useSafeAreaInsets();
+  const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
   const input = useRef<ComponentRef<typeof Field>>(null);
   const [menu, setMenu] = useState<{ item: Conversation; x: number; y: number } | null>(null);
   const transition = useSidebarTransition();
@@ -178,15 +189,17 @@ export function ConversationSidebar(props: SidebarProps) {
         styles.sidebar,
         !props.mobile && transition,
         {
-          width: props.mobile ? '100%' : props.expanded ? 280 : 72,
+          width: props.mobile ? '100%' : props.expanded ? 260 : 60,
           backgroundColor: c.sidebar,
           overflow: 'hidden',
+          borderRightWidth: props.mobile ? 0 : 1,
+          borderRightColor: c.border,
           paddingTop: props.mobile ? Math.max(inset.top, 12) : 12,
           paddingBottom: props.mobile ? Math.max(inset.bottom, 12) : 12,
         },
       ]}
     >
-      <View style={[styles.topRow, props.expanded && !props.mobile && { width: 256 }]}>
+      <View style={[styles.topRow, props.expanded && !props.mobile && { width: 236 }]}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={
@@ -230,8 +243,7 @@ export function ConversationSidebar(props: SidebarProps) {
             alignSelf: props.expanded ? 'flex-start' : 'center',
             paddingHorizontal: props.expanded ? 14 : 10,
             backgroundColor: pressed || hovered ? c.hover : 'transparent',
-            borderWidth: 1,
-            borderColor: c.border,
+            borderWidth: 0,
             opacity: props.busy ? 0.5 : 1,
           },
         ]}
@@ -242,7 +254,7 @@ export function ConversationSidebar(props: SidebarProps) {
         )}
       </Pressable>
       {props.expanded ? (
-        <View style={[styles.history, !props.mobile && { width: 256 }]}>
+        <View style={[styles.history, !props.mobile && { width: 236 }]}>
           <Field
             ref={input}
             onFocus={props.onSearchFocus}
@@ -328,7 +340,13 @@ export function ConversationSidebar(props: SidebarProps) {
                       };
                       const place = (x: number, y: number) =>
                         setMenu((current) =>
-                          current?.item.id === item.id ? null : { item, x, y },
+                          current?.item.id === item.id
+                            ? null
+                            : {
+                                item,
+                                x: Math.max(8, Math.min(x, viewportWidth - 232)),
+                                y: Math.max(8, Math.min(y, viewportHeight - 112)),
+                              },
                         );
                       if (node.getBoundingClientRect) {
                         const rect = node.getBoundingClientRect();
@@ -338,8 +356,8 @@ export function ConversationSidebar(props: SidebarProps) {
                       node.measureInWindow?.((x, y, width) => place(x + width + 8, y));
                     }}
                     style={{
-                      width: 28,
-                      height: 28,
+                      width: 44,
+                      height: 44,
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}
@@ -350,7 +368,11 @@ export function ConversationSidebar(props: SidebarProps) {
               </View>
             ))}
             {props.loading && (
-              <FoolSpinner size={28} label="Loading conversations" style={{ marginTop: 12 }} />
+              <SkeletonGroup label="Loading conversations" style={styles.loading}>
+                <Skeleton height={36} />
+                <Skeleton height={36} />
+                <Skeleton width="72%" height={36} />
+              </SkeletonGroup>
             )}
             <ErrorNotice error={props.error} />
             {!props.loading && !props.error && !props.conversations.length && (
@@ -366,9 +388,11 @@ export function ConversationSidebar(props: SidebarProps) {
                 onPress={props.onMore}
                 style={styles.chatRow}
               >
-                <Text style={{ color: c.muted, fontSize: 13 }}>
-                  {props.loadingMore ? 'Loading…' : 'Show more'}
-                </Text>
+                {props.loadingMore ? (
+                  <ActivityMark label="Loading conversations" />
+                ) : (
+                  <Text style={{ color: c.muted, fontSize: 13 }}>Show more</Text>
+                )}
               </Pressable>
             )}
           </ScrollView>
@@ -428,7 +452,7 @@ export function ConversationSidebar(props: SidebarProps) {
       <Modal
         visible={menu !== null}
         transparent
-        animationType="none"
+        animationType={Platform.OS === 'web' ? 'none' : 'fade'}
         onRequestClose={() => setMenu(null)}
       >
         <Pressable
@@ -439,38 +463,55 @@ export function ConversationSidebar(props: SidebarProps) {
         />
         {menu && (
           <View
+            testID="dropdown-menu"
+            accessibilityRole="menu"
             style={{
               position: 'absolute',
               left: menu.x,
               top: menu.y,
-              width: 196,
-              borderRadius: 14,
+              width: 224,
+              borderRadius: 20,
               backgroundColor: c.surface,
               borderWidth: 1,
               borderColor: c.border,
-              padding: 4,
+              padding: 7,
               gap: 2,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 8 },
+              shadowOpacity: 0.12,
+              shadowRadius: 32,
+              elevation: 12,
             }}
           >
             <Pressable
-              accessibilityRole="button"
+              accessibilityRole="menuitem"
               onPress={() => {
                 const item = menu.item;
                 setMenu(null);
                 props.onRename(item);
               }}
-              style={styles.chatRow}
+              style={({ hovered, pressed }) => [
+                styles.chatRow,
+                {
+                  backgroundColor: hovered || pressed ? c.hover : 'transparent',
+                },
+              ]}
             >
               <Text style={{ color: c.text, fontSize: 13 }}>Rename conversation</Text>
             </Pressable>
             <Pressable
-              accessibilityRole="button"
+              accessibilityRole="menuitem"
               onPress={() => {
                 const item = menu.item;
                 setMenu(null);
                 props.onDelete(item);
               }}
-              style={styles.chatRow}
+              style={({ hovered, pressed }) => [
+                styles.chatRow,
+                {
+                  backgroundColor: hovered || pressed ? c.hover : 'transparent',
+                },
+              ]}
             >
               <Text style={{ color: c.danger, fontSize: 13 }}>Delete conversation</Text>
             </Pressable>
@@ -491,6 +532,10 @@ export function ConversationDrawer({
   children: ReactNode;
 }) {
   const { width } = useWindowDimensions();
+  const reduced = useReducedMotion();
+  const [mounted, setMounted] = useState(visible);
+  const progress = useRef(new Animated.Value(visible ? 1 : 0)).current;
+  const previousVisible = useRef(false);
   useEffect(() => {
     if (!visible || Platform.OS !== 'web') return;
     function key(event: KeyboardEvent) {
@@ -499,26 +544,93 @@ export function ConversationDrawer({
     document.addEventListener('keydown', key);
     return () => document.removeEventListener('keydown', key);
   }, [visible, close]);
+  useEffect(() => {
+    const opening = visible && !previousVisible.current;
+    const closing = !visible && previousVisible.current;
+    previousVisible.current = visible;
+    if (visible) {
+      setMounted(true);
+      if (reduced) {
+        progress.stopAnimation();
+        progress.setValue(1);
+        return;
+      }
+      if (!opening) return;
+      progress.stopAnimation();
+      progress.setValue(0);
+      Animated.timing(progress, {
+        toValue: 1,
+        duration: 180,
+        easing: Easing.bezier(0.2, 0.8, 0.2, 1),
+        useNativeDriver: Platform.OS !== 'web',
+      }).start();
+      return;
+    }
+    if (!mounted || !closing) return;
+    progress.stopAnimation();
+    if (reduced) {
+      progress.setValue(0);
+      setMounted(false);
+      return;
+    }
+    const animation = Animated.timing(progress, {
+      toValue: 0,
+      duration: 150,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: Platform.OS !== 'web',
+    });
+    animation.start();
+    const timer = setTimeout(() => setMounted(false), 150);
+    return () => {
+      animation.stop();
+      clearTimeout(timer);
+    };
+  }, [mounted, progress, reduced, visible]);
   return (
     <Modal
-      visible={visible}
+      visible={mounted}
       transparent
       animationType="none"
       onRequestClose={close}
       statusBarTranslucent
     >
       <View style={{ flex: 1, flexDirection: 'row' }}>
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFill,
+            { backgroundColor: '#00000070', opacity: progress, zIndex: 0 },
+          ]}
+        />
         <Pressable
+          testID="conversation-drawer-backdrop"
           accessibilityRole="button"
           accessibilityLabel="Dismiss conversation history"
           onPress={close}
-          style={[StyleSheet.absoluteFill, { backgroundColor: '#00000070' }]}
+          style={{
+            bottom: 0,
+            left: Math.min(300, width - 40),
+            position: 'absolute',
+            right: 0,
+            top: 0,
+            zIndex: 3,
+          }}
         />
-        <View
+        <Animated.View
+          testID="conversation-drawer-panel"
           accessibilityViewIsModal
           style={{
-            width: Math.min(320, width - 48),
+            width: Math.min(300, width - 40),
             height: '100%',
+            zIndex: 2,
+            transform: [
+              {
+                translateX: progress.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [-Math.min(300, width - 40), 0],
+                }),
+              },
+            ],
             shadowColor: '#000',
             shadowOffset: { width: 6, height: 0 },
             shadowOpacity: 0.18,
@@ -527,19 +639,19 @@ export function ConversationDrawer({
           }}
         >
           {children}
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );
 }
 const styles = StyleSheet.create({
-  sidebar: { height: '100%', paddingHorizontal: 12 },
+  sidebar: { height: '100%', paddingHorizontal: 8 },
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     height: 44,
-    marginBottom: 24,
+    marginBottom: 12,
   },
   icon: { width: 24, height: 28, alignItems: 'center', justifyContent: 'center' },
   iconButton: {
@@ -553,9 +665,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    height: 48,
-    borderRadius: 24,
-    marginBottom: 24,
+    height: 40,
+    borderRadius: 8,
+    marginBottom: 12,
   },
   history: { flex: 1, gap: 10 },
   chatRow: {
@@ -564,7 +676,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 12,
     gap: 10,
-    borderRadius: 22,
+    borderRadius: 8,
   },
   footer: { gap: 4, paddingTop: 10 },
   footerRow: {
@@ -573,6 +685,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     paddingHorizontal: 9,
-    borderRadius: 22,
+    borderRadius: 8,
+  },
+  loading: {
+    marginTop: 12,
+    paddingHorizontal: 4,
   },
 });

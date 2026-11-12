@@ -1,8 +1,8 @@
 import { Pressable, Text } from './locale-ui';
-import { FoolSpinner } from './fool-spinner';
 import { Image, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { api } from './api';
+import { ActivityMark } from './skeleton';
 import { useTheme } from './theme';
 import type { FileRecord } from './types';
 const failures: Record<string, string> = {
@@ -101,8 +101,7 @@ export function Attachment({
           </View>
         </Pressable>
         {!ready && !failed && (
-          <FoolSpinner
-            size={24}
+          <ActivityMark
             label={file?.status === 'processing' ? 'Reading file' : 'Uploading file'}
           />
         )}

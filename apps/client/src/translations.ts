@@ -213,6 +213,14 @@ export const russian: Record<string, string> = {
   'Hello,': 'Привет,',
   there: 'друг',
   'What’s on your mind?': 'О чём хотите поговорить?',
+  'What can I help with?': 'Чем я могу помочь?',
+  'AI can make mistakes. Review external actions before confirming.':
+    'ИИ может ошибаться. Проверяйте внешние действия перед подтверждением.',
+  'Welcome to AI Chat': 'Добро пожаловать в AI Chat',
+  'Sign in to continue to your conversations, models, and connected tools.':
+    'Войдите, чтобы продолжить работу с диалогами, моделями и подключёнными инструментами.',
+  'Google sign-in only identifies your account. Gmail and Calendar access are requested separately when you connect those tools.':
+    'Вход через Google только подтверждает вашу учётную запись. Доступ к Gmail и Календарю запрашивается отдельно при подключении этих инструментов.',
   'Ask AI Chat': 'Спросите AI Chat',
   Message: 'Сообщение',
   Tools: 'Инструменты',

@@ -1,6 +1,6 @@
-import { createElement, useMemo, useState } from 'react';
-import { Platform, ScrollView, View } from 'react-native';
-import { useLocale } from './locale';
+import { useMemo, useState } from 'react';
+import { ScrollView, View } from 'react-native';
+import { Pressable, Text } from './locale-ui';
 import { useTheme } from './theme';
 import { Dialog } from './dialog';
 import { Button, Copy, Field } from './ui';
@@ -13,51 +13,31 @@ function zoneNames(current: string) {
   return current && !all.includes(current) ? [current, ...all] : all;
 }
 
-export function TimezoneSelect({
-  label,
-  value,
-  onChange,
-}: {
+interface TimezoneSelectProps {
   label: string;
   value: string;
   onChange: (value: string) => void;
-}) {
-  const { t } = useLocale();
+}
+
+export function TimezoneSelect({ label, value, onChange }: TimezoneSelectProps) {
   const { colors: c } = useTheme();
   const zones = useMemo(() => zoneNames(value), [value]);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const shown = zones.filter((zone) => zone.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 40);
-  if (Platform.OS === 'web') {
-    return (
-      <View style={{ gap: 6 }}>
-        <Copy small>{label}</Copy>
-        {createElement(
-          'select',
-          {
-            'aria-label': t(label),
-            value: value || 'UTC',
-            onChange: (event: { target: { value: string } }) => onChange(event.target.value),
-            style: {
-              minHeight: 40,
-              width: '100%',
-              borderRadius: 10,
-              border: `1px solid ${c.border}`,
-              backgroundColor: c.background,
-              color: c.text,
-              fontSize: 14,
-              padding: '8px 12px',
-            },
-          },
-          zones.map((zone) => createElement('option', { key: zone, value: zone }, zone)),
-        )}
-      </View>
-    );
-  }
+  const shown = zones
+    .filter((zone) => zone.toLowerCase().includes(query.trim().toLowerCase()))
+    .slice(0, 40);
   return (
     <View style={{ gap: 6 }}>
       <Copy small>{label}</Copy>
-      <Button secondary label={label} onPress={() => setOpen(true)}>
+      <Button
+        secondary
+        label={label}
+        onPress={() => {
+          setQuery('');
+          setOpen(true);
+        }}
+      >
         {value || 'UTC'}
       </Button>
       <Dialog title={label} visible={open} close={() => setOpen(false)}>
@@ -69,19 +49,46 @@ export function TimezoneSelect({
           autoCapitalize="none"
           autoCorrect={false}
         />
-        <ScrollView style={{ maxHeight: 320 }} contentContainerStyle={{ gap: 6 }}>
-          {shown.map((zone) => (
-            <Button
-              key={zone}
-              secondary={zone !== value}
-              onPress={() => {
-                onChange(zone);
-                setOpen(false);
-              }}
-            >
-              {zone}
-            </Button>
-          ))}
+        <ScrollView
+          testID="selection-list"
+          style={{ maxHeight: 320 }}
+          contentContainerStyle={{ gap: 2 }}
+          keyboardShouldPersistTaps="handled"
+        >
+          {shown.map((zone) => {
+            const selected = zone === value;
+            return (
+              <Pressable
+                key={zone}
+                testID="selection-list-item"
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                onPress={() => {
+                  onChange(zone);
+                  setOpen(false);
+                }}
+                style={({ hovered, pressed }) => ({
+                  minHeight: 44,
+                  borderRadius: 14,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 8,
+                  backgroundColor: selected
+                    ? c.selected
+                    : hovered || pressed
+                      ? c.hover
+                      : 'transparent',
+                })}
+              >
+                <Text translate={false} style={{ color: c.text, flex: 1, fontSize: 14 }}>
+                  {zone}
+                </Text>
+                {selected ? <Text style={{ color: c.text }}>✓</Text> : null}
+              </Pressable>
+            );
+          })}
         </ScrollView>
       </Dialog>
     </View>

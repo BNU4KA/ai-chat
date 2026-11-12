@@ -651,3 +651,66 @@ workspace routes; this branch has the routes, and the published master API does 
 Checks: client `tsc --noEmit` passed. ESLint passed on the touched client files. Playwright desktop
 passed settings, the context-note sidebar, and Russian workspace navigation. Node v24.2.0.
 
+## T13 — ChatGPT UI/UX redesign — 2026-11-12
+
+Replaced the Gemini/tarot presentation with the owner-approved ChatGPT UI Kit direction while
+preserving existing client behavior and server contracts. The client now uses shared monochrome
+light/dark tokens, a 60/260 px responsive sidebar, a compact header, a floating composer,
+borderless assistant responses, restrained user bubbles, responsive dialogs, neutral skeletons,
+inline activity marks, compact attachments, and consistent settings/workspace surfaces. Desktop
+hover expansion still overlays chat without moving it; pinning, search focus retention, mobile
+drawer dismissal, streaming/reconnect, optimistic send, files, tools, approvals, sources,
+workspace, localization, reduced motion, and accessibility states remain intact.
+
+Removed the three tarot implementation files and all runtime references. No endpoint, database
+schema, provider behavior, dependency, or unsupported Figma capability was added. Voice and image
+generation remain outside scope. The updated UX contract records the new visual direction.
+
+Verification on Node v24.2.0:
+
+- Client `tsc --noEmit`: passed.
+- ESLint on all changed client and browser-test files: passed.
+- Unit suite: 49 passed across 14 files.
+- Full Playwright desktop/mobile-web suite: 36 passed, 2 opt-in live-health checks skipped.
+- Targeted post-adjustment attachment scenarios: 2 passed.
+- Production Expo web export: passed.
+- `git diff --check`: passed.
+
+The first sandboxed browser run could not launch Chrome because process control was denied; the
+same full suite passed outside that sandbox. No native device/build smoke, provider request,
+deployment, production migration, commit, or push was performed. T19 native/live acceptance and
+owner-reviewed release remain the next task.
+
+Follow-up browser comparison against the current public `chatgpt.com` found that the first dark
+palette was too light. Computed production styles use #000000 for the canvas/sidebar, #212121 for
+the composer, and a 15% white sidebar border. The client tokens and visual assertions now match
+those values. Eight focused desktop/mobile browser scenarios for the sidebar, localized home,
+workspace themes, and Russian workspace styling passed after the correction.
+
+The follow-up parity pass inspected the current anonymous ChatGPT composer and attempted two
+neutral prompts. Both public generations ended with ChatGPT's own “Chat stopped unexpectedly”,
+including one retry, so no authenticated successful-response state is claimed as live evidence.
+The client now matches the observed 52–60 px one-row composer geometry, 768 px content column,
+compact suggestion pills, 44 px circular send/stop controls, 18 px user bubble, role-label-free
+message layout, desktop sidebar divider, bounded mobile action menu, and rounded error state.
+
+Post-pass verification on Node v24.2.0: client `tsc --noEmit`, ESLint on the touched client and
+browser-test files, 49 unit tests across 14 files, 36 Playwright desktop/mobile-web scenarios
+with 2 opt-in health checks skipped, production Expo web export, and `git diff --check` passed.
+The final sidebar-menu regression passed separately on desktop and mobile after adding viewport
+clamping and a 44 px action target.
+
+The motion follow-up inspected the current public ChatGPT CSS and matched its loading/streaming
+behavior: skeletons now shimmer from -100% to 250% over 1.4 seconds on web and native, streamed
+text reveals the newest short segment without breaking citations or long unspaced scripts, and
+drawer, dialog, message, attachment, composer, button, and toast transitions use the same short
+restrained timing. The mobile drawer now animates both entrance and exit while remaining mounted
+for dismissal. Reduced-motion disables decorative movement without hiding toast content.
+
+Verification: client `tsc --noEmit`, ESLint on all motion-related files and browser tests,
+50 unit tests across 14 files, 36 Playwright desktop/mobile-web scenarios with 2 opt-in health
+checks skipped, production Expo web export, and `git diff --check` passed. The drawer regression
+also passed separately on desktop and mobile after the final lifecycle adjustment.
+
+The dropdown/menu parity pass matched ChatGPT popover motion: context menus scale in from 0.86 over 0.22s with a 20 px radius and soft shadow, selection lists use borderless hover/selected rows with checkmarks, Choice chips share the same soft selection surface, and timezone picking uses the same animated dialog list on every platform. Reduced-motion still collapses decorative transitions without hiding content.
+
