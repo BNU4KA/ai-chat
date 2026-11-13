@@ -123,5 +123,12 @@ export type AgentDeps = {
   now: () => Date;
   model: ModelAdapter;
   ports: ToolPorts;
-  loadKey: (ownerId: string) => Promise<{ version: number; apiKey: string } | null>;
+  loadKey: (
+    ownerId: string,
+  ) => Promise<{
+    version: number;
+    apiKey: string;
+    source?: 'personal' | 'managed';
+    managedKeyId?: string | null;
+  } | null>;
 };

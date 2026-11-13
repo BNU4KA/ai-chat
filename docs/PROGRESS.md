@@ -857,3 +857,22 @@ commit, or push):
 - `pnpm test:e2e --reporter=list`: 38 passed (`desktop` + `mobile-web`), 2 skipped (live health);
   verified side-positioned popover, tools dialog, thinking skeleton + transient tool pill, and
   updated screenshots visually inspected.
+
+## Admin panel — managed OpenRouter keys — 2026-11-13
+
+Administrators listed in `ADMIN_EMAILS` can store encrypted server OpenRouter keys, assign one
+key to a user, and schedule that user's existing account purge. Chat and the model catalog use
+the personal key when it exists, otherwise the assigned server key. Runs record `keySource` and
+`managedKeyId`. Ordinary clients never receive the server secret or its `last_four`.
+
+Checks on Node 26.13.0, local Postgres container `ai-chat-pg` at `127.0.0.1:54329` (synthetic
+keys only; no live OpenRouter call, no commit, no push):
+
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed.
+- `pnpm test`: 53 passed across 15 files.
+- `DATABASE_URL=postgres://postgres@127.0.0.1:54329/ai_chat pnpm test:integration`: 42 passed
+  across 7 files, including admin access, key priority, RLS denial for `app_api`, and
+  `account.purge` outbox insertion.
+- Browser pass of `/admin` was not run: the screen requires a signed-in admin session.
+- Hosted Supabase still needs `pnpm migrate` before this schema exists there.

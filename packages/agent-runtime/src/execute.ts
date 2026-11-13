@@ -26,6 +26,16 @@ import {
 import { parametersFor, recipientCount, toolDescriptions, toolSchemas } from './tools.ts';
 import type { AgentDeps, Checkpoint, ToolOutcome, ToolPorts } from './types.ts';
 
+function pinnedRunKey(row: Record<string, unknown>) {
+  const snap = (row.tool_snapshot ?? {}) as { keySource?: string; managedKeyId?: string | null };
+  const source = snap.keySource === 'managed' ? 'managed' : 'personal';
+  return {
+    source,
+    version: Number(row.credential_version),
+    managedKeyId: source === 'managed' && typeof snap.managedKeyId === 'string' ? snap.managedKeyId : null,
+  };
+}
+
 const SYSTEM = [
   'You are a concise, practical assistant.',
   'Answer directly and concretely with specific facts, steps, numbers, or examples.',
@@ -217,7 +227,15 @@ async function executeClaimedRun(
       );
       return;
     }
-    if (key.version !== Number(snapshot.credential_version)) {
+    const pin = pinnedRunKey(snapshot);
+    const actualSource = key.source ?? 'personal';
+    const actualManaged =
+      actualSource === 'managed' && typeof key.managedKeyId === 'string' ? key.managedKeyId : null;
+    if (
+      key.version !== pin.version ||
+      actualSource !== pin.source ||
+      actualManaged !== pin.managedKeyId
+    ) {
       await settle(
         runId,
         ownerId,

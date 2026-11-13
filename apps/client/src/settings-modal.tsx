@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Linking, Modal, Platform, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { useRouter, type Href } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Pressable, Text } from './locale-ui';
 import { useLocale, type LanguageChoice } from './locale';
@@ -58,6 +59,7 @@ export function SettingsContent({
   initialTab?: SettingsTab;
   onClose?: () => void;
 }) {
+  const router = useRouter();
   const { choice, saveLanguage, t } = useLocale();
   const [tab, setTab] = useState<SettingsTab>(initialTab);
   const [languageBusy, setLanguageBusy] = useState(false);
@@ -396,7 +398,11 @@ export function SettingsContent({
               description="Your key is encrypted on the server. Model requests use your OpenRouter balance. Other service costs are separate."
             >
               <Copy small muted>
-                {saved.data?.configured ? `Connected · ••••${saved.data.last_four}` : 'No key connected'}
+                {!saved.data?.configured
+                  ? 'No key connected'
+                  : saved.data.source === 'managed'
+                    ? 'Using an administrator key. Saving your own key overrides it.'
+                    : `Connected · ••••${saved.data.last_four ?? ''}`}
               </Copy>
               <Field
                 accessibilityLabel="OpenRouter API key"
@@ -414,7 +420,7 @@ export function SettingsContent({
                 <Button disabled={busy || !key.trim()} onPress={() => void saveKey()}>
                   {busy ? 'Validating…' : 'Save key'}
                 </Button>
-                {saved.data?.configured && (
+                {saved.data?.configured && saved.data.source !== 'managed' && (
                   <Button
                     secondary
                     onPress={() =>
@@ -541,6 +547,19 @@ export function SettingsContent({
               <Copy small muted>
                 {auth.session?.user.email}
               </Copy>
+              {profile.data?.is_admin && (
+                <View style={{ flexDirection: 'row' }}>
+                  <Button
+                    secondary
+                    onPress={() => {
+                      onClose?.();
+                      router.push('/admin' as Href);
+                    }}
+                  >
+                    Admin Panel
+                  </Button>
+                </View>
+              )}
               <View style={{ flexDirection: 'row' }}>
                 <Button secondary onPress={() => void auth.signOut()}>
                   Sign out

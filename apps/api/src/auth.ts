@@ -65,6 +65,22 @@ function claimsFrom(sub: unknown, payload: Record<string, unknown>): AccessClaim
   };
 }
 
+export function isAdminEmail(email?: string | null): boolean {
+  const normalized = email?.trim().toLowerCase();
+  if (!normalized) return false;
+  const allowed = (process.env.ADMIN_EMAILS ?? '')
+    .split(',')
+    .map((item) => item.trim().toLowerCase())
+    .filter((item) => item.length > 0);
+  return allowed.includes(normalized);
+}
+
+export function requireAdmin(request: { claims: AccessClaims }): void {
+  if (!isAdminEmail(request.claims.email)) {
+    throw new AppError(403, 'FORBIDDEN', 'Admin access required');
+  }
+}
+
 function allowAvatar(value: string | undefined): string | undefined {
   if (!value) return undefined;
   try {

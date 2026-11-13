@@ -25,7 +25,7 @@ import {
   deleteOpenRouter,
   eventsAfter,
   getConversation,
-  getOpenRouter,
+  getEffectiveOpenRouterStatus,
   getSnapshot,
   listConversations,
   listMessages,
@@ -33,6 +33,7 @@ import {
   listRuns,
   retryMessage,
   saveOpenRouter,
+  scheduleAccountDeletion,
   updateConversation,
   updateProfile,
   ensureProfile,
@@ -48,7 +49,8 @@ import {
 } from '@ai-chat/database';
 import { validateOpenRouterKey } from '@ai-chat/integrations';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
-import { verifyAccessToken, type AccessClaims } from './auth.ts';
+import { registerAdmin } from './admin.ts';
+import { isAdminEmail, verifyAccessToken, type AccessClaims } from './auth.ts';
 import { approvalDecisionSchema } from '@ai-chat/contracts';
 
 const PUBLIC = new Set([
@@ -187,7 +189,7 @@ export function buildServer(): FastifyInstance {
 
   app.get('/v1/profile', async (request) => {
     const row = await ensureProfile(request.ownerId, profileInput(request.claims));
-    return { data: profileDto(row) };
+    return { data: profileDto(row, request.claims) };
   });
 
   app.patch('/v1/profile', async (request) => {
@@ -201,7 +203,7 @@ export function buildServer(): FastifyInstance {
       timezone: body.timezone,
       locale: body.locale,
     });
-    return { data: profileDto(row) };
+    return { data: profileDto(row, request.claims) };
   });
 
   app.get('/v1/capabilities', async (request) => {
@@ -256,20 +258,7 @@ export function buildServer(): FastifyInstance {
   });
 
   app.get('/v1/credentials/openrouter', async (request) => {
-    const row = await getOpenRouter(request.ownerId);
-    return {
-      data: row
-        ? {
-            configured: Boolean(row.configured),
-            last_four: row.last_four ?? null,
-            status: row.configured ? 'valid' : 'missing',
-            version: Number(row.credential_version),
-            validated_at: row.validated_at
-              ? new Date(String(row.validated_at)).toISOString()
-              : null,
-          }
-        : { configured: false, last_four: null, status: 'missing', version: 0, validated_at: null },
-    };
+    return { data: await getEffectiveOpenRouterStatus(request.ownerId) };
   });
 
   app.put('/v1/credentials/openrouter', async (request) => {
@@ -295,6 +284,7 @@ export function buildServer(): FastifyInstance {
     return {
       data: {
         configured: true,
+        source: 'personal',
         last_four: saved.last_four,
         status: 'valid',
         version: Number(saved.credential_version),
@@ -553,35 +543,12 @@ export function buildServer(): FastifyInstance {
 
   app.delete('/v1/account', async (request, reply) => {
     deleteAccountSchema.parse(request.body ?? {});
-    const version = versionOf(request);
-    await withOwner(request.ownerId, async (tx) => {
-      const current = await tx.query(
-        'select version from profiles where id = $1 and deletion_requested_at is null for update',
-        [request.ownerId],
-      );
-      if (!current.rowCount) throw new AppError(404, 'NOT_FOUND', 'Profile not found');
-      if (Number(current.rows[0]?.version) !== version) {
-        throw new AppError(409, 'VERSION_CONFLICT', 'Profile was updated', {
-          version: Number(current.rows[0]?.version),
-        });
-      }
-      await tx.query(
-        `update profiles set deletion_requested_at = now(), version = version + 1, updated_at = now() where id = $1`,
-        [request.ownerId],
-      );
-      await tx.query(
-        `update runs set cancel_requested_at = coalesce(cancel_requested_at, now()), updated_at = now()
-         where status in ('queued', 'running', 'waiting_approval')`,
-      );
-      await tx.query(
-        `insert into outbox (owner_id, topic, payload) values ($1, 'account.purge', '{}'::jsonb)`,
-        [request.ownerId],
-      );
-    });
+    await scheduleAccountDeletion(request.ownerId, versionOf(request));
     reply.status(202);
     return { data: { deletion_status: 'scheduled' } };
   });
 
+  registerAdmin(app);
   registerWorkspace(app,versionOf);
   registerFiles(app, versionOf);
   registerGoogle(app, versionOf);
@@ -593,12 +560,16 @@ function profileInput(claims: AccessClaims) {
     displayName: claims.name ?? claims.email ?? null,
     avatarUrl: claims.avatar ?? null,
     timezone: 'UTC',
+    email: claims.email ?? null,
   };
 }
 
-function profileDto(row: Record<string, unknown>) {
+function profileDto(row: Record<string, unknown>, claims: AccessClaims) {
+  const email = (row.email as string | null) ?? claims.email ?? null;
   return {
     id: String(row.id),
+    email,
+    is_admin: isAdminEmail(claims.email ?? email),
     display_name: (row.display_name as string | null) ?? null,
     avatar_url: (row.avatar_url as string | null) ?? null,
     locale: row.locale === 'en' || row.locale === 'ru' ? row.locale : 'auto',

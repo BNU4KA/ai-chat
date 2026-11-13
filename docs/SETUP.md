@@ -14,6 +14,9 @@ pnpm setup:env
 The setup script creates a gitignored `.env` only if it is missing and generates a local
 AES-256-GCM encryption key. Keep that key backed up securely: replacing it makes existing
 encrypted credentials unreadable. Never put server secrets in `EXPO_PUBLIC_` variables.
+`ADMIN_EMAILS` is an optional comma-separated list of sign-in emails. Matching accounts,
+compared without case or surrounding spaces, can open the admin panel and manage server
+OpenRouter keys. An empty list grants admin access to nobody.
 
 ## Supabase and database
 

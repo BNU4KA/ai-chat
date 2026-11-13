@@ -17,12 +17,11 @@ import {
 } from '@ai-chat/services';
 import { executeRun } from '@ai-chat/agent-runtime';
 import {
-  credentialAad,
   databaseConnectionString,
   loadKeyring,
   markOutbox,
   open,
-  readOpenRouterSecret,
+  readEffectiveOpenRouterSecret,
   takeOutbox,
   purgeConversation,
   recoverExpiredRuns,
@@ -65,18 +64,40 @@ await boss.work('file.process', async (jobs) => {
 const model = createOpenRouterModel();
 const keyring = process.env.ENCRYPTION_KEYS ? loadKeyring(process.env.ENCRYPTION_KEYS) : null;
 
+function expectedRunKey(run: Record<string, unknown>) {
+  const snap = (run.tool_snapshot ?? {}) as { keySource?: string; managedKeyId?: string | null };
+  const source = snap.keySource === 'managed' ? 'managed' : 'personal';
+  return {
+    source,
+    version: Number(run.credential_version),
+    managedKeyId: source === 'managed' && typeof snap.managedKeyId === 'string' ? snap.managedKeyId : null,
+  };
+}
+
 async function readOwnerKey(ownerId: string) {
   if (!keyring) return null;
-  const stored = await readOpenRouterSecret(ownerId);
+  const stored = await readEffectiveOpenRouterSecret(ownerId);
   if (!stored) return null;
   return {
     version: stored.version,
-    apiKey: open(
-      keyring,
-      stored.sealed,
-      credentialAad(ownerId, 'openrouter', stored.version),
-    ),
+    source: stored.source,
+    managedKeyId: stored.managedKeyId,
+    apiKey: open(keyring, stored.sealed, stored.aad),
   };
+}
+
+async function readRunKey(ownerId: string, run: Record<string, unknown>) {
+  const key = await readOwnerKey(ownerId);
+  if (!key) return null;
+  const expected = expectedRunKey(run);
+  if (
+    key.version !== expected.version ||
+    key.source !== expected.source ||
+    key.managedKeyId !== expected.managedKeyId
+  ) {
+    return null;
+  }
+  return key;
 }
 
 await boss.work('run.execute', async (jobs) => {
@@ -105,7 +126,7 @@ await boss.work('run.execute', async (jobs) => {
           modelQuery,
           signal,
         }) => {
-          const key = await readOwnerKey(ownerId);
+          const key = await readRunKey(ownerId, run);
           if (!key) {
             return {
               ok: false,
@@ -167,7 +188,7 @@ await boss.work('run.execute', async (jobs) => {
             }
           }
           if (!hits) {
-            const key = await readOwnerKey(String(run.owner_id));
+            const key = await readRunKey(String(run.owner_id), run);
             if (!key) throw new Error('OpenRouter key is missing for web search');
             hits = await searchWebOpenRouter({
               apiKey: key.apiKey,

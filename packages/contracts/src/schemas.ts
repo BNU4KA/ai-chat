@@ -14,6 +14,8 @@ export const usageSchema = z.object({
 
 export const profileSchema = z.object({
   id: z.uuid(),
+  email: z.string().nullable(),
+  is_admin: z.boolean(),
   display_name: z.string().nullable(),
   avatar_url: z.string().nullable(),
   locale: z.enum(['auto', 'en', 'ru']),
@@ -35,11 +37,55 @@ export const profilePatchSchema = z
 
 export const credentialSchema = z.object({
   configured: z.boolean(),
+  source: z.enum(['personal', 'managed']).nullable(),
   last_four: z.string().nullable(),
   status: z.enum(['missing', 'valid']),
   version: z.number().int(),
   validated_at: timestamp.nullable(),
 });
+
+export const adminOpenRouterKeySchema = z.object({
+  id: z.uuid(),
+  label: z.string(),
+  last_four: z.string(),
+  version: z.number().int(),
+  validated_at: timestamp,
+  created_at: timestamp,
+  assigned_users_count: z.number().int(),
+});
+
+export const adminOpenRouterKeyCreateSchema = z
+  .object({
+    label: z.string().trim().min(1).max(80),
+    api_key: z.string().trim().min(1).max(400),
+  })
+  .strict();
+
+export const adminManagedKeyRefSchema = z.object({
+  id: z.uuid(),
+  label: z.string(),
+  last_four: z.string(),
+});
+
+export const adminUserSchema = z.object({
+  id: z.uuid(),
+  email: z.string().nullable(),
+  display_name: z.string().nullable(),
+  avatar_url: z.string().nullable(),
+  created_at: timestamp,
+  deletion_requested_at: timestamp.nullable(),
+  key_source: z.enum(['personal', 'managed', 'missing']),
+  has_personal_key: z.boolean(),
+  managed_key: adminManagedKeyRefSchema.nullable(),
+  conversations_count: z.number().int(),
+  total_cost_usd: z.string(),
+});
+
+export const adminAssignKeySchema = z
+  .object({
+    managed_key_id: z.uuid().nullable(),
+  })
+  .strict();
 
 export const credentialPutSchema = z
   .object({
