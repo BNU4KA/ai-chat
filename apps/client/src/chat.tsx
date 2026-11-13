@@ -1,41 +1,46 @@
 import { ModelList } from './model-list';
 import { transferDraft, consumeDraft } from './draft-transfer';
-import { useLocale } from './locale';
-import { Pressable, Text, type TextInput } from './locale-ui';
+import { Pressable, Text } from './locale-ui';
 import { useEffect, useRef, useState, type ComponentRef } from 'react';
 import {
   KeyboardAvoidingView,
   Linking,
   Platform,
   ScrollView,
+  StyleSheet,
   View,
   useWindowDimensions,
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, type Href } from 'expo-router';
 import { ChatExtras, PassageActions, RunUsage } from './chat-extras';
-import { Panels } from './panels';
 import { SourceCard } from './source-card';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Crypto from 'expo-crypto';
 import { api, apiEnvelope, json } from './api';
+import { useAuth } from './auth';
 import { useTheme } from './theme';
 import { useCredential, useCapabilities, useModels, useProfile } from './queries';
 import { useRun, activeStatus } from './use-run';
 import { Button, Copy, ErrorNotice, Field, Loading, Panel } from './ui';
 import { Dialog } from './dialog';
-import { ConversationSidebar, ConversationDrawer, useSidebarTransition } from './sidebar';
-import { ChatHeader } from './chat-header';
+import {
+  BRAND_NAME,
+  ConversationSidebar,
+  ConversationDrawer,
+  useSidebarTransition,
+} from './sidebar';
+import { SearchModal } from './search-modal';
+import { SettingsModal, type SettingsTab } from './settings-modal';
 import { Markdown } from './markdown';
 import { ApprovalCard } from './approval';
 import { Attachment } from './attachment';
 import { MessageActions } from './message-actions';
 import { ComposerFrame } from './composer-frame';
-import { Skeleton, SkeletonGroup } from './skeleton';
-import { ChatComposer } from './chat-composer';
-import { MessageList } from './message-list';
-import { ThinkingTrace } from './thinking';
-import { pickFile, uploadPicked } from './upload';
+import { FoolSpinner, ThinkingDot } from './fool-spinner';
+import { ChatGptIcon } from './chatgpt-icons';
+import { pickAndUpload } from './upload';
 import type { Conversation, Message, Run, FileRecord, Snapshot } from './types';
+
 type Group = 'web' | 'files' | 'gmail' | 'calendar';
 const groupLabels: Record<Group, string> = {
   web: 'Web research',
@@ -43,8 +48,9 @@ const groupLabels: Record<Group, string> = {
   gmail: 'Gmail',
   calendar: 'Google Calendar',
 };
+
 export function ChatWorkspace({ id: routeId }: { id?: string }) {
-  const { t } = useLocale();
+  const auth = useAuth();
   const params = useLocalSearchParams<{ draft?: string; project?: string; message?: string }>();
   const [documentSeed, setDocumentSeed] = useState<{ text: string; key: string }>();
   const [evidence, setEvidence] = useState<{ run: string; citation: string } | null>(null);
@@ -64,25 +70,23 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
   const sidebarTransition = useSidebarTransition();
   const [drawer, setDrawer] = useState(false);
   const [workToolsOpen, setWorkToolsOpen] = useState(false);
-  const [sidebarExpanded, setSidebarExpanded] = useState(false);
-  const [sidebarHovered, setSidebarHovered] = useState(false);
-  const [sidebarSearchFocused, setSidebarSearchFocused] = useState(false);
-  const [search, setSearch] = useState('');
+  const [sidebarExpanded, setSidebarExpanded] = useState(true);
+  const [searchModalOpen, setSearchModalOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(null);
+  const [passageOpenId, setPassageOpenId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
-  const draftRef = useRef<ComponentRef<typeof TextInput>>(null);
-  const [draftHeight, setDraftHeight] = useState(32);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
-  const [pendingFiles, setPendingFiles] = useState<{ id: string; name: string }[]>([]);
-  const [pendingMessage, setPendingMessage] = useState<Message | null>(null);
-  const [managed, setManaged] = useState<Conversation | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [composerFocused, setComposerFocused] = useState(false);
   const [dialog, setDialog] = useState<
     'models' | 'tools' | 'rename' | 'delete' | 'retry' | 'files' | null
   >(null);
+  const [targetChat, setTargetChat] = useState<Conversation | null>(null);
   const [modelSearch, setModelSearch] = useState('');
   const [title, setTitle] = useState('');
-  const [branchMessage, setBranchMessage] = useState<string | null>(null);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [atBottom, setAtBottom] = useState(true);
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
@@ -93,6 +97,14 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
   const credential = useCredential();
   const capabilities = useCapabilities();
   const models = useModels(!!credential.data?.configured);
+  const notices = useQuery({
+    queryKey: ['notices'],
+    queryFn: () => api<{ id: string; read_at: string | null }[]>('/v1/notices'),
+    refetchInterval: 15000,
+    retry: false,
+  });
+  const unreadNotices = (notices.data ?? []).filter((n) => !n.read_at).length;
+
   useEffect(() => {
     if (profile.data) setChoice(profile.data.theme);
   }, [profile.data, setChoice]);
@@ -101,17 +113,33 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     setSelectedFiles([]);
     setError(null);
     pending.current = null;
-    setPendingMessage((current) =>
-      current && routeId && current.conversation_id !== routeId ? null : current,
-    );
+    setEditingMessageId(null);
+    setPassageOpenId(null);
     setAtBottom(true);
   }, [routeId, profile.data?.id]);
+
+  // Global Cmd/Ctrl+K search shortcut & Escape to dismiss model popover
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setSearchModalOpen((v) => !v);
+      } else if (e.key === 'Escape' && dialog === 'models') {
+        e.preventDefault();
+        setDialog(null);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [dialog]);
+
   const history = useInfiniteQuery({
-    queryKey: ['conversations', search],
+    queryKey: ['conversations', ''],
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }) =>
       apiEnvelope<Conversation[]>(
-        `/v1/conversations?limit=30&query=${encodeURIComponent(search)}${pageParam ? '&cursor=' + encodeURIComponent(pageParam) : ''}`,
+        `/v1/conversations?limit=30${pageParam ? '&cursor=' + encodeURIComponent(pageParam) : ''}`,
       ),
     getNextPageParam: (page) => page.next_cursor ?? undefined,
     refetchInterval: 5000,
@@ -149,6 +177,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     queryFn: () => api<Message[]>(`/v1/messages/${params.message}/context`),
     enabled: !!params.message,
   });
+
   const latest = runs.data?.[0];
   const snapshot = useRun(latest?.id);
   const running = !!latest && activeStatus(snapshot.data?.run.status ?? latest.status);
@@ -165,6 +194,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
         file.detected_mime?.startsWith('image/') &&
         (selectedFiles.includes(file.id) || listHasFile(file.id)),
     );
+
   function listHasFile(fileId: string) {
     return (
       messages.data?.pages.some((page) =>
@@ -172,6 +202,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
       ) ?? false
     );
   }
+
   const list =
     messages.data?.pages
       .slice()
@@ -190,10 +221,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
       if (!visibleMessages.some((v) => v.id === m.id)) visibleMessages.push(m);
     visibleMessages.sort((a, b) => (BigInt(a.seq) < BigInt(b.seq) ? -1 : 1));
   }
-  const shown =
-    pendingMessage && !visibleMessages.some((message) => message.id === pendingMessage.id)
-      ? [...visibleMessages, pendingMessage]
-      : visibleMessages;
+
   async function ensureChat() {
     if (id) return id;
     if (creating.current) return creating.current;
@@ -216,11 +244,12 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     })();
     try {
       return await creating.current;
-    } catch (error) {
+    } catch (e) {
       creating.current = null;
-      throw error;
+      throw e;
     }
   }
+
   async function createChat() {
     creating.current = null;
     setCreatedChat(null);
@@ -230,12 +259,12 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     setDrawer(false);
     router.replace('/');
   }
-  async function patch(body: Partial<Conversation>) {
-    const target = managed ?? chat.data;
+
+  async function patch(body: Partial<Conversation>, explicitTarget?: Conversation | null) {
+    const target = explicitTarget ?? chat.data;
     if (!target) {
       if (body.model_id) setHomeModel(body.model_id);
       setDialog(null);
-      setManaged(null);
       return;
     }
     try {
@@ -243,15 +272,16 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
         `/v1/conversations/${target.id}`,
         json('PATCH', body, target.version),
       );
-      cache.setQueryData(['conversation', target.id], value);
+      if (target.id === id) cache.setQueryData(['conversation', id], value);
       void cache.invalidateQueries({ queryKey: ['conversations'] });
+      setTargetChat(null);
       setDialog(null);
-      setManaged(null);
     } catch (e) {
       setError(e);
-      void chat.refetch();
+      if (target.id === id) void chat.refetch();
     }
   }
+
   async function send() {
     if (
       sending.current ||
@@ -264,63 +294,43 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
       (!draft.trim() && !selectedFiles.length)
     )
       return;
-    const text = draft;
-    const fileIds = selectedFiles.slice();
-    const body = JSON.stringify({ text, file_ids: fileIds });
-    if (pending.current?.body !== body)
-      pending.current = { body, key: Crypto.randomUUID(), clientId: Crypto.randomUUID() };
-    const saved = pending.current;
-    if (!saved) return;
     sending.current = true;
     setBusy(true);
     setError(null);
-    setDraft('');
-    setSelectedFiles([]);
-    setPendingMessage({
-      id: saved.clientId,
-      conversation_id: id ?? '00000000-0000-4000-8000-000000000000',
-      run_id: null,
-      seq: '0',
-      role: 'user',
-      content: text,
-      status: 'complete',
-      file_ids: fileIds,
-      created_at: new Date().toISOString(),
-    });
-    setAtBottom(true);
     try {
       const targetId = await ensureChat();
-      setPendingMessage((current) =>
-        current?.id === saved.clientId ? { ...current, conversation_id: targetId } : current,
-      );
+      const body = JSON.stringify({ text: draft, file_ids: selectedFiles });
+      if (pending.current?.body !== body)
+        pending.current = { body, key: Crypto.randomUUID(), clientId: Crypto.randomUUID() };
+      const saved = pending.current;
       const value = await api<{ run: Run }>(
         `/v1/conversations/${targetId}/messages`,
         json(
           'POST',
-          { client_message_id: saved.clientId, text, file_ids: fileIds },
+          { client_message_id: saved.clientId, text: draft, file_ids: selectedFiles },
           undefined,
           saved.key,
         ),
       );
       pending.current = null;
+      setDraft('');
+      setSelectedFiles([]);
+      setAtBottom(true);
       cache.setQueryData(['runs', targetId], (old: Run[] | undefined) => [
         value.run,
         ...(old ?? []),
       ]);
       await cache.invalidateQueries({ queryKey: ['messages', targetId] });
-      setPendingMessage(null);
       if (!routeId) router.replace(`/chat/${targetId}`);
       void cache.invalidateQueries({ queryKey: ['conversations'] });
     } catch (e) {
-      setDraft(text);
-      setSelectedFiles(fileIds);
-      setPendingMessage(null);
       setError(e);
     } finally {
       setBusy(false);
       sending.current = false;
     }
   }
+
   async function stop() {
     if (!latest) return;
     try {
@@ -330,6 +340,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
       setError(e);
     }
   }
+
   async function retry() {
     setDialog(null);
     const user = [...visibleMessages].reverse().find((message) => message.role === 'user');
@@ -345,319 +356,335 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
       setBusy(false);
     }
   }
+
   async function upload() {
+    setUploading(true);
     setError(null);
-    const picked = await pickFile().catch((e: unknown) => {
-      setError(e);
-      return null;
-    });
-    if (!picked) return;
-    const localId = Crypto.randomUUID();
-    setPendingFiles((old) => [...old, { id: localId, name: picked.name }]);
     try {
-      const file = await uploadPicked(picked, ensureChat);
-      const targetId = file.conversation_id;
-      setSelectedFiles((old) => [...old, file.id]);
-      cache.setQueryData(['files', targetId], (old: FileRecord[] | undefined) => [
-        file,
-        ...(old ?? []).filter((item) => item.id !== file.id),
-      ]);
-      await cache.invalidateQueries({ queryKey: ['files', targetId] });
+      const file = await pickAndUpload(ensureChat);
+      if (file) {
+        const targetId = file.conversation_id;
+        setSelectedFiles((old) => [...old, file.id]);
+        cache.setQueryData(['files', targetId], (old: FileRecord[] | undefined) => [
+          file,
+          ...(old ?? []).filter((item) => item.id !== file.id),
+        ]);
+        await cache.invalidateQueries({ queryKey: ['files', targetId] });
+      }
     } catch (e) {
       setError(e);
     } finally {
-      setPendingFiles((old) => old.filter((item) => item.id !== localId));
+      setUploading(false);
     }
   }
+
   async function removeChat() {
-    const target = managed ?? chat.data;
+    const target = targetChat ?? chat.data;
     if (!target) return;
     try {
       await api(`/v1/conversations/${target.id}`, json('DELETE', undefined, target.version));
       setDialog(null);
-      setManaged(null);
+      setTargetChat(null);
       await cache.invalidateQueries({ queryKey: ['conversations'] });
       if (target.id === id) router.replace('/');
     } catch (e) {
       setError(e);
     }
   }
+
   const fileReady = selectedFiles.every((fileId) =>
     files.data?.some((file) => file.id === fileId && file.status === 'ready'),
   );
-  const composerInk = isDark ? '#ffffff' : c.text;
-  function fitDraft() {
-    const node = draftRef.current as unknown as {
-      style: { height: string };
-      scrollHeight: number;
-    } | null;
-    if (!node || Platform.OS !== 'web') return;
-    node.style.height = '0px';
-    const next = Math.min(200, Math.max(32, node.scrollHeight));
-    node.style.height = `${next}px`;
-    setDraftHeight((current) => (current === next ? current : next));
-  }
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    const frame = requestAnimationFrame(fitDraft);
-    return () => cancelAnimationFrame(frame);
-  }, [draft]);
-  const sendLocked =
-    busy ||
-    pendingFiles.length > 0 ||
-    !credential.data?.configured ||
-    !(chat.data?.model_id ?? homeModel) ||
-    incompatible ||
-    imageIncompatible ||
-    !fileReady ||
-    (!draft.trim() && !selectedFiles.length);
-  const composer = (
-    <ChatComposer
-      wide={wide}
-      reconnecting={snapshot.reconnecting}
-      credentialConfigured={!!credential.data?.configured}
-      incompatibleError={
-        incompatible
-          ? 'This model does not support the selected tools. Choose another model or turn off tools.'
-          : undefined
+  const canSend =
+    !busy &&
+    !uploading &&
+    !!credential.data?.configured &&
+    !!(chat.data?.model_id ?? homeModel) &&
+    !incompatible &&
+    !imageIncompatible &&
+    fileReady &&
+    (!!draft.trim() || !!selectedFiles.length);
+
+  const webEnabled = chat.data?.enabled_tools.includes('web') ?? true;
+  const webAvailable = capabilities.data?.tools.web === 'available';
+  const multilineComposer =
+    draft.includes('\n') || draft.length > (wide ? 54 : 26) || selectedFiles.length > 0;
+
+  const attachBtn = (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Attach photos or files"
+      disabled={
+        uploading ||
+        running ||
+        selectedFiles.length >= 5 ||
+        capabilities.data?.tools.files !== 'available'
       }
-      imageError={
-        imageIncompatible
-          ? 'This model cannot see photos. Choose a model with photo support.'
-          : undefined
-      }
-      error={error}
-      onOpenKey={() => router.setParams({ panel: 'key' })}
+      onPress={() => void upload()}
+      style={({ hovered, pressed }) => ({
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: hovered || pressed ? c.hover : 'transparent',
+        opacity:
+          uploading ||
+          running ||
+          selectedFiles.length >= 5 ||
+          capabilities.data?.tools.files !== 'available'
+            ? 0.4
+            : 1,
+      })}
     >
-      <ComposerFrame focused={composerFocused}>
-        {!!selectedFiles.length || !!pendingFiles.length ? (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {pendingFiles.map((file) => (
-              <View
-                key={file.id}
-                style={{
-                  maxWidth: 220,
-                  borderRadius: 16,
-                  borderWidth: 1,
-                  borderColor: c.border,
-                  paddingHorizontal: 12,
-                  paddingVertical: 8,
-                  gap: 2,
-                }}
-              >
-                <Text translate={false} numberOfLines={1} style={{ color: c.text, fontSize: 13 }}>
-                  {file.name}
-                </Text>
-                <Text style={{ color: c.muted, fontSize: 12 }}>Uploading…</Text>
-              </View>
-            ))}
-            {selectedFiles.map((fileId) => (
-              <Attachment
-                key={fileId}
-                id={fileId}
-                file={files.data?.find((file) => file.id === fileId)}
-                compact
-                onRemove={() => setSelectedFiles((old) => old.filter((value) => value !== fileId))}
-              />
-            ))}
-          </View>
-        ) : null}
-        <View style={{ flexDirection: 'row', gap: 6, alignItems: 'flex-end' }}>
-          <Pressable
-            testID="composer-attach"
-            accessibilityRole="button"
-            accessibilityLabel="Attach photos or files"
-            disabled={
-              pendingFiles.length > 0 ||
-              running ||
-              selectedFiles.length >= 5 ||
-              capabilities.data?.tools.files !== 'available'
-            }
-            onPress={() => void upload()}
-            style={({ pressed, hovered }) => ({
-              width: 44,
-              height: 44,
-              borderRadius: 22,
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: pressed || hovered ? c.hover : 'transparent',
-              opacity: pendingFiles.length > 0 ? 0.45 : 1,
-            })}
-          >
-            <Text style={{ color: composerInk, fontSize: 24, lineHeight: 26 }}>＋</Text>
-          </Pressable>
-          <Field
-            ref={draftRef}
-            accessibilityLabel="Message"
-            placeholder="Ask AI Chat"
-            value={draft}
-            onChangeText={setDraft}
-            multiline
-            onFocus={() => setComposerFocused(true)}
-            onBlur={() => setComposerFocused(false)}
-            onContentSizeChange={(event) => {
-              if (Platform.OS === 'web') return;
-              const next = Math.min(200, Math.max(32, event.nativeEvent.contentSize.height));
-              setDraftHeight((current) => (current === next ? current : next));
-            }}
-            style={{
-              borderWidth: 0,
-              flex: 1,
-              minWidth: 0,
-              height: draftHeight,
-              minHeight: 32,
-              maxHeight: 200,
-              backgroundColor: 'transparent',
-              outlineWidth: 0,
-              paddingHorizontal: 4,
-              paddingVertical: 4,
-            }}
-            onKeyPress={(event) => {
-              if (Platform.OS === 'web') {
-                const key = event.nativeEvent as unknown as {
-                  key: string;
-                  shiftKey?: boolean;
-                  isComposing?: boolean;
-                };
-                if (key.key === 'Enter' && !key.shiftKey && !key.isComposing) {
-                  event.preventDefault();
-                  void send();
-                }
-              }
-            }}
-          />
-          <Pressable
-            testID="composer-tools"
-            accessibilityRole="button"
-            accessibilityLabel="Choose tools"
-            onPress={() =>
-              void ensureChat()
-                .then(() => {
-                  setManaged(null);
-                  setDialog('tools');
-                })
-                .catch(setError)
-            }
-            style={({ pressed, hovered }) => ({
-              minHeight: 44,
-              width: wide ? undefined : 44,
-              paddingHorizontal: wide ? 12 : 0,
-              borderRadius: 22,
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: pressed || hovered ? c.hover : 'transparent',
-            })}
-          >
-            <Text style={{ color: composerInk, fontSize: wide ? 13 : 20, fontWeight: '600' }}>
-              {wide ? 'Tools' : '⋯'}
-            </Text>
-          </Pressable>
-          <Pressable
-            testID="composer-model"
-            accessibilityRole="button"
-            accessibilityLabel="Choose model"
-            onPress={() => {
-              setManaged(null);
-              setDialog('models');
-            }}
-            style={({ pressed, hovered }) => ({
-              minHeight: 44,
-              width: wide ? undefined : 44,
-              maxWidth: wide ? 200 : 44,
-              flexShrink: 1,
-              borderRadius: 22,
-              paddingHorizontal: wide ? 12 : 0,
-              justifyContent: 'center',
-              backgroundColor: pressed || hovered ? c.hover : 'transparent',
-            })}
-          >
-            <Text numberOfLines={1} style={{ color: composerInk, fontSize: wide ? 13 : 18 }}>
-              {wide
-                ? `${(currentModel?.name ?? 'Gemini 3.8 Flash').replace('Google: ', '')} ▾`
-                : '⌄'}
-            </Text>
-          </Pressable>
-          {running ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Stop"
-              onPress={() => void stop()}
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: 22,
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: c.send,
-              }}
-            >
-              <Text style={{ color: c.sendText, fontSize: 16, fontWeight: '700' }}>■</Text>
-            </Pressable>
-          ) : (
-            <Pressable
-              testID="composer-send"
-              accessibilityRole="button"
-              accessibilityLabel="Send ↑"
-              disabled={sendLocked}
-              onPress={() => void send()}
-              style={({ pressed }) => ({
-                width: 44,
-                height: 44,
-                borderRadius: 22,
-                flexShrink: 0,
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: c.send,
-                opacity: sendLocked ? 0.4 : 1,
-                transform: [{ scale: pressed ? 0.94 : 1 }],
-              })}
-            >
-              <Text style={{ fontSize: 20, color: c.sendText }}>↑</Text>
-            </Pressable>
-          )}
-        </View>
-      </ComposerFrame>
-    </ChatComposer>
+      {uploading ? (
+        <FoolSpinner size={20} label="Uploading attachment" />
+      ) : (
+        <ChatGptIcon name="plus" size={20} color={c.text} />
+      )}
+    </Pressable>
   );
+
+  const toolsBtn = (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Choose tools"
+      onPress={() =>
+        void ensureChat()
+          .then(() => setDialog('tools'))
+          .catch(setError)
+      }
+      style={({ hovered, pressed }) => ({
+        height: 34,
+        paddingHorizontal: 10,
+        borderRadius: 17,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        backgroundColor:
+          webEnabled && webAvailable
+            ? c.infoSoft
+            : hovered || pressed
+              ? c.hover
+              : 'transparent',
+      })}
+    >
+      <ChatGptIcon
+        name="globe"
+        size={15}
+        color={webEnabled && webAvailable ? c.info : c.muted}
+      />
+      <Text
+        style={{
+          fontSize: 13,
+          fontWeight: '500',
+          color: webEnabled && webAvailable ? c.info : c.muted,
+        }}
+      >
+        Tools
+      </Text>
+    </Pressable>
+  );
+
+  const actionBtn = running ? (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Stop"
+      onPress={() => void stop()}
+      style={({ pressed }) => ({
+        width: 34,
+        height: 34,
+        borderRadius: 17,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: c.accent,
+        opacity: pressed ? 0.8 : 1,
+      })}
+    >
+      <ChatGptIcon name="stop" size={14} color={c.accentText} />
+    </Pressable>
+  ) : (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Send ↑"
+      disabled={!canSend}
+      onPress={() => void send()}
+      style={({ pressed }) => ({
+        width: 34,
+        height: 34,
+        borderRadius: 17,
+        flexShrink: 0,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: canSend ? c.accent : isDark ? '#424242' : '#d7d7d7',
+        opacity: pressed && canSend ? 0.8 : 1,
+      })}
+    >
+      <ChatGptIcon
+        name="arrowUp"
+        size={17}
+        color={canSend ? c.accentText : isDark ? '#212121' : '#ffffff'}
+      />
+    </Pressable>
+  );
+
+  const inputField = (
+    <Field
+      accessibilityLabel="Message"
+      placeholder={`Ask ${BRAND_NAME}`}
+      value={draft}
+      onChangeText={setDraft}
+      multiline
+      onFocus={() => setComposerFocused(true)}
+      onBlur={() => setComposerFocused(false)}
+      style={{
+        flex: multilineComposer ? undefined : 1,
+        borderWidth: 0,
+        minHeight: multilineComposer ? 40 : 24,
+        height: multilineComposer ? undefined : 24,
+        maxHeight: 200,
+        backgroundColor: 'transparent',
+        outlineWidth: 0,
+        paddingHorizontal: 6,
+        paddingVertical: multilineComposer ? 6 : 0,
+        fontSize: 16,
+        lineHeight: 24,
+      }}
+      onKeyPress={(event) => {
+        if (Platform.OS === 'web') {
+          const key = event.nativeEvent as unknown as {
+            key: string;
+            shiftKey?: boolean;
+            isComposing?: boolean;
+          };
+          if (key.key === 'Enter' && !key.shiftKey && !key.isComposing) {
+            event.preventDefault();
+            void send();
+          }
+        }
+      }}
+    />
+  );
+
+  const composer = (
+    <View
+      style={{
+        width: '100%',
+        maxWidth: !routeId && !visibleMessages.length ? 680 : 792,
+        alignSelf: 'center',
+        paddingHorizontal: 12,
+        paddingBottom: wide ? 14 : 10,
+        paddingTop: 4,
+        gap: 8,
+      }}
+    >
+      {snapshot.reconnecting && (
+        <Copy small muted>
+          Connection interrupted. Reconnecting…
+        </Copy>
+      )}
+      {!credential.data?.configured && (
+        <Button secondary onPress={() => router.push('/onboarding/key')}>
+          Add your OpenRouter key to send a message
+        </Button>
+      )}
+      {incompatible && (
+        <ErrorNotice error="This model does not support the selected tools. Choose another model or turn off tools." />
+      )}
+      {!!selectedFiles.length && (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {selectedFiles.map((fileId) => (
+            <Attachment
+              key={fileId}
+              id={fileId}
+              file={files.data?.find((file) => file.id === fileId)}
+              compact
+              onRemove={() => setSelectedFiles((old) => old.filter((value) => value !== fileId))}
+            />
+          ))}
+        </View>
+      )}
+
+      <ComposerFrame focused={composerFocused} compact={!multilineComposer}>
+        {multilineComposer ? (
+          <>
+            {inputField}
+            <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+              {attachBtn}
+              {toolsBtn}
+              <View style={{ flex: 1 }} />
+              {actionBtn}
+            </View>
+          </>
+        ) : (
+          <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+            {attachBtn}
+            {inputField}
+            {toolsBtn}
+            {actionBtn}
+          </View>
+        )}
+      </ComposerFrame>
+
+      {imageIncompatible && (
+        <ErrorNotice error="This model cannot see photos. Choose a model with photo support." />
+      )}
+      <ErrorNotice error={error} />
+      <Text style={{ fontSize: 12, color: c.subtle, textAlign: 'center' }}>
+        Uses your OpenRouter balance. Review external actions before confirming.
+      </Text>
+    </View>
+  );
+
+  const conversations = history.data?.pages.flatMap((page) => page.data) ?? [];
+
   const sidebar = (mobile = false) => (
     <ConversationSidebar
       mobile={mobile}
-      expanded={mobile || sidebarExpanded || sidebarHovered || sidebarSearchFocused}
-      pinned={sidebarExpanded}
-      onSearchFocus={() => setSidebarSearchFocused(true)}
-      onSearchBlur={() => setSidebarSearchFocused(false)}
+      expanded={mobile || sidebarExpanded}
       selectedId={id}
-      conversations={history.data?.pages.flatMap((page) => page.data) ?? []}
-      search={search}
-      onSearch={setSearch}
+      conversations={conversations}
       onToggle={() => {
         if (mobile) setDrawer(false);
-        else {
-          setSidebarExpanded((value) => !value);
-          setSidebarHovered(false);
-          setSidebarSearchFocused(false);
-        }
+        else setSidebarExpanded((value) => !value);
       }}
       onNew={() => void createChat()}
+      onOpenSearch={() => {
+        setDrawer(false);
+        setSearchModalOpen(true);
+      }}
       onSelect={(conversationId) => {
         router.replace(`/chat/${conversationId}`);
         setDrawer(false);
       }}
       onRename={(item) => {
-        setManaged(item);
+        setTargetChat(item);
         setTitle(item.title);
         setDialog('rename');
       }}
       onDelete={(item) => {
-        setManaged(item);
+        setTargetChat(item);
         setDialog('delete');
+      }}
+      onWorkspace={(tab) => {
+        setDrawer(false);
+        router.push({ pathname: '/workspace', params: { tab } } as Href);
+      }}
+      onConnections={() => {
+        setDrawer(false);
+        setSettingsTab('connections');
       }}
       onSettings={() => {
         setDrawer(false);
-        router.setParams({ panel: 'settings' });
+        setSettingsTab('general');
+      }}
+      onSignOut={() => {
+        setDrawer(false);
+        void auth.signOut();
       }}
       displayName={profile.data?.display_name}
-      busy={busy || pendingFiles.length > 0}
+      unreadNotices={unreadNotices}
+      busy={busy || uploading}
       loading={history.isPending}
       loadingMore={history.isFetchingNextPage}
       error={history.error}
@@ -665,6 +692,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
       onMore={() => void history.fetchNextPage()}
     />
   );
+
   if (id && chat.isPending) return <Loading />;
   if (id && chat.isError)
     return (
@@ -674,23 +702,24 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
         <Button onPress={() => router.replace('/')}>Back to conversations</Button>
       </View>
     );
+
+  const modelLabel = (currentModel?.name ?? 'Gemini 3.8 Flash').replace('Google: ', '');
+
   return (
     <View style={{ flex: 1, flexDirection: 'row', backgroundColor: c.background }}>
       {wide && (
         <View
-          onPointerEnter={(event) => {
-            if (Platform.OS === 'web' && event.nativeEvent.pointerType === 'mouse')
-              setSidebarHovered(true);
-          }}
-          onPointerLeave={() => setSidebarHovered(false)}
           style={[
-            { width: sidebarExpanded ? 260 : 60, flexShrink: 0, zIndex: 20 },
+            { width: sidebarExpanded ? 260 : 52, flexShrink: 0, zIndex: 20 },
             sidebarTransition,
           ]}
         >
-          <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0 }}>{sidebar()}</View>
+          <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0 }}>
+            {sidebar()}
+          </View>
         </View>
       )}
+
       {evidence && (
         <Dialog visible title="Source evidence" close={() => setEvidence(null)}>
           {evidenceSnapshot.data?.sources
@@ -705,47 +734,214 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
           <ErrorNotice error={evidenceSnapshot.error} />
         </Dialog>
       )}
-      {branchMessage && (
-        <Dialog visible title="Edit message into a branch" close={() => setBranchMessage(null)}>
-          <Field
-            accessibilityLabel="Edited message"
-            multiline
-            value={title}
-            onChangeText={setTitle}
-          />
-          <Copy small>Original chat is preserved. Reattach any files explicitly.</Copy>
-          <Button
-            disabled={busy || !title.trim()}
-            onPress={() => {
-              setBusy(true);
-              void api<{ conversation_id: string; draft: string }>(
-                `/v1/messages/${branchMessage}/branch`,
-                json('POST', { text: title }),
-              )
-                .then((v) => {
-                  setBranchMessage(null);
-                  if (profile.data?.id) transferDraft(profile.data.id, v.conversation_id, v.draft);
-                  router.push({ pathname: '/chat/[id]', params: { id: v.conversation_id } });
-                })
-                .catch(setError)
-                .finally(() => setBusy(false));
-            }}
-          >
-            Create branch
-          </Button>
-        </Dialog>
-      )}
-      <View style={{ flex: 1, minWidth: 0, paddingRight: wide && workToolsOpen ? 420 : 0 }}>
-        <ChatHeader
-          wide={wide}
-          compactActions={width < 900}
-          title="AI Chat"
-          avatar={(profile.data?.display_name ?? 'A').slice(0, 1).toUpperCase()}
-          onOpenSidebar={() => setDrawer(true)}
-          onWorkTools={() => setWorkToolsOpen((open) => !open)}
-          onWorkspace={() => router.setParams({ panel: 'workspace', document: '' })}
-          onSettings={() => router.setParams({ panel: 'settings' })}
-        />
+
+      <View
+        style={{
+          flex: 1,
+          minWidth: 0,
+          paddingRight: wide && workToolsOpen ? 420 : 0,
+          position: 'relative',
+        }}
+      >
+        {/* ChatGPT 52px top header */}
+        <View
+          testID="chat-header"
+          style={{
+            height: 52,
+            paddingHorizontal: wide ? 16 : 10,
+            flexDirection: 'row',
+            gap: 8,
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            backgroundColor: c.background,
+            zIndex: 30,
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
+            {!wide && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Open conversation history"
+                onPress={() => setDrawer(true)}
+                style={({ hovered, pressed }) => ({
+                  width: 36,
+                  height: 36,
+                  borderRadius: 8,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: hovered || pressed ? c.hover : 'transparent',
+                })}
+              >
+                <ChatGptIcon name="sidebarHidden" size={18} color={c.muted} />
+              </Pressable>
+            )}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Choose model"
+              onPress={() => setDialog(dialog === 'models' ? null : 'models')}
+              style={({ hovered, pressed }) => ({
+                height: 38,
+                maxWidth: wide ? 360 : 210,
+                paddingHorizontal: 10,
+                borderRadius: 10,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                backgroundColor:
+                  dialog === 'models' ? c.hover : hovered || pressed ? c.hover : 'transparent',
+              })}
+            >
+              <Text
+                translate={false}
+                numberOfLines={1}
+                style={{ color: c.text, fontSize: 16, fontWeight: '600' }}
+              >
+                {modelLabel}
+              </Text>
+              <ChatGptIcon name="chevronDown" size={15} color={c.muted} />
+            </Pressable>
+          </View>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Work tools"
+              onPress={() => setWorkToolsOpen((v) => !v)}
+              style={({ hovered, pressed }) => ({
+                width: 34,
+                height: 34,
+                borderRadius: 8,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: workToolsOpen
+                  ? c.selected
+                  : hovered || pressed
+                    ? c.hover
+                    : 'transparent',
+              })}
+            >
+              <ChatGptIcon name="sliders" size={16} color={c.muted} />
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Projects & tasks"
+              onPress={() => router.push('/workspace' as Href)}
+              style={({ hovered, pressed }) => ({
+                width: 34,
+                height: 34,
+                borderRadius: 8,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: hovered || pressed ? c.hover : 'transparent',
+              })}
+            >
+              <ChatGptIcon name="projects" size={16} color={c.muted} />
+            </Pressable>
+            {!!id && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Conversation menu"
+                onPress={() => {
+                  setTargetChat(chat.data ?? null);
+                  setDialog('tools');
+                }}
+                style={({ hovered, pressed }) => ({
+                  width: 34,
+                  height: 34,
+                  borderRadius: 8,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: hovered || pressed ? c.hover : 'transparent',
+                })}
+              >
+                <ChatGptIcon name="dots" size={17} color={c.muted} />
+              </Pressable>
+            )}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Settings"
+              onPress={() => setSettingsTab('general')}
+              style={({ hovered }) => ({
+                width: 32,
+                height: 32,
+                borderRadius: 16,
+                backgroundColor: isDark ? '#7c3aed' : '#0d0d0d',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginLeft: 2,
+                opacity: hovered ? 0.85 : 1,
+              })}
+            >
+              <Text translate={false} style={{ color: '#ffffff', fontWeight: '600', fontSize: 13 }}>
+                {(profile.data?.display_name ?? 'A').slice(0, 1).toUpperCase()}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+
+        {/* Top-left floating Model Dropdown Popover (on desktop/wide) */}
+        {dialog === 'models' && wide && (
+          <>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close dialog"
+              onPress={() => setDialog(null)}
+              style={[StyleSheet.absoluteFill, { zIndex: 35 }]}
+            />
+            <View
+              testID="model-popover"
+              style={{
+                position: 'absolute',
+                top: 50,
+                left: 16,
+                width: 340,
+                maxHeight: 430,
+                backgroundColor: isDark ? '#2f2f2f' : '#ffffff',
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: c.border,
+                padding: 10,
+                gap: 8,
+                zIndex: 40,
+                ...(Platform.OS === 'web'
+                  ? {
+                      boxShadow: isDark
+                        ? '0 14px 40px rgba(0, 0, 0, 0.55)'
+                        : '0 10px 32px rgba(0, 0, 0, 0.14)',
+                    }
+                  : {}),
+              }}
+            >
+              <Field
+                accessibilityLabel="Search models"
+                placeholder="Search models"
+                value={modelSearch}
+                onChangeText={setModelSearch}
+                style={{ minHeight: 38, borderRadius: 10, fontSize: 14, paddingVertical: 6 }}
+              />
+              <ErrorNotice error={models.error} />
+              {models.isPending && credential.data?.configured && (
+                <FoolSpinner
+                  size={24}
+                  label="Loading models"
+                  style={{ alignSelf: 'center', marginVertical: 12 }}
+                />
+              )}
+              <ScrollView keyboardShouldPersistTaps="handled">
+                <ModelList
+                  models={(models.data ?? [])
+                    .filter((m) =>
+                      `${m.name} ${m.id}`.toLowerCase().includes(modelSearch.toLowerCase()),
+                    )
+                    .slice(0, 60)}
+                  selected={chat.data?.model_id ?? homeModel}
+                  onSelect={(model) => void patch({ model_id: model.id })}
+                />
+              </ScrollView>
+            </View>
+          </>
+        )}
+
         <ChatExtras
           chat={chat.data}
           messages={visibleMessages}
@@ -757,7 +953,8 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
           open={workToolsOpen}
           onOpenChange={setWorkToolsOpen}
         />
-        {!routeId && !shown.length ? (
+
+        {!routeId && !visibleMessages.length ? (
           <KeyboardAvoidingView
             style={{ flex: 1 }}
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -767,85 +964,61 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                 flexGrow: 1,
                 justifyContent: 'center',
                 alignItems: 'center',
-                padding: wide ? 28 : 16,
-                paddingBottom: wide ? 100 : 28,
+                paddingHorizontal: wide ? 24 : 12,
+                paddingBottom: wide ? 88 : 24,
               }}
               keyboardShouldPersistTaps="handled"
             >
               <View
                 style={{
                   width: '100%',
-                  maxWidth: 768,
-                  marginBottom: 20,
+                  maxWidth: 680,
+                  marginBottom: 24,
                   alignItems: 'center',
                 }}
               >
                 <Text
                   style={{
-                    fontSize: wide ? 30 : 26,
-                    lineHeight: wide ? 38 : 34,
-                    fontWeight: '600',
+                    fontSize: wide ? 28 : 24,
+                    lineHeight: wide ? 36 : 32,
+                    fontWeight: '500',
                     letterSpacing: -0.4,
-                    color: c.text,
+                    color: c.greeting,
                     textAlign: 'center',
                   }}
                 >
-                  What can I help with?
+                  Ready when you are.
                 </Text>
               </View>
               {composer}
-              <View
-                style={{
-                  width: '100%',
-                  maxWidth: 768,
-                  marginTop: 12,
-                  flexDirection: 'row',
-                  flexWrap: 'wrap',
-                  justifyContent: 'center',
-                  gap: 8,
-                }}
-              >
-                {['Summarize a document', 'Explain a photo', 'Help me write'].map((prompt) => (
-                  <Pressable
-                    key={prompt}
-                    accessibilityRole="button"
-                    onPress={() => setDraft(t(prompt))}
-                    style={({ pressed, hovered }) => ({
-                      paddingHorizontal: 12,
-                      paddingVertical: 8,
-                      borderWidth: 1,
-                      borderColor: c.border,
-                      borderRadius: 18,
-                      backgroundColor: pressed || hovered ? c.hover : c.surface,
-                    })}
-                  >
-                    <Text style={{ fontSize: 13, color: c.muted }}>{prompt}</Text>
-                  </Pressable>
-                ))}
-              </View>
             </ScrollView>
           </KeyboardAvoidingView>
         ) : (
           <KeyboardAvoidingView
-            style={{ flex: 1 }}
+            style={{ flex: 1, position: 'relative' }}
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           >
-            <MessageList
+            <ScrollView
               ref={scroll}
-              wide={wide}
-              atBottom={atBottom}
+              style={{ flex: 1 }}
+              contentContainerStyle={{
+                paddingHorizontal: wide ? 24 : 14,
+                paddingTop: 16,
+                paddingBottom: 28,
+                gap: 24,
+                maxWidth: 792,
+                width: '100%',
+                alignSelf: 'center',
+              }}
               onScroll={(event) => {
                 const n = event.nativeEvent;
                 setAtBottom(
                   n.contentOffset.y + n.layoutMeasurement.height >= n.contentSize.height - 100,
                 );
               }}
+              scrollEventThrottle={150}
               onContentSizeChange={() => {
                 if (atBottom && !params.message) scroll.current?.scrollToEnd({ animated: false });
-              }}
-              onJumpToLatest={() => {
-                setAtBottom(true);
-                scroll.current?.scrollToEnd();
               }}
             >
               {messages.hasNextPage && (
@@ -853,152 +1026,245 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                   Load earlier messages
                 </Button>
               )}
-              {!shown.length && (
-                <View style={{ paddingVertical: wide ? 80 : 40, gap: 20 }}>
+              {!visibleMessages.length && (
+                <View style={{ paddingVertical: wide ? 80 : 40, alignItems: 'center', gap: 14 }}>
                   <Text
                     style={{
-                      fontSize: wide ? 42 : 30,
-                      fontWeight: '400',
-                      letterSpacing: -1,
+                      fontSize: wide ? 28 : 24,
+                      fontWeight: '500',
+                      letterSpacing: -0.4,
                       color: c.greeting,
                     }}
                   >
-                    Start with a thought.
+                    Ready when you are.
                   </Text>
-                  <Copy muted>Ask a question, research a topic, or attach a document.</Copy>
-                  {[
-                    'Help me think through an idea',
-                    'Find recent sources about a topic',
-                    'Summarize a document',
-                  ].map((prompt) => (
-                    <Button key={prompt} secondary onPress={() => setDraft(t(prompt))}>
-                      {prompt}
-                    </Button>
-                  ))}
                 </View>
               )}
-              {shown.map((message) => (
-                <View
-                  key={message.id}
-                  testID="chat-message"
-                  onLayout={(event) => {
-                    if (params.message === message.id)
-                      scroll.current?.scrollTo({
-                        y: Math.max(0, event.nativeEvent.layout.y - 30),
-                        animated: false,
-                      });
-                  }}
-                  style={{
-                    alignSelf: message.role === 'user' ? 'flex-end' : 'stretch',
-                    maxWidth: message.role === 'user' ? '78%' : '100%',
-                    gap: 8,
-                    borderLeftWidth: params.message === message.id ? 3 : 0,
-                    borderColor: c.accent,
-                  }}
-                >
+              {visibleMessages.map((message) => {
+                const isUser = message.role === 'user';
+                const isEditing = isUser && editingMessageId === message.id;
+                const isStreamingText =
+                  !isUser && message.status === 'pending' && !!message.content;
+                return (
                   <View
-                    testID={
-                      message.role === 'user' ? 'user-message-bubble' : 'assistant-message-body'
-                    }
+                    key={message.id}
+                    testID="chat-message"
+                    onLayout={(event) => {
+                      if (params.message === message.id)
+                        scroll.current?.scrollTo({
+                          y: Math.max(0, event.nativeEvent.layout.y - 30),
+                          animated: false,
+                        });
+                    }}
                     style={{
-                      gap: 8,
-                      padding: message.role === 'user' ? 12 : 0,
-                      borderRadius: 18,
-                      backgroundColor: message.role === 'user' ? c.control : 'transparent',
+                      alignSelf: isUser ? (isEditing ? 'stretch' : 'flex-end') : 'stretch',
+                      maxWidth: isUser ? (isEditing ? '100%' : '78%') : '100%',
+                      gap: 6,
+                      paddingLeft: params.message === message.id ? 10 : 0,
+                      borderLeftWidth: params.message === message.id ? 3 : 0,
+                      borderColor: c.info,
                     }}
                   >
-                    {message.role === 'assistant' &&
-                      message.id === snapshot.data?.assistant_message.id && (
-                        <ThinkingTrace
-                          running={running && message.status === 'pending'}
-                          tools={snapshot.data.tool_calls}
-                          startedAt={snapshot.data.run.created_at}
-                          finishedAt={snapshot.data.run.finished_at}
-                        />
-                      )}
-                    {message.content ? (
-                      <Markdown
-                        text={message.content}
-                        smooth={
-                          message.role === 'assistant' &&
-                          running &&
-                          message.id === snapshot.data?.assistant_message.id
-                        }
-                        onCitation={
-                          message.run_id
-                            ? (id) => setEvidence({ run: message.run_id!, citation: id })
-                            : undefined
-                        }
-                      />
-                    ) : message.status === 'pending' &&
-                      message.id !== snapshot.data?.assistant_message.id ? (
-                      <ThinkingTrace running tools={[]} />
-                    ) : null}
-                    {message.file_ids.map((fileId) => (
-                      <Attachment
-                        key={fileId}
-                        id={fileId}
-                        file={files.data?.find((file) => file.id === fileId)}
-                        onOpen={() =>
-                          void api<{ url: string }>(`/v1/files/${fileId}/download`)
-                            .then((value) => Linking.openURL(value.url))
-                            .catch(setError)
-                        }
-                      />
-                    ))}
-                    {['partial', 'failed', 'cancelled'].includes(message.status) && (
-                      <Copy small muted>
-                        {message.status === 'cancelled'
-                          ? 'Cancelled — partial response'
-                          : message.status === 'failed'
-                            ? 'Response failed'
-                            : 'Incomplete response'}
-                      </Copy>
-                    )}
-                  </View>
-                  {message.role === 'assistant' &&
-                    message.status !== 'pending' &&
-                    !!message.content && (
-                      <PassageActions
-                        text={message.content}
-                        onDraft={setDraft}
-                        onSave={() =>
-                          setDocumentSeed({ text: message.content, key: Crypto.randomUUID() })
-                        }
-                      />
-                    )}
-                  {message.role === 'user' && (
-                    <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
-                      <Button
-                        quiet
-                        label="Edit into a new branch"
-                        disabled={running}
-                        onPress={() => {
-                          const text = message.content;
-                          setTitle(text);
-                          setBranchMessage(message.id);
+                    {isEditing ? (
+                      <View
+                        style={{
+                          padding: 14,
+                          borderRadius: 20,
+                          backgroundColor: c.userBubble,
+                          gap: 10,
                         }}
                       >
-                        ✎
-                      </Button>
-                    </View>
+                        <Field
+                          accessibilityLabel="Edited message"
+                          multiline
+                          value={editDraft}
+                          onChangeText={setEditDraft}
+                          style={{
+                            borderWidth: 0,
+                            backgroundColor: 'transparent',
+                            minHeight: 44,
+                            paddingHorizontal: 4,
+                            paddingVertical: 2,
+                            outlineWidth: 0,
+                          }}
+                        />
+                        <View
+                          style={{
+                            flexDirection: 'row',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            gap: 8,
+                            flexWrap: 'wrap',
+                          }}
+                        >
+                          <Copy small muted>
+                            Original chat is preserved. Reattach any files explicitly.
+                          </Copy>
+                          <View style={{ flexDirection: 'row', gap: 8 }}>
+                            <Button secondary onPress={() => setEditingMessageId(null)}>
+                              Cancel
+                            </Button>
+                            <Button
+                              disabled={busy || !editDraft.trim()}
+                              onPress={() => {
+                                setBusy(true);
+                                void api<{ conversation_id: string; draft: string }>(
+                                  `/v1/messages/${message.id}/branch`,
+                                  json('POST', { text: editDraft }),
+                                )
+                                  .then((v) => {
+                                    setEditingMessageId(null);
+                                    if (profile.data?.id)
+                                      transferDraft(profile.data.id, v.conversation_id, v.draft);
+                                    router.push({
+                                      pathname: '/chat/[id]',
+                                      params: { id: v.conversation_id },
+                                    });
+                                  })
+                                  .catch(setError)
+                                  .finally(() => setBusy(false));
+                              }}
+                            >
+                              Create branch
+                            </Button>
+                          </View>
+                        </View>
+                      </View>
+                    ) : (
+                      <View
+                        testID={isUser ? 'user-message-bubble' : 'assistant-message-body'}
+                        style={{
+                          gap: 10,
+                          paddingHorizontal: isUser ? 18 : 0,
+                          paddingVertical: isUser ? 11 : 0,
+                          borderRadius: 22,
+                          backgroundColor: isUser ? c.userBubble : 'transparent',
+                        }}
+                      >
+                        {message.content ? (
+                          <View style={{ gap: 6 }}>
+                            <Markdown
+                              text={message.content}
+                              onCitation={
+                                message.run_id
+                                  ? (cid) => setEvidence({ run: message.run_id!, citation: cid })
+                                  : undefined
+                              }
+                            />
+                            {isStreamingText && (
+                              <View
+                                testID="streaming-cursor"
+                                style={{
+                                  width: 10,
+                                  height: 10,
+                                  borderRadius: 5,
+                                  backgroundColor: c.text,
+                                }}
+                              />
+                            )}
+                          </View>
+                        ) : message.status === 'pending' ? (
+                          <View
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 10,
+                              paddingVertical: 6,
+                            }}
+                          >
+                            <ThinkingDot />
+                            <Text
+                              testID="chatgpt-thinking-text"
+                              style={{ fontSize: 14, color: c.muted }}
+                            >
+                              Thinking…
+                            </Text>
+                          </View>
+                        ) : null}
+                        {message.file_ids.map((fileId) => (
+                          <Attachment
+                            key={fileId}
+                            id={fileId}
+                            file={files.data?.find((file) => file.id === fileId)}
+                            onOpen={() =>
+                              void api<{ url: string }>(`/v1/files/${fileId}/download`)
+                                .then((value) => Linking.openURL(value.url))
+                                .catch(setError)
+                            }
+                          />
+                        ))}
+                        {['partial', 'failed', 'cancelled'].includes(message.status) && (
+                          <Copy small muted>
+                            {message.status === 'cancelled'
+                              ? 'Cancelled — partial response'
+                              : message.status === 'failed'
+                                ? 'Response failed'
+                                : 'Incomplete response'}
+                          </Copy>
+                        )}
+                      </View>
+                    )}
+
+                    {!isEditing &&
+                      (message.content || (!isUser && message.status !== 'pending')) && (
+                        <MessageActions
+                          text={message.content}
+                          assistant={!isUser}
+                          canRetry={
+                            !running &&
+                            message.id ===
+                              (snapshot.data?.run.assistant_message_id ??
+                                latest?.assistant_message_id)
+                          }
+                          busy={busy || running}
+                          onRetry={() => setDialog('retry')}
+                          onEdit={
+                            isUser
+                              ? () => {
+                                  setEditDraft(message.content);
+                                  setEditingMessageId(message.id);
+                                }
+                              : undefined
+                          }
+                          onWorkWithResponse={
+                            !isUser && message.status !== 'pending' && !!message.content
+                              ? () =>
+                                  setPassageOpenId((cur) => (cur === message.id ? null : message.id))
+                              : undefined
+                          }
+                          onSaveDocument={
+                            !isUser && message.status !== 'pending' && !!message.content
+                              ? () =>
+                                  setDocumentSeed({
+                                    text: message.content,
+                                    key: Crypto.randomUUID(),
+                                  })
+                              : undefined
+                          }
+                          onError={setError}
+                        />
+                      )}
+                    {!isUser && message.status !== 'pending' && !!message.content && (
+                      <PassageActions
+                        text={message.content}
+                        open={passageOpenId === message.id}
+                        onClose={() => setPassageOpenId(null)}
+                        onDraft={setDraft}
+                      />
+                    )}
+                  </View>
+                );
+              })}
+
+              {snapshot.data?.tool_calls.map((tool) => (
+                <Panel key={tool.id} style={{ padding: 12 }}>
+                  <Copy small muted>
+                    {tool.name.replaceAll('_', ' ')} · {tool.status}
+                  </Copy>
+                  {tool.status === 'unknown' && (
+                    <Copy small>Outcome unconfirmed. Check the provider before trying again.</Copy>
                   )}
-                  {(message.content ||
-                    (message.role === 'assistant' && message.status !== 'pending')) && (
-                    <MessageActions
-                      text={message.content}
-                      assistant={message.role === 'assistant'}
-                      canRetry={
-                        !running &&
-                        message.id ===
-                          (snapshot.data?.run.assistant_message_id ?? latest?.assistant_message_id)
-                      }
-                      busy={busy}
-                      onRetry={() => setDialog('retry')}
-                      onError={setError}
-                    />
-                  )}
-                </View>
+                </Panel>
               ))}
               {snapshot.data?.approvals.map((approval) => (
                 <ApprovalCard key={approval.id} approval={approval} />
@@ -1020,37 +1286,83 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                 />
               )}
               <ErrorNotice error={messages.error ?? runs.error} />
-            </MessageList>
+            </ScrollView>
+
+            {!atBottom && (
+              <View style={{ position: 'absolute', bottom: 136, alignSelf: 'center', zIndex: 15 }}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Jump to latest ↓"
+                  onPress={() => {
+                    setAtBottom(true);
+                    scroll.current?.scrollToEnd({ animated: true });
+                  }}
+                  style={({ hovered }) => ({
+                    width: 34,
+                    height: 34,
+                    borderRadius: 17,
+                    backgroundColor: hovered ? c.hover : c.raised,
+                    borderWidth: 1,
+                    borderColor: c.border,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    ...(Platform.OS === 'web'
+                      ? { boxShadow: '0 2px 10px rgba(0, 0, 0, 0.2)' }
+                      : {}),
+                  })}
+                >
+                  <ChatGptIcon name="arrowDown" size={16} color={c.text} />
+                </Pressable>
+              </View>
+            )}
             {composer}
           </KeyboardAvoidingView>
         )}
       </View>
+
       <ConversationDrawer visible={drawer && !wide} close={() => setDrawer(false)}>
         {sidebar(true)}
       </ConversationDrawer>
-      <Dialog title="Choose a model" visible={dialog === 'models'} close={() => setDialog(null)}>
-        <Field
-          accessibilityLabel="Search models"
-          placeholder="Search models"
-          value={modelSearch}
-          onChangeText={setModelSearch}
-        />
-        <ErrorNotice error={models.error} />
-        {models.isPending && credential.data?.configured && (
-          <SkeletonGroup label="Loading models">
-            <Skeleton height={64} />
-            <Skeleton height={64} />
-            <Skeleton height={64} />
-          </SkeletonGroup>
-        )}
-        <ModelList
-          models={(models.data ?? [])
-            .filter((m) => `${m.name} ${m.id}`.toLowerCase().includes(modelSearch.toLowerCase()))
-            .slice(0, 60)}
-          selected={chat.data?.model_id ?? homeModel}
-          onSelect={(model) => void patch({ model_id: model.id })}
-        />
-      </Dialog>
+
+      <SearchModal
+        visible={searchModalOpen}
+        close={() => setSearchModalOpen(false)}
+        conversations={conversations}
+        onSelectChat={(cid) => router.replace(`/chat/${cid}`)}
+        onSelectMessage={(cid, mid) =>
+          router.push({ pathname: '/chat/[id]', params: { id: cid, message: mid } } as Href)
+        }
+        onNewChat={() => void createChat()}
+      />
+
+      <SettingsModal
+        visible={!!settingsTab}
+        close={() => setSettingsTab(null)}
+        initialTab={settingsTab ?? 'general'}
+      />
+
+      {!wide && (
+        <Dialog title="Choose a model" visible={dialog === 'models'} close={() => setDialog(null)}>
+          <Field
+            accessibilityLabel="Search models"
+            placeholder="Search models"
+            value={modelSearch}
+            onChangeText={setModelSearch}
+          />
+          <ErrorNotice error={models.error} />
+          {models.isPending && credential.data?.configured && (
+            <FoolSpinner size={24} label="Loading models" />
+          )}
+          <ModelList
+            models={(models.data ?? [])
+              .filter((m) => `${m.name} ${m.id}`.toLowerCase().includes(modelSearch.toLowerCase()))
+              .slice(0, 60)}
+            selected={chat.data?.model_id ?? homeModel}
+            onSelect={(model) => void patch({ model_id: model.id })}
+          />
+        </Dialog>
+      )}
+
       <Dialog
         title="Tools & conversation"
         visible={dialog === 'tools'}
@@ -1087,42 +1399,41 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
         <Button
           secondary
           onPress={() => {
-            setManaged(chat.data ?? null);
-            setTitle(chat.data?.title ?? '');
+            const current = targetChat ?? chat.data;
+            setTitle(current?.title ?? '');
             setDialog('rename');
           }}
         >
           Rename conversation
         </Button>
-        <Button
-          danger
-          onPress={() => {
-            setManaged(chat.data ?? null);
-            setDialog('delete');
-          }}
-        >
+        <Button danger onPress={() => setDialog('delete')}>
           Delete conversation
         </Button>
       </Dialog>
+
       <Dialog
         title="Rename conversation"
         visible={dialog === 'rename'}
         close={() => {
+          setTargetChat(null);
           setDialog(null);
-          setManaged(null);
         }}
       >
         <Field accessibilityLabel="Conversation title" value={title} onChangeText={setTitle} />
-        <Button disabled={!title.trim()} onPress={() => void patch({ title: title.trim() })}>
+        <Button
+          disabled={!title.trim()}
+          onPress={() => void patch({ title: title.trim() }, targetChat)}
+        >
           Save title
         </Button>
       </Dialog>
+
       <Dialog
         title="Delete conversation?"
         visible={dialog === 'delete'}
         close={() => {
+          setTargetChat(null);
           setDialog(null);
-          setManaged(null);
         }}
       >
         <Copy>
@@ -1133,6 +1444,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
           Delete conversation
         </Button>
       </Dialog>
+
       <Dialog title="Retry response?" visible={dialog === 'retry'} close={() => setDialog(null)}>
         <Copy>
           This starts a new model request using your OpenRouter balance. The previous attempt stays
@@ -1140,6 +1452,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
         </Copy>
         <Button onPress={() => void retry()}>Start new attempt</Button>
       </Dialog>
+
       <Dialog title="Conversation files" visible={dialog === 'files'} close={() => setDialog(null)}>
         {!files.data?.length && <Copy muted>No files attached yet.</Copy>}
         {files.data?.map((file) => (
@@ -1169,7 +1482,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                 onPress={() =>
                   void api(`/v1/files/${file.id}`, json('DELETE', undefined, file.version))
                     .then(() => {
-                      setSelectedFiles((old) => old.filter((id) => id !== file.id));
+                      setSelectedFiles((old) => old.filter((fid) => fid !== file.id));
                       void cache.invalidateQueries({ queryKey: ['files', id] });
                     })
                     .catch(setError)
@@ -1181,7 +1494,6 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
           </Panel>
         ))}
       </Dialog>
-      <Panels />
     </View>
   );
 }

@@ -1,4 +1,1 @@
-import { PanelRedirect } from '../src/ui';
-export default function WorkspaceRoute() {
-  return <PanelRedirect panel="workspace" />;
-}
+export {default} from '../src/workspace';

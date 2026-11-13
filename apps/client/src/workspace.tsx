@@ -1,10 +1,10 @@
 import { transferDraft } from './draft-transfer';
 import { useEffect, useState } from 'react';
-import { Platform, Share, View } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Dialog, Section } from './dialog';
+import { Platform, ScrollView, Share, View, useWindowDimensions } from 'react-native';
+import { useRouter, useLocalSearchParams, type Href } from 'expo-router';
+import { Dialog } from './dialog';
 import { ModelList } from './model-list';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   workflowPrompts,
   type z,
@@ -12,12 +12,19 @@ import {
   type documentSchema,
   type scheduleSchema,
 } from '@ai-chat/contracts';
-import { api, authorizedFetch, json } from './api';
-import { Button, Copy, ErrorNotice, Field, Choice, TabBar } from './ui';
+import { api, apiEnvelope, authorizedFetch, json } from './api';
+import { useAuth } from './auth';
+import { useTheme } from './theme';
+import { Button, Copy, ErrorNotice, Field, Panel, Choice, TabBar } from './ui';
+import { Pressable, Text } from './locale-ui';
 import { Markdown } from './markdown';
 import { useModels, useCredential, useProfile, useCapabilities } from './queries';
 import { useLocale } from './locale';
-import { useTheme } from './theme';
+import { ConversationSidebar, ConversationDrawer, useSidebarTransition } from './sidebar';
+import { ChatGptIcon } from './chatgpt-icons';
+import { SearchModal } from './search-modal';
+import { SettingsModal } from './settings-modal';
+import type { Conversation } from './types';
 export type Project = z.infer<typeof projectSchema>;
 export type Document = z.infer<typeof documentSchema>;
 export type Schedule = z.infer<typeof scheduleSchema>;
@@ -50,7 +57,6 @@ export function DocumentEditor({
   onSaved: (doc: Document) => void;
   onRefine?: (prompt: string) => void;
 }) {
-  const { colors: c } = useTheme();
   const [title, setTitle] = useState(doc.title),
     [content, setContent] = useState(doc.content),
     [preview, setPreview] = useState(false);
@@ -99,17 +105,7 @@ export function DocumentEditor({
     }
   }
   return (
-    <View
-      testID="document-editor"
-      style={{
-        gap: 10,
-        backgroundColor: c.surface,
-        borderColor: c.border,
-        borderRadius: 16,
-        borderWidth: 1,
-        padding: 16,
-      }}
-    >
+    <Panel testID="document-editor">
       <Copy>Document · version {doc.version}</Copy>
       <Field accessibilityLabel="Document title" value={title} onChangeText={setTitle} />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
@@ -201,17 +197,45 @@ export function DocumentEditor({
           </Button>
         ))}
       <ErrorNotice error={error ?? versions.error} />
-    </View>
+    </Panel>
   );
 }
-export function WorkspacePage() {
-  const params = useLocalSearchParams<{ document?: string }>();
+export default function WorkspacePage() {
+  const params = useLocalSearchParams<{ document?: string; tab?: string }>();
   const router = useRouter(),
     cache = useQueryClient(),
+    auth = useAuth(),
+    { colors: c, isDark } = useTheme(),
     { language } = useLocale();
-  const [tab, setTab] = useState('projects'),
+  const wide = useWindowDimensions().width >= 1024;
+  const sidebarTransition = useSidebarTransition();
+  const [sidebarExpanded, setSidebarExpanded] = useState(true);
+  const [drawer, setDrawer] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState<'general' | 'connections' | null>(null);
+  const normalizeTab = (val?: string) => (val === 'notices' ? 'notifications' : val || 'projects');
+  const [tab, setTab] = useState(normalizeTab(params.tab)),
     [error, setError] = useState<unknown>(),
     [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (
+      params.tab &&
+      ['projects', 'documents', 'search', 'schedules', 'notifications', 'notices'].includes(
+        params.tab,
+      )
+    ) {
+      setTab(normalizeTab(params.tab));
+    }
+  }, [params.tab]);
+  const history = useInfiniteQuery({
+    queryKey: ['conversations', ''],
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }) =>
+      apiEnvelope<Conversation[]>(
+        `/v1/conversations?limit=30${pageParam ? '&cursor=' + encodeURIComponent(pageParam) : ''}`,
+      ),
+    getNextPageParam: (page) => page.next_cursor ?? undefined,
+  });
   const projects = useProjects(),
     documents = useDocuments(),
     credential = useCredential(),
@@ -238,16 +262,10 @@ export function WorkspacePage() {
     [docTitle, setDocTitle] = useState('');
   const [modelDialog, setModelDialog] = useState(false),
     [modelSearch, setModelSearch] = useState('');
-  const documentParam = Array.isArray(params.document) ? params.document[0] : params.document;
-  const sourceId =
-    documentParam &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(documentParam)
-      ? documentParam
-      : undefined;
   const sourceDocument = useQuery({
-    queryKey: ['document', sourceId],
-    queryFn: () => api<Document>(`/v1/documents/${sourceId}`),
-    enabled: !!sourceId,
+    queryKey: ['document', params.document],
+    queryFn: () => api<Document>(`/v1/documents/${params.document}`),
+    enabled: !!params.document,
   });
   useEffect(() => {
     if (sourceDocument.data) {
@@ -324,27 +342,163 @@ export function WorkspacePage() {
       setBusy(false);
     }
   }
+  const conversations = history.data?.pages.flatMap((page) => page.data) ?? [];
+  const unreadNotices = (notices.data ?? []).filter((n) => !n.read_at).length;
+  const sidebarSection: 'projects' | 'documents' | 'schedules' | 'notices' | 'search' | undefined =
+    tab === 'notifications'
+      ? 'notices'
+      : (tab as 'projects' | 'documents' | 'schedules' | 'search');
+  const sidebar = (mobile = false) => (
+    <ConversationSidebar
+      mobile={mobile}
+      expanded={mobile || sidebarExpanded}
+      activeSection={sidebarSection}
+      conversations={conversations}
+      onToggle={() => {
+        if (mobile) setDrawer(false);
+        else setSidebarExpanded((v) => !v);
+      }}
+      onNew={() => {
+        setDrawer(false);
+        router.replace('/');
+      }}
+      onOpenSearch={() => {
+        setDrawer(false);
+        setSearchOpen(true);
+      }}
+      onSelect={(cid) => {
+        setDrawer(false);
+        router.replace(`/chat/${cid}`);
+      }}
+      onWorkspace={(next) => {
+        setDrawer(false);
+        setTab(normalizeTab(next));
+      }}
+      onConnections={() => {
+        setDrawer(false);
+        setSettingsOpen('connections');
+      }}
+      onSettings={() => {
+        setDrawer(false);
+        setSettingsOpen('general');
+      }}
+      onSignOut={() => {
+        setDrawer(false);
+        void auth.signOut();
+      }}
+      displayName={profile.data?.display_name}
+      unreadNotices={unreadNotices}
+      busy={busy}
+      loading={history.isPending}
+      loadingMore={history.isFetchingNextPage}
+      error={history.error}
+      hasMore={!!history.hasNextPage}
+      onMore={() => void history.fetchNextPage()}
+    />
+  );
+
   return (
-    <View style={{ gap: 16 }}>
-      <TabBar
-        label="Workspace sections"
-        value={tab}
-        onChange={setTab}
-        items={[
-          { value: 'projects', label: 'Projects' },
-          { value: 'documents', label: 'Documents' },
-          { value: 'search', label: 'Search messages' },
-          { value: 'schedules', label: 'Scheduled tasks' },
-          { value: 'notifications', label: 'Notifications' },
-        ]}
-      />
+    <View style={{ flex: 1, flexDirection: 'row', backgroundColor: c.background }}>
+      {wide && (
+        <View
+          style={[
+            { width: sidebarExpanded ? 260 : 52, flexShrink: 0, zIndex: 20 },
+            sidebarTransition,
+          ]}
+        >
+          <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0 }}>
+            {sidebar()}
+          </View>
+        </View>
+      )}
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <View
+          style={{
+            height: 52,
+            paddingHorizontal: wide ? 20 : 12,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            backgroundColor: c.background,
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            {!wide && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Open conversation history"
+                onPress={() => setDrawer(true)}
+                style={({ hovered }) => ({
+                  width: 36,
+                  height: 36,
+                  borderRadius: 8,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: hovered ? c.hover : 'transparent',
+                })}
+              >
+                <ChatGptIcon name="sidebarHidden" size={18} color={c.muted} />
+              </Pressable>
+            )}
+            <Text style={{ fontSize: 17, fontWeight: '600', color: c.text }}>
+              {language === 'ru' ? 'Рабочее пространство' : 'Workspace'}
+            </Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Button secondary quiet label="Back to conversations" onPress={() => router.replace('/')}>
+              ← Back
+            </Button>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Settings"
+              onPress={() => setSettingsOpen('general')}
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 16,
+                backgroundColor: isDark ? '#7c3aed' : '#0d0d0d',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text translate={false} style={{ color: '#ffffff', fontWeight: '600', fontSize: 13 }}>
+                {(profile.data?.display_name ?? 'A').slice(0, 1).toUpperCase()}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{
+            width: '100%',
+            maxWidth: 780,
+            alignSelf: 'center',
+            paddingHorizontal: wide ? 24 : 16,
+            paddingTop: 8,
+            paddingBottom: 60,
+            gap: 18,
+          }}
+        >
+          <TabBar
+            label="Workspace sections"
+            value={tab}
+            onChange={setTab}
+            items={[
+              { value: 'projects', label: 'Projects' },
+              { value: 'documents', label: 'Documents' },
+              { value: 'search', label: 'Search messages' },
+              { value: 'schedules', label: 'Scheduled tasks' },
+              { value: 'notifications', label: 'Notifications' },
+            ]}
+          />
       <ErrorNotice error={error ?? projects.error ?? documents.error ?? sourceDocument.error} />
       {tab === 'projects' && (
         <>
-          <Section
-            title="Projects"
-            help="Keep goals, decisions and shared files together. Chats use project memory only after you attach them to that project."
-          >
+          <Copy>
+            Keep goals, decisions and shared files together. Chats use project memory only after you
+            attach them to that project.
+          </Copy>
           <Button
             secondary
             onPress={() => {
@@ -371,6 +525,7 @@ export function WorkspacePage() {
               </Choice>
             ))}
           </View>
+          <Panel>
             <Field
               accessibilityLabel="Project name"
               placeholder="Project name"
@@ -428,12 +583,14 @@ export function WorkspacePage() {
                 </Button>
               </>
             )}
-          </Section>
+          </Panel>
           {project && (
-            <Section
-              title="Shared files"
-              help="Removing a share stops future project reads. Deleting the original file or chat also revokes access. Photos must be attached to the chat for visual analysis."
-            >
+            <Panel>
+              <Copy>Explicitly shared files</Copy>
+              <Copy small muted>
+                Removing a share stops future project reads. Deleting the original file or chat also
+                revokes access. Photos must be attached to the chat for visual analysis.
+              </Copy>
               {shares.data?.map((f) => (
                 <View key={f.id}>
                   <Copy translate={false}>{f.filename}</Copy>
@@ -483,16 +640,13 @@ export function WorkspacePage() {
                     Share {f.filename}
                   </Button>
                 ))}
-            </Section>
+            </Panel>
           )}
         </>
       )}
       {tab === 'documents' && (
         <>
-          <Section
-            title="Documents"
-            help="Versioned notes you can edit, export, or revise from the chat. Deleting a document removes its versions."
-          >
+          <Panel>
             <Field
               accessibilityLabel="New document title"
               placeholder="Document title"
@@ -520,7 +674,7 @@ export function WorkspacePage() {
             >
               Create document
             </Button>
-          </Section>
+          </Panel>
           {documents.data?.map((d) => (
             <Button key={d.id} secondary onPress={() => setDoc(d)}>
               {d.title} · v{d.version}
@@ -555,10 +709,7 @@ export function WorkspacePage() {
         </>
       )}
       {tab === 'search' && (
-        <Section
-          title="Search messages"
-          help="Finds words in your messages across chats and opens the matching message."
-        >
+        <>
           <Field
             accessibilityLabel="Search message content"
             placeholder="Search all message text"
@@ -580,7 +731,7 @@ export function WorkspacePage() {
           </Button>
           <ErrorNotice error={results.error} />
           {results.data?.map((r) => (
-            <View key={r.id} style={{ gap: 6 }}>
+            <Panel key={r.id}>
               <Copy>{r.title}</Copy>
               <Copy translate={false}>{r.snippet}</Copy>
               <Button
@@ -594,7 +745,7 @@ export function WorkspacePage() {
               >
                 Open matching message
               </Button>
-            </View>
+            </Panel>
           ))}
           {results.data?.length === 0 && <Copy>No matching messages.</Copy>}
           <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -609,14 +760,15 @@ export function WorkspacePage() {
               </Button>
             )}
           </View>
-        </Section>
+        </>
       )}
       {tab === 'schedules' && (
         <>
-          <Section
-            title="Scheduled tasks"
-            help="Runs continue on the server. Results and confirmation requests appear in Notifications. External actions still need your approval."
-          >
+          <Copy>
+            Runs continue on the server. Results and confirmation requests appear in Notifications.
+            External actions still need your approval.
+          </Copy>
+          <Panel>
             <Field
               accessibilityLabel="Scheduled task title"
               placeholder="Task title"
@@ -773,10 +925,10 @@ export function WorkspacePage() {
               Daily or weekly. A missed period is coalesced into one run. The budget guards
               estimated model submissions; provider billing may differ.
             </Copy>
-          </Section>
+          </Panel>
           <ErrorNotice error={schedules.error} />
           {schedules.data?.map((s) => (
-            <View key={s.id} style={{ gap: 8 }}>
+            <Panel key={s.id}>
               <Copy>
                 {s.title} ·{' '}
                 {s.paused
@@ -834,19 +986,16 @@ export function WorkspacePage() {
                     )}
                   </View>
                 ))}
-            </View>
+            </Panel>
           ))}
         </>
       )}
       {tab === 'notifications' && (
-        <Section
-          title="Notifications"
-          help="Results from scheduled tasks. Open a result to read it in the chat."
-        >
+        <>
           <ErrorNotice error={notices.error} />
           {notices.data?.length === 0 && <Copy>No notifications yet.</Copy>}
           {notices.data?.map((n) => (
-            <View key={n.id} style={{ gap: 6 }}>
+            <Panel key={n.id}>
               <Copy>
                 {n.read_at ? '' : '● '}
                 {n.title}
@@ -863,10 +1012,31 @@ export function WorkspacePage() {
               >
                 {n.conversation_id ? 'Open result' : 'Mark read'}
               </Button>
-            </View>
+            </Panel>
           ))}
-        </Section>
+        </>
       )}
+        </ScrollView>
+      </View>
+
+      <ConversationDrawer visible={drawer && !wide} close={() => setDrawer(false)}>
+        {sidebar(true)}
+      </ConversationDrawer>
+      <SearchModal
+        visible={searchOpen}
+        close={() => setSearchOpen(false)}
+        conversations={conversations}
+        onSelectChat={(cid) => router.replace(`/chat/${cid}`)}
+        onSelectMessage={(cid, mid) =>
+          router.push({ pathname: '/chat/[id]', params: { id: cid, message: mid } } as Href)
+        }
+        onNewChat={() => router.replace('/')}
+      />
+      <SettingsModal
+        visible={!!settingsOpen}
+        close={() => setSettingsOpen(null)}
+        initialTab={settingsOpen ?? 'general'}
+      />
     </View>
   );
 }

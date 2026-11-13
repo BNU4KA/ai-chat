@@ -714,3 +714,27 @@ also passed separately on desktop and mobile after the final lifecycle adjustmen
 
 The dropdown/menu parity pass matched ChatGPT popover motion: context menus scale in from 0.86 over 0.22s with a 20 px radius and soft shadow, selection lists use borderless hover/selected rows with checkmarks, Choice chips share the same soft selection surface, and timezone picking uses the same animated dialog list on every platform. Reduced-motion still collapses decorative transitions without hiding content.
 
+## T13 — ChatGPT Web UI/UX alignment (merge with origin) — 2026-11-13 (local)
+
+Merged `origin/codex/workspace-expansion` (including `.github/workflows/deploy-web.yml`,
+`deploy/publish-web.sh`, `api.ts`, `upload.ts`, `motion.ts`, `react-native.d.ts`, and `toast.tsx`)
+with local commit `bd8409a` ("redesign"):
+
+- Kept the owner-approved graphite dark (`#212121` / `#181818` / `#303030`) and light (`#ffffff` /
+  `#f9f9f9` / `#f4f4f4`) ChatGPT palettes and brand string `"it's kawasaki, bitches"`.
+- Replaced Tarot background, Tarot card loader, and rainbow conic-gradient composer border with
+  ChatGPT-style pulsing thinking dot, streaming cursor, circular ring spinner, single-line 52 px
+  pill composer that expands to multiline on wrap/attachments, message/menu/popover/drawer
+  entrance animations, hover action reveal, and custom scrollbars (`web-effects.web.tsx`,
+  `composer-frame.tsx`, `fool-spinner.tsx`).
+- Added crisp SVG icon set (`chatgpt-icons.tsx`), date-grouped sidebar with hover/active `···`
+  rename/delete menu, centered `SearchModal` (`Cmd/Ctrl+K`), two-column `SettingsModal`, top-left
+  floating model dropdown popover, syntax-highlighted code blocks, inline user message editing,
+  icon-only assistant action toolbar (`Copy`, `Retry`, `Share`, `···`), and persistent-sidebar
+  `/workspace` layout.
+
+Checks on Node 26.13.0 / pnpm 12.18.0 (synthetic API/provider fixtures; no live OpenRouter/Google
+generation, no native device test, no deployment, no push):
+
+- `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build`, and `pnpm test:e2e --reporter=list`
+  (re-run after merge).

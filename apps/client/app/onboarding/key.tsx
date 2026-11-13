@@ -1,12 +1,10 @@
 import { useEffect, useState } from 'react';
-import { View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useCredential } from '../../src/queries';
 import { api, json } from '../../src/api';
-import { Button, ErrorNotice, Field, Loading, PanelRedirect } from '../../src/ui';
-import { Section } from '../../src/dialog';
-export function KeyScreen() {
+import { Button, Copy, ErrorNotice, Field, Page, Panel, Loading } from '../../src/ui';
+export default function KeyOnboarding() {
   const saved = useCredential();
   const cache = useQueryClient();
   const router = useRouter();
@@ -15,7 +13,7 @@ export function KeyScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   useEffect(() => {
-    if (saved.data?.configured) router.setParams({ panel: '' });
+    if (saved.data?.configured) router.replace('/');
   }, [saved.data?.configured, router]);
   async function save() {
     setBusy(true);
@@ -27,7 +25,7 @@ export function KeyScreen() {
       );
       setKey('');
       await cache.invalidateQueries({ queryKey: ['credential'] });
-      router.setParams({ panel: '' });
+      router.replace('/');
     } catch (e) {
       setError(e);
     } finally {
@@ -36,11 +34,12 @@ export function KeyScreen() {
   }
   if (saved.isPending) return <Loading />;
   return (
-    <View style={{ gap: 12 }}>
-      <Section
-        title="OpenRouter key"
-        help="Use your own OpenRouter balance. Your key is encrypted on the server so tasks can continue when you close the app."
-      >
+    <Page title="Connect your model key">
+      <Panel>
+        <Copy>
+          Use your own OpenRouter balance. Your key is encrypted on the server so tasks can continue
+          when you close the app.
+        </Copy>
         <Field
           accessibilityLabel="OpenRouter API key"
           placeholder="OpenRouter API key"
@@ -50,20 +49,17 @@ export function KeyScreen() {
           autoCapitalize="none"
           autoCorrect={false}
         />
-        <Button quiet onPress={() => setShow(!show)}>
+        <Button secondary onPress={() => setShow(!show)}>
           {show ? 'Hide key' : 'Show key'}
         </Button>
         <ErrorNotice error={error ?? saved.error} />
         <Button disabled={busy || !key.trim()} onPress={() => void save()}>
           {busy ? 'Validating…' : 'Save and continue'}
         </Button>
-        <Button quiet onPress={() => router.setParams({ panel: '' })}>
+        <Button secondary onPress={() => router.replace('/')}>
           Skip for now
         </Button>
-      </Section>
-    </View>
+      </Panel>
+    </Page>
   );
-}
-export default function KeyRoute() {
-  return <PanelRedirect panel="key" />;
 }

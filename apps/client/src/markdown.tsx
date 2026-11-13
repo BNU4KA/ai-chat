@@ -1,12 +1,13 @@
 import MarkdownIt from 'markdown-it';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Linking, Platform, ScrollView, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
-import { useReducedMotion } from './motion';
-import { revealStep, splitStreamTail } from './smooth-text';
+import { Pressable } from './locale-ui';
+import { ChatGptIcon } from './chatgpt-icons';
 import { useTheme } from './theme';
-import { Button } from './ui';
+
 const parser = new MarkdownIt({ html: false, linkify: false, breaks: true });
+
 export function safeUrl(value: string) {
   try {
     const url = new URL(value);
@@ -17,90 +18,213 @@ export function safeUrl(value: string) {
     return null;
   }
 }
+
+const TOKEN_RE =
+  /(\/\/[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\b(?:const|let|var|function|return|if|else|for|while|switch|case|break|continue|import|from|export|default|type|interface|class|extends|implements|new|async|await|try|catch|finally|throw|def|elif|pass|with|as|in|not|and|or|is|lambda|SELECT|FROM|WHERE|INSERT|UPDATE|DELETE|JOIN|ORDER|BY|GROUP|CREATE|TABLE|true|false|null|undefined|None|True|False)\b|\b\d+(?:\.\d+)?\b|\b[A-Z][A-Za-z0-9_]*\b)/g;
+
+const KEYWORDS = new Set([
+  'const',
+  'let',
+  'var',
+  'function',
+  'return',
+  'if',
+  'else',
+  'for',
+  'while',
+  'switch',
+  'case',
+  'break',
+  'continue',
+  'import',
+  'from',
+  'export',
+  'default',
+  'type',
+  'interface',
+  'class',
+  'extends',
+  'implements',
+  'new',
+  'async',
+  'await',
+  'try',
+  'catch',
+  'finally',
+  'throw',
+  'def',
+  'elif',
+  'pass',
+  'with',
+  'as',
+  'in',
+  'not',
+  'and',
+  'or',
+  'is',
+  'lambda',
+  'SELECT',
+  'FROM',
+  'WHERE',
+  'INSERT',
+  'UPDATE',
+  'DELETE',
+  'JOIN',
+  'ORDER',
+  'BY',
+  'GROUP',
+  'CREATE',
+  'TABLE',
+]);
+
+const LITERALS = new Set(['true', 'false', 'null', 'undefined', 'None', 'True', 'False']);
+
+function highlightCode(source: string, isDark: boolean): ReactNode[] {
+  const palette = isDark
+    ? {
+        comment: '#7f848e',
+        string: '#98c379',
+        keyword: '#c678dd',
+        literal: '#d19a66',
+        number: '#d19a66',
+        type: '#e5c07b',
+      }
+    : {
+        comment: '#6a737d',
+        string: '#15803d',
+        keyword: '#9333ea',
+        literal: '#c0660d',
+        number: '#c0660d',
+        type: '#0369a1',
+      };
+
+  const parts: ReactNode[] = [];
+  let last = 0;
+  let match: RegExpExecArray | null;
+  TOKEN_RE.lastIndex = 0;
+  let idx = 0;
+  while ((match = TOKEN_RE.exec(source)) !== null) {
+    if (match.index > last) {
+      parts.push(source.slice(last, match.index));
+    }
+    const token = match[0];
+    let color: string | undefined;
+    if (token.startsWith('//') || token.startsWith('#') || token.startsWith('/*')) {
+      color = palette.comment;
+    } else if (token.startsWith('"') || token.startsWith("'") || token.startsWith('`')) {
+      color = palette.string;
+    } else if (KEYWORDS.has(token)) {
+      color = palette.keyword;
+    } else if (LITERALS.has(token) || /^\d/.test(token)) {
+      color = palette.number;
+    } else if (/^[A-Z]/.test(token)) {
+      color = palette.type;
+    }
+    parts.push(
+      color ? (
+        <Text key={idx++} style={{ color }}>
+          {token}
+        </Text>
+      ) : (
+        token
+      ),
+    );
+    last = match.index + token.length;
+  }
+  if (last < source.length) parts.push(source.slice(last));
+  return parts;
+}
+
 type Token = ReturnType<typeof parser.parse>[number];
 type Cell = { token: Token; header: boolean; align: 'left' | 'center' | 'right' };
-function useSmoothText(text: string, smooth: boolean) {
-  const reduced = useReducedMotion();
-  const target = useRef(text);
-  const previous = useRef('');
-  const countRef = useRef(0);
-  const follow = useRef(false);
-  const [count, setCount] = useState(0);
-  target.current = text;
-  if (smooth && !reduced) follow.current = true;
-  const live = follow.current && !reduced && (smooth || count < text.length);
-  useEffect(() => {
-    if (reduced) {
-      countRef.current = target.current.length;
-      setCount(target.current.length);
-      return;
-    }
-    if (!live) return;
-    if (previous.current && !text.startsWith(previous.current)) {
-      countRef.current = 0;
-      setCount(0);
-    }
-    previous.current = text;
-    let frame = 0;
-    let stopped = false;
-    const tick = () => {
-      if (stopped) return;
-      const next = revealStep(countRef.current, target.current.length);
-      if (next !== countRef.current) {
-        countRef.current = next;
-        setCount(next);
-      }
-      if (countRef.current < target.current.length) frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-    return () => {
-      stopped = true;
-      cancelAnimationFrame(frame);
-    };
-  }, [live, reduced, text]);
-  if (!follow.current || reduced) return text;
-  return text.slice(0, count);
+
+function CodeBlock({ language, content }: { language: string; content: string }) {
+  const { colors: c, isDark } = useTheme();
+  const [copied, setCopied] = useState(false);
+
+  function copy() {
+    void Clipboard.setStringAsync(content).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    });
+  }
+
+  return (
+    <View
+      style={{
+        borderRadius: 12,
+        backgroundColor: c.codeBg,
+        borderWidth: 1,
+        borderColor: c.borderSubtle,
+        overflow: 'hidden',
+        marginVertical: 4,
+      }}
+    >
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          paddingHorizontal: 14,
+          paddingVertical: 7,
+          backgroundColor: c.codeHeader,
+        }}
+      >
+        <Text style={{ color: c.muted, fontSize: 12, fontWeight: '500' }}>
+          {language || 'code'}
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Copy code"
+          onPress={copy}
+          style={({ hovered }) => ({
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 5,
+            paddingHorizontal: 8,
+            paddingVertical: 4,
+            borderRadius: 6,
+            backgroundColor: hovered ? c.hover : 'transparent',
+          })}
+        >
+          <ChatGptIcon name={copied ? 'check' : 'copy'} size={13} color={c.muted} />
+          <Text style={{ color: c.muted, fontSize: 12 }}>{copied ? 'Copied' : 'Copy code'}</Text>
+        </Pressable>
+      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator>
+        <Text
+          selectable
+          style={{
+            color: c.text,
+            fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+            fontSize: 13.5,
+            lineHeight: 22,
+            paddingHorizontal: 14,
+            paddingVertical: 12,
+          }}
+        >
+          {highlightCode(content.trimEnd(), isDark)}
+        </Text>
+      </ScrollView>
+    </View>
+  );
 }
+
 export function Markdown({
   text,
-  smooth = false,
   onCitation,
 }: {
   text: string;
-  smooth?: boolean;
   onCitation?: (id: string) => void;
 }) {
-  const shown = useSmoothText(text, smooth);
   const { colors: c } = useTheme();
-  const tokens = parser.parse(shown, {});
-  const streaming = smooth || shown.length < text.length;
-  const lastInlineIndex = streaming
-    ? tokens.reduce((last, token, index) => (token.type === 'inline' ? index : last), -1)
-    : -1;
-  function citationText(value: string, keyPrefix: string): ReactNode {
-    if (!onCitation) return value;
-    return value.split(/(\[S\d+\])/g).map((part, index) =>
-      /^\[S\d+\]$/.test(part) ? (
-        <Text
-          key={`${keyPrefix}-${index}`}
-          accessibilityRole="button"
-          accessibilityLabel={`Show evidence ${part}`}
-          style={{ color: c.accent, textDecorationLine: 'underline' }}
-          onPress={() => onCitation(part.slice(1, -1))}
-        >
-          {part}
-        </Text>
-      ) : (
-        part
-      ),
-    );
-  }
-  function inline(children: Token[] = [], animateTail = false): ReactNode {
+  const tokens = parser.parse(text, {});
+
+  function inline(children: Token[] = []): ReactNode {
     let bold = 0,
       italic = 0,
       strike = 0;
     let href: string | null = null;
-    const lastTextIndex = children.findLastIndex((child) => child.type === 'text');
     return children.map((child, i) => {
       if (child.type === 'strong_open') {
         bold++;
@@ -137,40 +261,48 @@ export function Markdown({
       if (child.type === 'image') return <Text key={i}>[Image omitted]</Text>;
       if (child.type === 'softbreak' || child.type === 'hardbreak') return '\n';
       const url = href;
-      const streamTail =
-        animateTail && child.type === 'text' && i === lastTextIndex
-          ? splitStreamTail(child.content)
-          : null;
       return (
         <Text
           key={i}
           accessibilityRole={url ? 'link' : undefined}
           onPress={url ? () => void Linking.openURL(url) : undefined}
           style={{
-            fontWeight: bold ? '700' : undefined,
+            fontWeight: bold ? '600' : undefined,
             fontStyle: italic ? 'italic' : undefined,
-            color: url ? c.accent : undefined,
+            color: url ? c.info : undefined,
             textDecorationLine: url ? 'underline' : strike ? 'line-through' : undefined,
             fontFamily: child.type === 'code_inline' ? 'monospace' : undefined,
+            fontSize: child.type === 'code_inline' ? 14 : undefined,
             backgroundColor: child.type === 'code_inline' ? c.raised : undefined,
           }}
         >
-          {streamTail ? (
-            <>
-              {citationText(streamTail[0], `prefix-${i}`)}
-              <Text key={`stream-${text.length}`} testID="streaming-text-tail">
-                {citationText(streamTail[1], `tail-${i}`)}
-              </Text>
-            </>
-          ) : child.type === 'text' ? (
-            citationText(child.content, `text-${i}`)
-          ) : (
-            child.content
-          )}
+          {onCitation && child.type === 'text'
+            ? child.content.split(/(\[S\d+\])/g).map((part, n) =>
+                /^\[S\d+\]$/.test(part) ? (
+                  <Text
+                    key={n}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Show evidence ${part}`}
+                    style={{
+                      color: c.info,
+                      backgroundColor: c.infoSoft,
+                      fontSize: 13,
+                      fontWeight: '600',
+                    }}
+                    onPress={() => onCitation(part.slice(1, -1))}
+                  >
+                    {part}
+                  </Text>
+                ) : (
+                  part
+                ),
+              )
+            : child.content}
         </Text>
       );
     });
   }
+
   let cursor = 0;
   function blocks(until?: string): ReactNode[] {
     const result: ReactNode[] = [];
@@ -199,11 +331,11 @@ export function Markdown({
           }
           if (part.type === 'inline') row.push({ token: part, header, align });
         }
-        const columns = Math.max(0, ...rows.map((row) => row.length));
+        const columns = Math.max(0, ...rows.map((r) => r.length));
         const widths = Array.from({ length: columns }, (_, column) =>
           Math.min(
             300,
-            Math.max(160, ...rows.map((row) => (row[column]?.token.content.length ?? 0) * 7 + 28)),
+            Math.max(150, ...rows.map((r) => (r[column]?.token.content.length ?? 0) * 7 + 28)),
           ),
         );
         result.push(
@@ -221,7 +353,7 @@ export function Markdown({
               style={{
                 borderWidth: 1,
                 borderColor: c.border,
-                borderRadius: 12,
+                borderRadius: 10,
                 overflow: 'hidden',
               }}
             >
@@ -231,11 +363,7 @@ export function Markdown({
                   role="row"
                   style={{
                     flexDirection: 'row',
-                    backgroundColor: cells[0]?.header
-                      ? c.raised
-                      : rowIndex % 2 === 0
-                        ? c.surface
-                        : 'transparent',
+                    backgroundColor: cells[0]?.header ? c.raised : 'transparent',
                   }}
                 >
                   {cells.map((cell, column) => (
@@ -244,7 +372,8 @@ export function Markdown({
                       role={cell.header ? 'columnheader' : 'cell'}
                       style={{
                         width: widths[column],
-                        padding: 12,
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
                         borderTopWidth: rowIndex ? 1 : 0,
                         borderLeftWidth: column ? 1 : 0,
                         borderColor: c.border,
@@ -254,8 +383,8 @@ export function Markdown({
                         selectable
                         style={{
                           color: c.text,
-                          fontSize: 15,
-                          lineHeight: 23,
+                          fontSize: 14,
+                          lineHeight: 21,
                           fontWeight: cell.header ? '600' : '400',
                           textAlign: cell.align,
                         }}
@@ -281,20 +410,25 @@ export function Markdown({
           const itemKey = cursor;
           const content = blocks('list_item_close');
           items.push(
-            <View key={itemKey} style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
+            <View key={itemKey} style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
               <Text
                 selectable
-                style={{ color: c.text, fontSize: 16, lineHeight: 25, minWidth: ordered ? 24 : 14 }}
+                style={{
+                  color: c.text,
+                  fontSize: 16,
+                  lineHeight: 26,
+                  minWidth: ordered ? 22 : 12,
+                }}
               >
                 {ordered ? `${number++}.` : '•'}
               </Text>
-              <View style={{ flex: 1, minWidth: 0, gap: 8 }}>{content}</View>
+              <View style={{ flex: 1, minWidth: 0, gap: 6 }}>{content}</View>
             </View>,
           );
         }
         cursor++;
         result.push(
-          <View key={key} style={{ gap: 8, paddingLeft: 4 }}>
+          <View key={key} style={{ gap: 6, paddingLeft: 4 }}>
             {items}
           </View>,
         );
@@ -304,7 +438,7 @@ export function Markdown({
         result.push(
           <View
             key={key}
-            style={{ borderLeftWidth: 3, borderColor: c.border, paddingLeft: 14, gap: 10 }}
+            style={{ borderLeftWidth: 3, borderColor: c.border, paddingLeft: 14, gap: 8 }}
           >
             {blocks('blockquote_close')}
           </View>,
@@ -312,53 +446,17 @@ export function Markdown({
         continue;
       }
       if (token.type === 'fence' || token.type === 'code_block') {
-        result.push(
-          <View
-            key={key}
-            style={{ borderRadius: 10, backgroundColor: c.code, padding: 12, gap: 8 }}
-          >
-            <View
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}
-            >
-              <Text style={{ color: c.muted, fontSize: 12 }}>{token.info || 'code'}</Text>
-              <Button
-                secondary
-                label="Copy code"
-                onPress={() => void Clipboard.setStringAsync(token.content)}
-              >
-                Copy
-              </Button>
-            </View>
-            <ScrollView horizontal>
-              <Text
-                selectable
-                style={{
-                  color: c.text,
-                  fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-                  fontSize: 13,
-                  lineHeight: 21,
-                }}
-              >
-                {token.content.trimEnd()}
-              </Text>
-            </ScrollView>
-          </View>,
-        );
+        result.push(<CodeBlock key={key} language={token.info} content={token.content} />);
         continue;
       }
       if (token.type === 'hr') {
         result.push(
-          <View key={key} style={{ height: 1, backgroundColor: c.border, marginVertical: 4 }} />,
+          <View key={key} style={{ height: 1, backgroundColor: c.border, marginVertical: 8 }} />,
         );
         continue;
       }
       if (token.type === 'heading_open') {
         const level = Number(token.tag.slice(1));
-        const contentIndex = cursor;
         const content = tokens[cursor++];
         cursor++;
         result.push(
@@ -368,25 +466,26 @@ export function Markdown({
             selectable
             style={{
               color: c.text,
-              fontSize: level === 1 ? 26 : level === 2 ? 23 : 21,
-              lineHeight: 32,
+              fontSize: level === 1 ? 24 : level === 2 ? 20 : 18,
+              lineHeight: level === 1 ? 32 : level === 2 ? 28 : 26,
               fontWeight: '600',
-              marginTop: 8,
+              marginTop: 10,
             }}
           >
-            {inline(content?.children ?? [], contentIndex === lastInlineIndex)}
+            {inline(content?.children ?? [])}
           </Text>,
         );
         continue;
       }
       if (token.type === 'inline')
         result.push(
-          <Text key={key} selectable style={{ color: c.text, fontSize: 16, lineHeight: 25 }}>
-            {inline(token.children ?? [], key === lastInlineIndex)}
+          <Text key={key} selectable style={{ color: c.text, fontSize: 16, lineHeight: 26 }}>
+            {inline(token.children ?? [])}
           </Text>,
         );
     }
     return result;
   }
+
   return <View style={{ gap: 12, minWidth: 0 }}>{blocks()}</View>;
 }

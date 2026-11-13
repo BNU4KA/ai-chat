@@ -1,10 +1,12 @@
 import { Pressable, Text } from './locale-ui';
+import { FoolSpinner } from './fool-spinner';
 import { Image, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { api } from './api';
-import { ActivityMark } from './skeleton';
+import { ChatGptIcon } from './chatgpt-icons';
 import { useTheme } from './theme';
 import type { FileRecord } from './types';
+
 const failures: Record<string, string> = {
   IMAGE_INVALID: 'This photo could not be read. Try a JPG or PNG copy.',
   NO_EXTRACTABLE_TEXT: 'This file has no readable text.',
@@ -12,6 +14,7 @@ const failures: Record<string, string> = {
   EXTRACTION_FAILED: 'This document could not be read. Try saving a new copy.',
   FILE_SIZE_MISMATCH: 'The upload was incomplete. Try attaching it again.',
 };
+
 export function Attachment({
   file,
   id,
@@ -40,15 +43,15 @@ export function Attachment({
     <View
       testID="attachment-card"
       style={{
-        maxWidth: compact ? 260 : 320,
-        borderRadius: 16,
-        backgroundColor: c.control,
+        maxWidth: compact ? 250 : 320,
+        borderRadius: 14,
+        backgroundColor: c.raised,
         borderWidth: 1,
         borderColor: failed ? c.danger : c.border,
         overflow: 'hidden',
       }}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 8 }}>
         <Pressable
           accessibilityRole={onOpen ? 'button' : undefined}
           accessibilityLabel={`Open attachment ${file?.filename ?? ''}`}
@@ -60,30 +63,30 @@ export function Attachment({
             <Image
               accessibilityLabel={file?.filename ?? 'Attached photo'}
               source={{ uri: preview.data.url }}
-              style={{ width: compact ? 42 : 64, height: compact ? 42 : 64, borderRadius: 10 }}
+              style={{ width: compact ? 40 : 56, height: compact ? 40 : 56, borderRadius: 10 }}
               resizeMode="cover"
             />
           ) : (
             <View
               style={{
-                width: 42,
-                height: 42,
+                width: 40,
+                height: 40,
                 borderRadius: 10,
-                backgroundColor: c.surface,
+                backgroundColor: c.control,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <Text style={{ color: c.accent, fontSize: 12, fontWeight: '700' }}>
+              <Text style={{ color: c.text, fontSize: 11, fontWeight: '700' }}>
                 {photo ? 'IMG' : (file?.filename.split('.').pop()?.toUpperCase() ?? 'FILE')}
               </Text>
             </View>
           )}
-          <View style={{ flex: 1, gap: 3 }}>
+          <View style={{ flex: 1, gap: 2 }}>
             <Text
               translate={false}
               numberOfLines={1}
-              style={{ fontSize: 14, fontWeight: '500', color: c.text }}
+              style={{ fontSize: 13, fontWeight: '500', color: c.text }}
             >
               {file?.filename ?? 'Preparing attachment…'}
             </Text>
@@ -101,7 +104,8 @@ export function Attachment({
           </View>
         </Pressable>
         {!ready && !failed && (
-          <ActivityMark
+          <FoolSpinner
+            size={22}
             label={file?.status === 'processing' ? 'Reading file' : 'Uploading file'}
           />
         )}
@@ -111,9 +115,16 @@ export function Attachment({
             accessibilityLabel="Remove attachment from message"
             onPress={onRemove}
             hitSlop={8}
-            style={{ padding: 6 }}
+            style={({ hovered }) => ({
+              width: 26,
+              height: 26,
+              borderRadius: 13,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: hovered ? c.hover : 'transparent',
+            })}
           >
-            <Text style={{ fontSize: 18, color: c.muted }}>×</Text>
+            <ChatGptIcon name="close" size={14} color={c.muted} />
           </Pressable>
         )}
       </View>

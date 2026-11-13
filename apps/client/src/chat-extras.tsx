@@ -2,13 +2,14 @@ import { useEffect, useState, useRef } from 'react';
 import { BackHandler, Platform, ScrollView, View, useWindowDimensions } from 'react-native';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { workflowPrompts } from '@ai-chat/contracts';
+import { Text } from './locale-ui';
 import { useTheme } from './theme';
 import { useCredential } from './queries';
 import { api, json } from './api';
-import { Button, Copy, Field, ErrorNotice, Choice, TabBar, IconButton } from './ui';
-import { Help } from './dialog';
+import { Button, Copy, Field, Panel, ErrorNotice, Choice, TabBar } from './ui';
 import { DocumentEditor, useProjects, useDocuments, type Document } from './workspace';
 import type { Conversation, Message, Run } from './types';
+
 export function ChatExtras({
   chat,
   messages,
@@ -17,7 +18,7 @@ export function ChatExtras({
   onDraft,
   running,
   documentSeed,
-  open,
+  open: controlledOpen,
   onOpenChange,
 }: {
   chat?: Conversation;
@@ -27,8 +28,8 @@ export function ChatExtras({
   onDraft: (s: string) => void;
   running: boolean;
   documentSeed?: { text: string; key: string };
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const dimensions = useWindowDimensions(),
     wide = dimensions.width >= 1024,
@@ -36,6 +37,12 @@ export function ChatExtras({
   const cache = useQueryClient(),
     projects = useProjects(),
     docs = useDocuments();
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  function setOpen(next: boolean) {
+    setInternalOpen(next);
+    onOpenChange?.(next);
+  }
   const [tab, setTab] = useState('context'),
     [error, setError] = useState<unknown>(),
     [busy, setBusy] = useState(false),
@@ -74,21 +81,21 @@ export function ChatExtras({
       const close = (event: KeyboardEvent) => {
         if (event.key === 'Escape') {
           event.preventDefault();
-          onOpenChange(false);
+          setOpen(false);
         }
       };
       window.addEventListener('keydown', close);
       return () => window.removeEventListener('keydown', close);
     }
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      onOpenChange(false);
+      setOpen(false);
       return true;
     });
     return () => subscription.remove();
-  }, [open, onOpenChange]);
+  }, [open]);
   function draftAndClose(text: string) {
     onDraft(text);
-    onOpenChange(false);
+    setOpen(false);
   }
   const credential = useCredential();
   const contextAdvice = useQuery({
@@ -117,16 +124,13 @@ export function ChatExtras({
       }),
     )
       .then((d) => {
-        {
-          setDoc(d);
-          setTab('documents');
-          onOpenChange(true);
-          void cache.invalidateQueries({ queryKey: ['documents'] });
-        }
+        setDoc(d);
+        setTab('documents');
+        setOpen(true);
+        void cache.invalidateQueries({ queryKey: ['documents'] });
       })
       .catch(setError)
       .finally(() => setBusy(false));
-
   }, [documentSeed?.key]);
   async function patch(body: unknown) {
     if (!chat) return;
@@ -137,21 +141,24 @@ export function ChatExtras({
     cache.setQueryData(['conversation', chat.id], value);
     await cache.invalidateQueries({ queryKey: ['conversations'] });
   }
-  const crowded =
+  const longContext =
+    !open &&
     !!contextAdvice.data?.context_length &&
     contextAdvice.data.input_tokens_estimated > contextAdvice.data.context_length * 0.7;
-  if (!open && !crowded) return null;
+
+  if (!open && !longContext) return null;
+
   return (
     <View
       style={{
         paddingHorizontal: 16,
-        paddingTop: open ? 12 : 0,
+        paddingTop: open ? 12 : 4,
         paddingBottom: 6,
         gap: 8,
         ...(open
           ? {
               position: 'absolute',
-              top: 60,
+              top: 52,
               bottom: 0,
               right: 0,
               ...(wide ? { width: 420 } : { left: 0 }),
@@ -163,39 +170,40 @@ export function ChatExtras({
           : {}),
       }}
     >
-      {open && (
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+      {longContext && (
+        <Panel style={{ maxWidth: 768, width: '100%', alignSelf: 'center', padding: 14 }}>
           <Copy small>
-            {chat?.project_id
-              ? (projects.data?.find((p) => p.id === chat.project_id)?.name ?? 'Project')
-              : chat?.context_note
-                ? 'Reviewed context note is active'
-                : 'Work tools'}
+            This conversation is getting long. Review a context note to keep room for the next
+            answer.
           </Copy>
-          <IconButton label="Close work tools" onPress={() => onOpenChange(false)}>
-            ×
-          </IconButton>
-        </View>
-      )}
-      {!open && crowded && (
-          <View style={{ gap: 8 }}>
-            <Copy small>
-              This conversation is getting long. Review a context note to keep room for the next
-              answer.
-            </Copy>
+          <View style={{ flexDirection: 'row' }}>
             <Button
-              quiet
+              secondary
               onPress={() => {
                 setTab('context');
-                onOpenChange(true);
+                setOpen(true);
               }}
             >
               Review context
             </Button>
           </View>
-        )}
+        </Panel>
+      )}
       {open && (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ gap: 10, paddingBottom: 8 }}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ gap: 10, paddingBottom: 16 }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+            }}
+          >
+            <Copy>Work tools</Copy>
+            <Button quiet secondary onPress={() => setOpen(false)}>
+              Close work tools
+            </Button>
+          </View>
           <TabBar
             label="Work tools sections"
             value={tab}
@@ -210,14 +218,8 @@ export function ChatExtras({
           />
           <ErrorNotice error={error} />
           {tab === 'context' && (
-            <View style={{ gap: 10 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Copy>Project context</Copy>
-                <Help
-                  title="Project context"
-                  text="Pick a project to let this chat use that project's memory and files you shared with it. Until you pick one, this chat stands alone. The note is a summary you edit yourself. After you use it, the model reads the note instead of the older messages it covers. Those messages stay visible here. Messages after the cutoff are still sent in full, so leave your latest question outside the note. Prepare excerpts drafts the note from older messages and sets the cutoff to the message before your latest question. Read it, edit it, then use the note. Restore full context clears the note and sends the whole chat again."
-                />
-              </View>
+            <Panel>
+              <Copy>Project context</Copy>
               <Choice
                 disabled={!chat || running || busy}
                 selected={!chat?.project_id}
@@ -236,10 +238,11 @@ export function ChatExtras({
                 </Choice>
               ))}
               {!chat && <Copy small>Send a first message to attach this chat to a project.</Copy>}
-              <Copy>Note the model will read</Copy>
+              <Copy>Reviewed context note</Copy>
               <Copy small muted>
-                Keep goals, constraints, decisions and open questions. The model reads this note
-                instead of the older messages it covers. The messages stay in the chat.
+                Keep goals, constraints, decisions and open questions. Messages through the selected
+                boundary are replaced by this note in future model requests; originals remain in
+                history. Keep the latest turn in full.
               </Copy>
               <Button
                 secondary
@@ -269,29 +272,13 @@ export function ChatExtras({
                 onChangeText={setNote}
                 style={{ minHeight: 150, textAlignVertical: 'top' }}
               />
-              <Copy small>What the note replaces</Copy>
-              <Copy small muted>
-                {through === '0'
-                  ? 'No cutoff yet. Prepare excerpts to cover the older messages and keep your latest question in full.'
-                  : 'The note replaces every message through the line below. Later messages are still sent in full. The replaced messages stay visible in the chat.'}
-              </Copy>
-              {through !== '0' && (
-                <Copy small translate={false}>
-                  {messages
-                    .filter((message) => {
-                      try {
-                        return (
-                          message.status !== 'pending' && BigInt(message.seq) <= BigInt(through)
-                        );
-                      } catch {
-                        return false;
-                      }
-                    })
-                    .at(-1)
-                    ?.content.replace(/\s+/g, ' ')
-                    .slice(0, 120) ?? ''}
-                </Copy>
-              )}
+              <Field
+                accessibilityLabel="Context boundary sequence"
+                placeholder="Last covered message sequence"
+                value={through}
+                onChangeText={setThrough}
+                keyboardType="number-pad"
+              />
               <Button
                 disabled={!chat || running || busy || !note.trim()}
                 onPress={() =>
@@ -323,16 +310,10 @@ export function ChatExtras({
                   Restore full context
                 </Button>
               )}
-            </View>
+            </Panel>
           )}
           {tab === 'documents' && (
-            <View style={{ gap: 10 }}>
-              <View style={{ alignItems: 'flex-end' }}>
-                <Help
-                  title="Documents"
-                  text="A document is a note with saved versions. Open one here to edit it, or save an assistant answer as a new document from the actions under that answer. You can also create and organize documents in Projects & tasks."
-                />
-              </View>
+            <>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                 {docs.data?.map((d) => (
                   <Button key={d.id} secondary onPress={() => setDoc(d)}>
@@ -350,16 +331,10 @@ export function ChatExtras({
               ) : (
                 <Copy>Save a response as a document or create one in Projects & tasks.</Copy>
               )}
-            </View>
+            </>
           )}
           {tab === 'workflows' && (
-            <View style={{ gap: 10 }}>
-              <View style={{ alignItems: 'flex-end' }}>
-                <Help
-                  title="Workflows"
-                  text="Each button places a ready-made instruction in the message box. Nothing is sent until you press send. Research mode asks the model to cite sources. Turn on the tools that instruction needs, then send it yourself."
-                />
-              </View>
+            <Panel>
               {Object.entries(workflowPrompts).map(([key, prompt]) => (
                 <Button key={key} secondary onPress={() => draftAndClose(prompt)}>
                   {
@@ -382,16 +357,10 @@ export function ChatExtras({
               >
                 {chat?.research_mode ? 'Research mode: on' : 'Research mode: off'}
               </Button>
-            </View>
+            </Panel>
           )}
           {tab === 'budget' && (
-            <View style={{ gap: 10 }}>
-              <View style={{ alignItems: 'flex-end' }}>
-                <Help
-                  title="Cost & limits"
-                  text="A run budget caps the estimated model cost of one reply. The figure is a catalog estimate, not the final OpenRouter invoice. Leave it empty for no cap. If the model price is unknown, a capped run will not start. This preview skips tool results and project material; the server checks the full request before sending it."
-                />
-              </View>
+            <Panel>
               <Field
                 accessibilityLabel="Run budget USD"
                 placeholder="Maximum estimated USD per run (empty: no cap)"
@@ -437,17 +406,11 @@ export function ChatExtras({
                 model request with its current context before submission. Provider charges may
                 differ from catalog estimates. Unknown prices block capped tasks.
               </Copy>
-            </View>
+            </Panel>
           )}
           {tab === 'meetings' && (
-            <View style={{ gap: 10 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Copy>Find free time on your primary calendar</Copy>
-                <Help
-                  title="Meeting times"
-                  text="This searches your primary Google calendar for open times between the start and end you enter. It does not know if other people are free. Choosing a time only writes a draft in the message box. Creating the event still needs a separate confirmation in the chat."
-                />
-              </View>
+            <Panel>
+              <Copy>Find free time on your primary calendar</Copy>
               <Field
                 accessibilityLabel="Meeting search start"
                 placeholder="Start, with timezone offset: 2026-11-12T09:00:00+01:00"
@@ -529,79 +492,76 @@ export function ChatExtras({
                   {new Date(s.start).toLocaleString(undefined, { timeZone: timezone })}
                 </Button>
               ))}
-            </View>
+            </Panel>
           )}
         </ScrollView>
       )}
     </View>
   );
 }
+
 export function PassageActions({
   text,
+  open,
+  onClose,
   onDraft,
-  onSave,
 }: {
   text: string;
+  open: boolean;
+  onClose: () => void;
   onDraft: (s: string) => void;
-  onSave: () => void;
 }) {
-  const [open, setOpen] = useState(false),
-    [passage, setPassage] = useState('');
-  function choose() {
-    if (Platform.OS === 'web') {
-      const selected = window.getSelection()?.toString();
-      if (selected && text.includes(selected)) setPassage(selected);
-    }
-    setOpen(!open);
-  }
+  const [passage, setPassage] = useState('');
+  useEffect(() => {
+    if (!open || Platform.OS !== 'web') return;
+    const selected = window.getSelection()?.toString();
+    if (selected && text.includes(selected)) setPassage(selected);
+  }, [open, text]);
+
+  if (!open) return null;
   return (
-    <View style={{ gap: 6 }}>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-        <Button secondary quiet onPress={choose}>
-          Work with response
-        </Button>
-        <Button secondary quiet onPress={onSave}>
-          Save as document
+    <View style={{ gap: 8, marginTop: 4 }}>
+      <Field
+        accessibilityLabel="Selected response passage"
+        placeholder="Select or paste the passage to work with"
+        multiline
+        value={passage}
+        onChangeText={setPassage}
+      />
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+        {['Explain', 'Shorten', 'Check'].map((action) => (
+          <Button
+            key={action}
+            secondary
+            onPress={() => {
+              onDraft(
+                `${action} the following passage${action === 'Check' ? ' using sources; distinguish supported claims, contradictions and uncertainty' : ''}:\n\n${passage.trim() || text}`,
+              );
+              onClose();
+            }}
+          >
+            {action}
+          </Button>
+        ))}
+        <Button secondary quiet onPress={onClose}>
+          Close
         </Button>
       </View>
-      {open && (
-        <>
-          <Field
-            accessibilityLabel="Selected response passage"
-            placeholder="Select or paste the passage to work with"
-            multiline
-            value={passage}
-            onChangeText={setPassage}
-          />
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-            {['Explain', 'Shorten', 'Check'].map((action) => (
-              <Button
-                key={action}
-                secondary
-                onPress={() =>
-                  onDraft(
-                    `${action} the following passage${action === 'Check' ? ' using sources; distinguish supported claims, contradictions and uncertainty' : ''}:\n\n${passage.trim() || text}`,
-                  )
-                }
-              >
-                {action}
-              </Button>
-            ))}
-          </View>
-          <Copy small muted>
-            Creates a draft. Review before sending.
-          </Copy>
-        </>
-      )}
+      <Copy small muted>
+        Creates a draft. Review before sending.
+      </Copy>
     </View>
   );
 }
+
 export function RunUsage({ run }: { run?: Run }) {
-  return run ? (
-    <Copy small muted>
+  const { colors: c } = useTheme();
+  if (!run || (run.usage.input_tokens == null && run.usage.output_tokens == null)) return null;
+  return (
+    <Text style={{ fontSize: 11, color: c.subtle }}>
       Input {run.usage.input_tokens ?? '?'} · output {run.usage.output_tokens ?? '?'} tokens ·{' '}
       {run.usage.cost_status} cost{' '}
       {run.usage.cost_usd == null ? 'unknown' : `$${run.usage.cost_usd}`}
-    </Copy>
-  ) : null;
+    </Text>
+  );
 }

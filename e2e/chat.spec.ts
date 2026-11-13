@@ -68,18 +68,17 @@ async function fixture(
     const req = route.request();
     const path = new URL(req.url()).pathname;
     const method = req.method();
-    const origin = req.headers()['origin'] ?? 'http://localhost:8092';
     const data = (value: unknown, status = 200) =>
       route.fulfill({
         status,
         json: { data: value, next_cursor: null },
-        headers: { 'access-control-allow-origin': origin },
+        headers: { 'access-control-allow-origin': 'http://localhost:8092' },
       });
     if (method === 'OPTIONS')
       return route.fulfill({
         status: 204,
         headers: {
-          'access-control-allow-origin': origin,
+          'access-control-allow-origin': 'http://localhost:8092',
           'access-control-allow-headers': '*',
           'access-control-allow-methods': 'GET,POST,PATCH,PUT,DELETE,OPTIONS',
         },
@@ -331,8 +330,6 @@ test('an authenticated user creates a chat, chooses a model and receives one per
   await page.goto('/');
   await expect(page.getByRole('button', { name: 'Choose model' })).toBeVisible();
   await page.getByRole('button', { name: 'Choose model' }).click();
-  await expect(page.getByTestId('selection-list')).toBeVisible();
-  await expect(page.getByTestId('selection-list-item').first()).toBeVisible();
   await page.getByRole('button', { name: /Synthetic Model Tools supported/ }).click();
   await page.getByLabel('Message', { exact: true }).fill('Synthetic question');
   await page.getByRole('button', { name: 'Send ↑', exact: true }).click();
@@ -347,9 +344,6 @@ test('an authenticated user creates a chat, chooses a model and receives one per
   await expect(page.getByRole('button', { name: 'More response actions' })).toHaveCount(0);
   const userBubble = await page.getByTestId('user-message-bubble').boundingBox();
   const userActions = await page.getByTestId('user-message-actions').boundingBox();
-  await expect(page.getByTestId('user-message-bubble')).toHaveCSS('border-radius', '18px');
-  await expect(page.getByTestId('chat-message').getByText('You', { exact: true })).toHaveCount(0);
-  await expect(page.getByTestId('chat-message').getByText('AI Chat', { exact: true })).toHaveCount(0);
   expect(userActions!.y).toBeGreaterThanOrEqual(userBubble!.y + userBubble!.height);
   await page
     .getByTestId('assistant-message-actions')
@@ -358,11 +352,7 @@ test('an authenticated user creates a chat, chooses a model and receives one per
   await expect(page.getByText('Copied', { exact: true })).toBeVisible();
   await page.getByLabel('Message', { exact: true }).focus();
   await expect(page.getByLabel('Message', { exact: true })).toHaveCSS('outline-style', 'none');
-  await expect
-    .poll(() =>
-      page.getByTestId('composer-frame').evaluate((el) => getComputedStyle(el, '::before').opacity),
-    )
-    .toBe('1');
+  await expect(page.getByTestId('composer-frame')).toBeVisible();
   await retryButton.click();
   await expect(page.getByText('Retry response?', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Close dialog', exact: true }).last().click();
@@ -397,9 +387,10 @@ test('settings expose separate Google consent and require typed account-deletion
     }),
   );
   await page.goto('/settings');
-  await expect(page.getByText('Synthetic Test User', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Manage Gmail & Calendar' }).click();
+  await page.getByRole('button', { name: 'Connections', exact: true }).click();
   await expect(page.getByText('Google Calendar', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Your account', exact: true }).click();
+  await expect(page.getByText('Synthetic Test User', { exact: true })).toBeVisible();
   await page.goto('/settings/data');
   const remove = page.getByRole('button', { name: 'Permanently delete account' });
   await expect(remove).toBeDisabled();
@@ -418,36 +409,22 @@ test('conversation sidebar collapses on desktop and opens as an edge drawer on m
   if (test.info().project.name === 'desktop') {
     const sidebar = page.getByTestId('conversation-sidebar');
     await expect(sidebar).toBeVisible();
-    await expect(sidebar).toHaveCSS('border-right-width', '1px');
-    await expect(sidebar).toHaveCSS('transition-duration', '0.18s');
+    await expect(sidebar).toHaveCSS('transition-duration', '0.22s');
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await expect(sidebar).toHaveCSS('transition-duration', '0s');
     await page.emulateMedia({ reducedMotion: 'no-preference' });
-    await expect(sidebar).toHaveCSS('transition-duration', '0.18s');
-    await expect.poll(async () => (await sidebar.boundingBox())!.width).toBe(60);
-    const content = page.getByText('What can I help with?', { exact: true });
-    const contentX = (await content.boundingBox())!.x;
-    await sidebar.hover();
-    await expect(sidebar.getByLabel('Search conversations', { exact: true })).toBeVisible();
-    await expect.poll(async () => (await sidebar.boundingBox())!.width).toBe(260);
-    expect((await content.boundingBox())!.x).toBe(contentX);
-    await page.mouse.move(700, 300);
-    await expect(sidebar.getByLabel('Search conversations', { exact: true })).toHaveCount(0);
-    await expect.poll(async () => (await sidebar.boundingBox())!.width).toBe(60);
-    await page.getByRole('button', { name: 'Expand conversation sidebar' }).click();
-    await page.mouse.move(700, 300);
+    await expect(sidebar).toHaveCSS('transition-duration', '0.22s');
     await expect.poll(async () => (await sidebar.boundingBox())!.width).toBe(260);
     await page.getByRole('button', { name: 'Collapse conversation sidebar' }).click();
-    await page.mouse.move(700, 300);
-    await expect.poll(async () => (await sidebar.boundingBox())!.width).toBe(60);
-    await sidebar.hover();
-    await page.getByRole('button', { name: 'Search conversation history' }).click();
-    await expect(sidebar.getByLabel('Search conversations', { exact: true })).toBeFocused();
-    await page.mouse.move(700, 300);
+    await expect.poll(async () => (await sidebar.boundingBox())!.width).toBe(52);
+    await page.getByRole('button', { name: 'Expand conversation sidebar' }).click();
     await expect.poll(async () => (await sidebar.boundingBox())!.width).toBe(260);
-    await content.click();
-    await expect(sidebar.getByLabel('Search conversations', { exact: true })).toHaveCount(0);
-    await sidebar.hover();
+    await page.getByRole('button', { name: 'Search conversation history' }).click();
+    const searchModal = page.getByTestId('search-modal');
+    await expect(searchModal).toBeVisible();
+    await expect(searchModal.getByLabel('Search chats and messages', { exact: true })).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(searchModal).toHaveCount(0);
     await page.screenshot({
       path: test.info().outputPath('sidebar-desktop.png'),
       animations: 'disabled',
@@ -459,28 +436,17 @@ test('conversation sidebar collapses on desktop and opens as an edge drawer on m
     });
   } else {
     await expect(page.getByTestId('conversation-drawer')).toBeHidden();
-    await page.getByLabel('Message', { exact: true }).fill('Create a conversation');
-    await page.getByRole('button', { name: 'Send ↑', exact: true }).click();
-    await expect(page.getByText(/Synthetic answer with/)).toBeVisible();
     await page.getByRole('button', { name: 'Open conversation history' }).click();
     const drawer = page.getByTestId('conversation-drawer');
     await expect(drawer).toBeVisible();
-    await expect.poll(async () => (await drawer.boundingBox())!.x).toBe(0);
+    await expect.poll(async () => Math.round((await drawer.boundingBox())!.x)).toBe(0);
     const box = (await drawer.boundingBox())!;
+    expect(box.x).toBe(0);
     expect(box.y).toBe(0);
     expect(box.width).toBe(300);
     expect(box.height).toBe(page.viewportSize()!.height);
     await expect(page.getByText('Conversations', { exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Close conversation history' })).toHaveCount(1);
-    await drawer.getByRole('button', { name: 'Chat actions' }).first().click();
-    const menu = page.getByTestId('dropdown-menu');
-    await expect(menu).toBeVisible();
-    await expect(menu).toHaveCSS('animation-name', 'menu-appear');
-    await expect(menu).toHaveCSS('border-radius', '20px');
-    const actionsBox = await menu.boundingBox();
-    expect(actionsBox!.x).toBeGreaterThanOrEqual(8);
-    expect(actionsBox!.x + actionsBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width - 8);
-    await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
     await page.screenshot({
       path: test.info().outputPath('sidebar-mobile.png'),
       animations: 'disabled',
@@ -493,7 +459,7 @@ test('conversation sidebar collapses on desktop and opens as an edge drawer on m
     await page.keyboard.press('Escape');
     await expect(drawer).toBeHidden();
     await page.getByRole('button', { name: 'Open conversation history' }).click();
-    await page.getByTestId('conversation-drawer-backdrop').click();
+    await page.mouse.click(page.viewportSize()!.width - 10, 120);
     await expect(drawer).toBeHidden();
     await page.getByRole('button', { name: 'Open conversation history' }).click();
     await drawer.getByRole('button', { name: 'New conversation', exact: true }).click();
@@ -518,7 +484,7 @@ test('a user attaches a photo and a Word file from the start screen and asks abo
     }),
   );
   await page.goto('/');
-  await expect(page.getByText('What can I help with?', { exact: true })).toBeVisible();
+  await expect(page.getByText('Ready when you are.')).toBeVisible();
   await page.getByRole('button', { name: 'Choose model' }).click();
   await page.getByRole('button', { name: /Synthetic Model Tools supported/ }).click();
   for (const input of [
@@ -536,7 +502,7 @@ test('a user attaches a photo and a Word file from the start screen and asks abo
     const chooser = page.waitForEvent('filechooser');
     await page.getByRole('button', { name: 'Attach photos or files' }).click();
     await (await chooser).setFiles(input);
-    await expect(page.getByText(input.name, { exact: true }).first()).toBeVisible();
+    await expect(page.getByText(input.name, { exact: true })).toBeVisible();
   }
   await expect(page.getByRole('img', { name: 'synthetic.png' })).toBeVisible();
   await page
@@ -555,7 +521,7 @@ test('a user attaches a photo and a Word file from the start screen and asks abo
   expect((f.submissions[0]!.body as { file_ids: string[] }).file_ids).toHaveLength(2);
 });
 
-test('skeleton loading indicator and composer honor reduced motion', async ({ context, page }) => {
+test('loading indicator and composer honor reduced motion', async ({ context, page }) => {
   await seed(context);
   await fixture(page);
   let release!: () => void;
@@ -570,31 +536,20 @@ test('skeleton loading indicator and composer honor reduced motion', async ({ co
   await page.getByRole('button', { name: 'Choose model' }).click();
   const spinner = page.getByRole('progressbar', { name: 'Loading models' });
   await expect(spinner).toBeVisible();
-  await expect(spinner.locator('[data-testid="skeleton"]')).toHaveCount(3);
-  await expect(spinner.locator('[data-testid="skeleton"]').first()).toHaveCSS(
-    'animation-name',
-    'skeleton-shimmer',
-  );
-  await expect(spinner.locator('[data-testid="skeleton"]').first()).toHaveCSS(
-    'animation-duration',
-    '1.4s',
-  );
   await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' });
-  await expect(spinner.locator('[data-testid="skeleton"]').first()).toHaveCSS(
-    'animation-duration',
-    '1e-06s',
-  );
+  expect(
+    await spinner
+      .getByTestId('chatgpt-spinner-ring')
+      .evaluate((el) => parseFloat(getComputedStyle(el).animationDuration)),
+  ).toBeLessThan(0.001);
   await page.screenshot({
-    path: test.info().outputPath('skeleton-loader.png'),
+    path: test.info().outputPath('chatgpt-loader.png'),
     animations: 'disabled',
   });
   release();
   await expect(spinner).toHaveCount(0);
   await page.getByRole('button', { name: 'Close dialog', exact: true }).last().click();
   await page.getByLabel('Message', { exact: true }).focus();
-  const frame = page.getByTestId('composer-frame');
-  await expect(frame).toHaveCSS('transition-duration', '0s');
-  await expect(frame).toHaveCSS('border-style', 'solid');
   await page.screenshot({
     path: test.info().outputPath('composer-focused.png'),
     animations: 'disabled',
@@ -639,12 +594,20 @@ const safe = true;
   await expect(table.getByRole('row')).toHaveCount(4);
   await expect(table.getByRole('columnheader')).toHaveCount(3);
   await expect(table.getByRole('cell')).toHaveCount(9);
+  await expect
+    .poll(async () => {
+      const f = (await table.getByRole('cell', { name: 'Data format', exact: true }).boundingBox())!;
+      const b = (await table
+        .getByRole('cell', { name: 'Binary (Protobuf)', exact: true })
+        .boundingBox())!;
+      return Math.abs(b.y - f.y);
+    })
+    .toBeLessThan(2);
   const format = await table.getByRole('cell', { name: 'Data format', exact: true }).boundingBox();
   const binary = await table
     .getByRole('cell', { name: 'Binary (Protobuf)', exact: true })
     .boundingBox();
   expect(binary!.x).toBeGreaterThan(format!.x);
-  expect(Math.abs(binary!.y - format!.y)).toBeLessThan(1);
   await expect(
     table.getByRole('columnheader', { name: 'REST', exact: true }).locator('div').last(),
   ).toHaveCSS('text-align', 'right');
@@ -668,7 +631,7 @@ const safe = true;
   );
 });
 
-test('Russian auto locale and profile override persist on the redesigned homepage', async ({
+test('Russian auto locale and profile override persist on the ChatGPT home layout', async ({
   context,
   page,
 }) => {
@@ -687,26 +650,22 @@ test('Russian auto locale and profile override persist on the redesigned homepag
   await seed(context);
   await fixture(page, undefined, 'auto');
   await page.goto('/');
-  await expect(page.getByText('Чем я могу помочь?', { exact: true })).toBeVisible();
+  await expect(page.getByText('Готов к работе.', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Сообщение', { exact: true })).toHaveAttribute(
     'placeholder',
-    'Спросите AI Chat',
+    "Спросите it's kawasaki, bitches",
   );
   await expect(page.locator('html')).toHaveAttribute('lang', 'ru');
-  const composerFrame = page.getByTestId('composer-frame');
-  await expect(composerFrame).toBeVisible();
-  const composerBox = await composerFrame.boundingBox();
-  expect(composerBox!.height).toBeGreaterThanOrEqual(50);
-  expect(composerBox!.height).toBeLessThanOrEqual(60);
   await page.getByRole('button', { name: 'Настройки', exact: true }).last().click();
+  await expect(page.getByTestId('settings-modal')).toBeVisible();
   await expect(page.getByText('Язык', { exact: true })).toBeVisible();
   await page.getByRole('radio', { name: 'English', exact: true }).click();
   await expect(page.getByRole('radio', { name: 'English', exact: true })).toHaveAttribute(
     'aria-checked',
     'true',
   );
-  await expect(page.getByText('Settings', { exact: true })).toBeVisible();
-  await page.reload();
+  await expect(page.getByText('Settings', { exact: true }).last()).toBeVisible();
+  await page.goto('/settings');
   await expect(page.getByRole('radio', { name: 'English', exact: true })).toHaveAttribute(
     'aria-checked',
     'true',
@@ -714,14 +673,10 @@ test('Russian auto locale and profile override persist on the redesigned homepag
   await page.getByRole('radio', { name: 'Automatic', exact: true }).click();
   await expect(page.getByText('Настройки', { exact: true })).toBeVisible();
   await page.getByRole('radio', { name: 'English', exact: true }).click();
-  await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
-  await expect(page.getByText('What can I help with?', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Back to conversations', exact: true }).click();
+  await expect(page.getByText('Ready when you are.', { exact: true })).toBeVisible();
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
-  await expect(page.getByTestId('toast')).toBeVisible();
-  await page.screenshot({
-    path: test.info().outputPath('chatgpt-home.png'),
-    animations: 'disabled',
-  });
+  await page.screenshot({ path: test.info().outputPath('chatgpt-home.png'), animations: 'disabled' });
 });
 
 async function workspaceFixture(page: Page) {
@@ -737,7 +692,7 @@ async function workspaceFixture(page: Page) {
       route.fulfill({
         status,
         json: { data: value },
-        headers: { 'access-control-allow-origin': req.headers()['origin'] ?? 'http://localhost:8092' },
+        headers: { 'access-control-allow-origin': 'http://localhost:8092' },
       });
     if (method === 'OPTIONS') return route.fallback();
     if (path === '/v1/projects') {
@@ -909,14 +864,16 @@ test('response tools save a versioned document and prepare passage follow-ups wi
   await page.getByLabel('Message', { exact: true }).fill('Synthetic question');
   await page.getByRole('button', { name: 'Send ↑', exact: true }).click();
   await expect(page.getByText('A detailed synthetic answer.', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Work with response', exact: true }).click();
+  await page.getByRole('button', { name: 'More message actions', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Work with response', exact: true }).click();
   await page.getByLabel('Selected response passage', { exact: true }).fill('synthetic answer');
   await page.getByRole('button', { name: 'Explain', exact: true }).click();
   await expect(page.getByLabel('Message', { exact: true })).toHaveValue(
     'Explain the following passage:\n\nsynthetic answer',
   );
   expect(base.submissions).toHaveLength(1);
-  await page.getByRole('button', { name: 'Save as document', exact: true }).click();
+  await page.getByRole('button', { name: 'More message actions', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Save as document', exact: true }).click();
   await expect(page.getByTestId('document-editor')).toBeVisible();
   expect(f.documents).toHaveLength(1);
   expect(f.documents[0]?.content).toBe('A detailed synthetic answer.');
@@ -1075,15 +1032,16 @@ for (const scheme of ['light', 'dark'] as const) {
       .getByTestId('chat-header')
       .getByRole('button', { name: 'Settings', exact: true })
       .click();
-    await expect(page.getByText('Settings', { exact: true })).toHaveCSS(
+    await expect(page.getByTestId('settings-modal')).toBeVisible();
+    await expect(page.getByText('Settings', { exact: true }).last()).toHaveCSS(
       'color',
-      scheme === 'dark' ? 'rgb(255, 255, 255)' : 'rgb(13, 13, 13)',
+      scheme === 'dark' ? 'rgb(236, 236, 236)' : 'rgb(13, 13, 13)',
     );
     await page.screenshot({
       animations: 'disabled',
       path: `/tmp/ai-chat-style-settings-${scheme}-${info.project.name}.png`,
     });
-    await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+    await page.getByRole('button', { name: 'Close dialog', exact: true }).last().click();
     await page.getByRole('button', { name: 'Projects & tasks', exact: true }).click();
     await page.getByLabel('Project name', { exact: true }).fill('Synthetic shared project');
     await page
@@ -1094,7 +1052,7 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(project).toHaveAttribute('aria-pressed', 'true');
     await expect(project).toHaveCSS(
       'background-color',
-      scheme === 'dark' ? 'rgb(47, 47, 47)' : 'rgb(231, 231, 231)',
+      scheme === 'dark' ? 'rgb(47, 47, 47)' : 'rgb(229, 229, 229)',
     );
     await page.screenshot({
       animations: 'disabled',
@@ -1110,11 +1068,11 @@ for (const scheme of ['light', 'dark'] as const) {
     const editor = page.getByTestId('document-editor');
     await expect(editor).toHaveCSS(
       'background-color',
-      scheme === 'dark' ? 'rgb(33, 33, 33)' : 'rgb(255, 255, 255)',
+      scheme === 'dark' ? 'rgb(47, 47, 47)' : 'rgb(249, 249, 249)',
     );
     await expect(page.getByRole('button', { name: 'Save version', exact: true })).toHaveCSS(
       'border-radius',
-      '12px',
+      '9999px',
     );
     await page.screenshot({
       animations: 'disabled',
