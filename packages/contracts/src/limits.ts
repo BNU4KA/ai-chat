@@ -63,8 +63,14 @@ export const READ_TOOLS = [
   'get_calendar_availability',
 ] as const;
 
-export const ALL_TOOLS = [...READ_TOOLS, ...WRITE_TOOLS] as const;
+export const BUILTIN_TOOLS = ['switch_model', 'generate_image'] as const;
+
+export const ALL_TOOLS = [...READ_TOOLS, ...WRITE_TOOLS, ...BUILTIN_TOOLS] as const;
 export type ToolName = (typeof ALL_TOOLS)[number];
+
+export function isBuiltinTool(name: string): boolean {
+  return (BUILTIN_TOOLS as readonly string[]).includes(name);
+}
 
 export function toolGroup(name: ToolName): ToolGroup {
   if (name === 'search_web' || name === 'read_web_page') return 'web';
@@ -73,7 +79,9 @@ export function toolGroup(name: ToolName): ToolGroup {
     name === 'read_file' ||
     name === 'search_files' ||
     name === 'list_project_documents' ||
-    name === 'read_project_document'
+    name === 'read_project_document' ||
+    name === 'switch_model' ||
+    name === 'generate_image'
   )
     return 'files';
   if (

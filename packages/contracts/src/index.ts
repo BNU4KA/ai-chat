@@ -1,10 +1,12 @@
 export { AppError, isAppError } from './errors.ts';
 export {
   ALL_TOOLS,
+  BUILTIN_TOOLS,
   LIMITS,
   READ_TOOLS,
   TOOL_GROUPS,
   WRITE_TOOLS,
+  isBuiltinTool,
   isWriteTool,
   toolGroup,
 } from './limits.ts';

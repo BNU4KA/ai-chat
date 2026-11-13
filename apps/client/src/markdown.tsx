@@ -4,6 +4,7 @@ import { Linking, Platform, ScrollView, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { Pressable } from './locale-ui';
 import { ChatGptIcon } from './chatgpt-icons';
+import { splitStreamTail } from './smooth-text';
 import { useTheme } from './theme';
 
 const parser = new MarkdownIt({ html: false, linkify: false, breaks: true });
@@ -212,19 +213,28 @@ function CodeBlock({ language, content }: { language: string; content: string })
 
 export function Markdown({
   text,
+  streaming = false,
   onCitation,
 }: {
   text: string;
+  streaming?: boolean;
   onCitation?: (id: string) => void;
 }) {
   const { colors: c } = useTheme();
   const tokens = parser.parse(text, {});
+  const lastInlineIdx = streaming
+    ? tokens.reduce((acc, tok, idx) => (tok.type === 'inline' ? idx : acc), -1)
+    : -1;
 
-  function inline(children: Token[] = []): ReactNode {
+  function inline(children: Token[] = [], isLastBlock = false): ReactNode {
     let bold = 0,
       italic = 0,
       strike = 0;
     let href: string | null = null;
+    const lastTextIdx =
+      streaming && isLastBlock
+        ? children.reduce((acc, ch, idx) => (ch.type === 'text' ? idx : acc), -1)
+        : -1;
     return children.map((child, i) => {
       if (child.type === 'strong_open') {
         bold++;
@@ -261,6 +271,30 @@ export function Markdown({
       if (child.type === 'image') return <Text key={i}>[Image omitted]</Text>;
       if (child.type === 'softbreak' || child.type === 'hardbreak') return '\n';
       const url = href;
+      const renderText = (val: string) =>
+        onCitation && child.type === 'text'
+          ? val.split(/(\[S\d+\])/g).map((part, n) =>
+              /^\[S\d+\]$/.test(part) ? (
+                <Text
+                  key={n}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Show evidence ${part}`}
+                  style={{
+                    color: c.info,
+                    backgroundColor: c.infoSoft,
+                    fontSize: 13,
+                    fontWeight: '600',
+                  }}
+                  onPress={() => onCitation(part.slice(1, -1))}
+                >
+                  {part}
+                </Text>
+              ) : (
+                part
+              ),
+            )
+          : val;
+      const tailSplit = i === lastTextIdx && child.content ? splitStreamTail(child.content) : null;
       return (
         <Text
           key={i}
@@ -276,28 +310,18 @@ export function Markdown({
             backgroundColor: child.type === 'code_inline' ? c.raised : undefined,
           }}
         >
-          {onCitation && child.type === 'text'
-            ? child.content.split(/(\[S\d+\])/g).map((part, n) =>
-                /^\[S\d+\]$/.test(part) ? (
-                  <Text
-                    key={n}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Show evidence ${part}`}
-                    style={{
-                      color: c.info,
-                      backgroundColor: c.infoSoft,
-                      fontSize: 13,
-                      fontWeight: '600',
-                    }}
-                    onPress={() => onCitation(part.slice(1, -1))}
-                  >
-                    {part}
-                  </Text>
-                ) : (
-                  part
-                ),
-              )
-            : child.content}
+          {tailSplit ? (
+            <>
+              {renderText(tailSplit[0])}
+              {!!tailSplit[1] && (
+                <Text key={`tail-${tailSplit[0].length}`} testID="streaming-tail">
+                  {tailSplit[1]}
+                </Text>
+              )}
+            </>
+          ) : (
+            renderText(child.content)
+          )}
         </Text>
       );
     });
@@ -480,7 +504,7 @@ export function Markdown({
       if (token.type === 'inline')
         result.push(
           <Text key={key} selectable style={{ color: c.text, fontSize: 16, lineHeight: 26 }}>
-            {inline(token.children ?? [])}
+            {inline(token.children ?? [], key === lastInlineIdx)}
           </Text>,
         );
     }

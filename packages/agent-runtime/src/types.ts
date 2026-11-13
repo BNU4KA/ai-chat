@@ -82,6 +82,19 @@ export type ToolPorts = {
   freeBusy?(args: unknown): Promise<ToolOutcome>;
   createEvent?(args: unknown): Promise<ToolOutcome>;
   updateEvent?(args: unknown): Promise<ToolOutcome>;
+  switchModel?(input: {
+    ownerId: string;
+    conversationId: string;
+    query: string;
+  }): Promise<ToolOutcome>;
+  generateImage?(input: {
+    ownerId: string;
+    conversationId: string;
+    assistantMessageId: string;
+    prompt: string;
+    modelQuery?: string;
+    signal?: AbortSignal;
+  }): Promise<ToolOutcome>;
 };
 
 export type Checkpoint = {

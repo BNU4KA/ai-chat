@@ -97,6 +97,17 @@ export const toolSchemas = {
       description: z.string().max(8000).optional(),
     })
     .strict(),
+  switch_model: z
+    .object({
+      model_query: z.string().min(1).max(200),
+    })
+    .strict(),
+  generate_image: z
+    .object({
+      prompt: z.string().min(1).max(2000),
+      model_query: z.string().min(1).max(200).optional(),
+    })
+    .strict(),
 } satisfies Record<ToolName, z.ZodType>;
 
 export const toolDescriptions: Record<ToolName, string> = {
@@ -117,6 +128,10 @@ export const toolDescriptions: Record<ToolName, string> = {
   get_calendar_availability: 'Show busy intervals on the primary calendar.',
   create_calendar_event: 'Prepare a timed primary-calendar event. Requires confirmation.',
   update_calendar_event: 'Prepare a change to an existing event. Requires confirmation.',
+  switch_model:
+    'Switch the model used by this conversation when the user explicitly asks to use or change to a specific model.',
+  generate_image:
+    'Generate a photo or image immediately using an image-generation model when the user explicitly asks to create/draw/generate a photo or picture.',
 };
 
 export function parametersFor(name: ToolName): Record<string, unknown> {

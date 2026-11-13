@@ -41,6 +41,10 @@ const css = `
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
+@keyframes chatgpt-tail-in {
+  from { opacity: 0.35; }
+  to { opacity: 1; }
+}
 
 * {
   scrollbar-width: thin;
@@ -118,6 +122,9 @@ button:not(:disabled):active, [role="button"]:not([aria-disabled="true"]):active
 [data-testid="thinking-skeleton-line"] {
   background-size: 200% 100%;
   animation: chatgpt-skeleton-sweep 1.6s ease-in-out infinite;
+}
+[data-testid="streaming-tail"] {
+  animation: chatgpt-tail-in 180ms ease-out;
 }
 
 [data-testid="sidebar-chat-row"] [data-testid="sidebar-row-more"] {

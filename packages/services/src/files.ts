@@ -1,7 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { AppError } from '@ai-chat/contracts';
+import { AppError, LIMITS } from '@ai-chat/contracts';
 import { fileDto, withWorker } from '@ai-chat/database';
-import { downloadStoredObject, extractIsolated, removeStoredObjects } from '@ai-chat/integrations';
+import {
+  downloadStoredObject,
+  extractIsolated,
+  removeStoredObjects,
+  storageConfigured,
+  uploadStoredObject,
+} from '@ai-chat/integrations';
 import type { ToolPorts, ToolOutcome } from '@ai-chat/agent-runtime';
 
 export async function processFile(id: string) {
@@ -173,4 +179,66 @@ export function filePorts(owner: string, chat: string): ToolPorts {
     readFile: async (input) => read(input.fileId, undefined, input.pageStart, input.pageEnd),
     searchFiles: async (input) => read(undefined, input.query, undefined, undefined, input.fileIds),
   };
+}
+
+export async function saveGeneratedImage(input: {
+  ownerId: string;
+  conversationId: string;
+  assistantMessageId: string;
+  bytes: Uint8Array;
+  mime: string;
+  filename: string;
+}): Promise<{ file_id: string; filename: string; mime: string }> {
+  if (!storageConfigured()) {
+    throw new AppError(503, 'TOOL_NOT_CONFIGURED', 'File storage is not available.');
+  }
+  const safeName =
+    input.filename.replace(/[^\p{L}\p{N}._-]/gu, '_').slice(0, 120) || 'generated.png';
+  const fileId = randomUUID();
+  const objectKey = `${input.ownerId}/${input.conversationId}/${fileId}-${safeName}`;
+  await withWorker(async (tx) => {
+    const quota = (
+      await tx.query(
+        "select count(*)::int as files, coalesce(sum(byte_size),0)::bigint as bytes from files where owner_id=$1 and status!='deleted' and deleted_at is null",
+        [input.ownerId],
+      )
+    ).rows[0];
+    if (
+      Number(quota?.files ?? 0) >= LIMITS.filesPerUser ||
+      Number(quota?.bytes ?? 0) + input.bytes.length > LIMITS.storedBytesPerUser
+    ) {
+      throw new AppError(422, 'QUOTA_EXCEEDED', 'User storage quota exceeded.');
+    }
+    const chat = (
+      await tx.query(
+        'select id from conversations where id=$1 and owner_id=$2 and deleted_at is null',
+        [input.conversationId, input.ownerId],
+      )
+    ).rows[0];
+    if (!chat) throw new AppError(404, 'NOT_FOUND', 'Conversation not found');
+  });
+  await uploadStoredObject(objectKey, input.bytes, input.mime);
+  const sha = createHash('sha256').update(input.bytes).digest('hex');
+  await withWorker(async (tx) => {
+    await tx.query(
+      `insert into files (id, owner_id, conversation_id, object_key, original_name, detected_mime, byte_size, status, sha256)
+       values ($1, $2, $3, $4, $5, $6, $7, 'ready', $8)`,
+      [
+        fileId,
+        input.ownerId,
+        input.conversationId,
+        objectKey,
+        safeName,
+        input.mime,
+        input.bytes.length,
+        sha,
+      ],
+    );
+    await tx.query(
+      `insert into message_files (message_id, file_id, owner_id) values ($1, $2, $3)
+       on conflict do nothing`,
+      [input.assistantMessageId, fileId, input.ownerId],
+    );
+  });
+  return { file_id: fileId, filename: safeName, mime: input.mime };
 }

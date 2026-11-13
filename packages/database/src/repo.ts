@@ -595,6 +595,7 @@ export async function createMessageRun(
     fileIds: string[];
     contextLength?: number | null;
     maxOutputTokens?: number | null;
+    supportsTools?: boolean;
     googleSubject?: string;
     googleIntegrationId?: string;
     inputPrice?: string | null;
@@ -720,6 +721,7 @@ export async function createMessageRun(
           model_id: chat.model_id,
           contextLength: input.contextLength ?? null,
           maxOutputTokens: input.maxOutputTokens,
+          supportsTools: input.supportsTools,
           googleSubject: input.googleSubject,
           googleIntegrationId: input.googleIntegrationId,
           inputPrice: input.inputPrice,

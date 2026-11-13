@@ -1,3 +1,4 @@
+import { LIMITS } from '@ai-chat/contracts';
 import type { ModelAdapter, ModelResult } from '@ai-chat/agent-runtime';
 
 const OPENROUTER = 'https://openrouter.ai/api/v1';
@@ -25,6 +26,7 @@ type CatalogModel = {
   context_length: number | null;
   supports_tools: boolean;
   supports_images: boolean;
+  supports_image_output: boolean;
   max_output_tokens: number | null;
   input_price_per_million_usd: string | null;
   output_price_per_million_usd: string | null;
@@ -52,14 +54,19 @@ export async function fetchModelCatalog(
     const parameters = Array.isArray(model.supported_parameters)
       ? model.supported_parameters.map(String)
       : [];
+    const arch = (model.architecture ?? {}) as {
+      input_modalities?: unknown;
+      output_modalities?: unknown;
+    };
     return {
       id: String(model.id),
       name: String(model.name ?? model.id),
       context_length: typeof model.context_length === 'number' ? model.context_length : null,
       supports_tools: parameters.includes('tools'),
       supports_images:
-        Array.isArray((model.architecture as { input_modalities?: unknown })?.input_modalities) &&
-        (model.architecture as { input_modalities: string[] }).input_modalities.includes('image'),
+        Array.isArray(arch.input_modalities) && arch.input_modalities.includes('image'),
+      supports_image_output:
+        Array.isArray(arch.output_modalities) && arch.output_modalities.includes('image'),
       max_output_tokens:
         typeof (model.top_provider as { max_completion_tokens?: number })?.max_completion_tokens ===
         'number'
@@ -253,6 +260,83 @@ export function createOpenRouterModel(fetchImpl: typeof fetch = fetch): ModelAda
         submitted: true,
       };
     },
+  };
+}
+
+export async function generateOpenRouterImage(
+  input: {
+    apiKey: string;
+    model: string;
+    prompt: string;
+    signal?: AbortSignal;
+  },
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ bytes: Uint8Array; mime: string; costUsd: string | null }> {
+  const signal = input.signal
+    ? AbortSignal.any([input.signal, AbortSignal.timeout(LIMITS.modelTimeoutMs)])
+    : AbortSignal.timeout(LIMITS.modelTimeoutMs);
+  const response = await fetchImpl(`${OPENROUTER}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${input.apiKey}`,
+      'content-type': 'application/json',
+    },
+    signal,
+    body: JSON.stringify({
+      model: input.model,
+      messages: [{ role: 'user', content: input.prompt }],
+      modalities: ['image', 'text'],
+      stream: false,
+    }),
+  });
+  if (!response.ok) {
+    const code =
+      response.status === 401 || response.status === 403
+        ? 'KEY_INVALID'
+        : response.status === 402
+          ? 'INSUFFICIENT_CREDITS'
+          : response.status === 429
+            ? 'PROVIDER_RATE_LIMIT'
+            : response.status === 404
+              ? 'MODEL_UNAVAILABLE'
+              : 'PROVIDER_ERROR';
+    throw Object.assign(new Error('Image generation failed'), { code });
+  }
+  const body = (await response.json()) as {
+    usage?: { cost?: number };
+    choices?: {
+      message?: {
+        content?: unknown;
+        images?: { image_url?: { url?: string }; url?: string }[];
+      };
+    }[];
+  };
+  const msg = body.choices?.[0]?.message;
+  let dataUrl: string | undefined =
+    msg?.images?.[0]?.image_url?.url ?? msg?.images?.[0]?.url;
+  if (!dataUrl && Array.isArray(msg?.content)) {
+    const part = (msg.content as { type?: string; image_url?: { url?: string } }[]).find(
+      (item) => item?.type === 'image_url' && typeof item.image_url?.url === 'string',
+    );
+    dataUrl = part?.image_url?.url;
+  }
+  const match = dataUrl?.match(/^data:(image\/(?:png|jpeg|jpg|webp|gif));base64,([A-Za-z0-9+/=]+)$/);
+  if (!match) {
+    throw Object.assign(new Error('Provider did not return a valid image'), {
+      code: 'PROVIDER_ERROR',
+    });
+  }
+  const mime = match[1] === 'image/jpg' ? 'image/jpeg' : match[1]!;
+  const bytes = Buffer.from(match[2]!, 'base64');
+  if (!bytes.length || bytes.length > LIMITS.fileBytes) {
+    throw Object.assign(new Error('Generated image size is invalid'), {
+      code: 'PROVIDER_ERROR',
+    });
+  }
+  return {
+    bytes: new Uint8Array(bytes),
+    mime,
+    costUsd: body.usage?.cost == null ? null : String(body.usage.cost),
   };
 }
 

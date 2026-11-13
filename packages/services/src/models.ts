@@ -5,8 +5,10 @@ import {
   open,
   readOpenRouterSecret,
   withOwner,
+  withWorker,
 } from '@ai-chat/database';
 import { fetchModelCatalog } from '@ai-chat/integrations';
+import type { ToolOutcome } from '@ai-chat/agent-runtime';
 
 type Model = ReturnType<typeof modelSchema.parse>;
 const cache = new Map<string, { at: number; models: Model[] }>();
@@ -109,7 +111,124 @@ export async function validateChatModel(
     inputPrice:model.input_price_per_million_usd,outputPrice:model.output_price_per_million_usd,
     contextLength: model.context_length,
     maxOutputTokens: model.max_output_tokens ?? null,
+    supportsTools: model.supports_tools,
     googleSubject: google?.google_subject as string | undefined,
     googleIntegrationId: google?.id as string | undefined,
+  };
+}
+
+const IMAGE_MODEL_PREFERENCES = [
+  'google/gemini-2.5-flash-image',
+  'google/gemini-2.5-flash-image-preview',
+  'openai/gpt-5-image-mini',
+  'openai/gpt-5-image',
+  'black-forest-labs/flux.2-pro',
+  'black-forest-labs/flux.1-schnell',
+];
+
+function matchModels(models: Model[], query: string): Model[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  const exact = models.filter(
+    (m) => m.id.toLowerCase() === q || m.name.toLowerCase() === q,
+  );
+  if (exact.length) return exact;
+  const tokens = q.split(/\s+/).filter(Boolean);
+  return models
+    .filter((m) => {
+      const hay = `${m.id} ${m.name}`.toLowerCase();
+      return tokens.every((tok) => hay.includes(tok));
+    })
+    .sort((a, b) => {
+      const aFree = a.id.endsWith(':free') ? 1 : 0;
+      const bFree = b.id.endsWith(':free') ? 1 : 0;
+      if (aFree !== bFree) return aFree - bFree;
+      return a.name.length - b.name.length;
+    });
+}
+
+export async function pickImageModel(ownerId: string, requestedQuery?: string): Promise<Model> {
+  const catalog = await modelCatalog(ownerId);
+  const imageModels = catalog.filter(
+    (m) => m.supports_image_output || /(^|\/)(gpt-.*image|gemini-.*image|flux|dall-e)/i.test(m.id),
+  );
+  if (!imageModels.length) {
+    throw new AppError(
+      422,
+      'MODEL_UNAVAILABLE',
+      'No image generation model is currently available in your OpenRouter catalog.',
+    );
+  }
+  if (requestedQuery?.trim()) {
+    const matched = matchModels(imageModels, requestedQuery);
+    if (matched.length) return matched[0]!;
+  }
+  for (const preferred of IMAGE_MODEL_PREFERENCES) {
+    const found = imageModels.find((m) => m.id.toLowerCase() === preferred);
+    if (found) return found;
+  }
+  return imageModels[0]!;
+}
+
+export async function switchConversationModel(
+  ownerId: string,
+  conversationId: string,
+  query: string,
+): Promise<ToolOutcome> {
+  const catalog = await modelCatalog(ownerId);
+  const matches = matchModels(catalog, query);
+  if (!matches.length) {
+    return {
+      ok: false,
+      error: {
+        code: 'MODEL_UNAVAILABLE',
+        message: `No model matching "${query}" was found in the OpenRouter catalog.`,
+        retryable: false,
+      },
+    };
+  }
+  const chat = await withWorker(
+    async (tx) =>
+      (
+        await tx.query(
+          'select enabled_tools from conversations where id=$1 and owner_id=$2 and deleted_at is null',
+          [conversationId, ownerId],
+        )
+      ).rows[0],
+  );
+  if (!chat) {
+    return {
+      ok: false,
+      error: { code: 'NOT_FOUND', message: 'Conversation not found.', retryable: false },
+    };
+  }
+  const enabledTools = Array.isArray(chat.enabled_tools) ? (chat.enabled_tools as string[]) : [];
+  const chosen =
+    (enabledTools.length ? matches.find((m) => m.supports_tools) : undefined) ?? matches[0]!;
+  if (enabledTools.length && !chosen.supports_tools) {
+    return {
+      ok: false,
+      error: {
+        code: 'MODEL_TOOLS_UNSUPPORTED',
+        message: `${chosen.name} (${chosen.id}) does not support tools. Disable conversation tools or pick a tool-capable model.`,
+        retryable: false,
+      },
+    };
+  }
+  await withWorker(async (tx) => {
+    await tx.query(
+      'update conversations set model_id=$3, version=version+1, updated_at=now() where id=$1 and owner_id=$2 and deleted_at is null',
+      [conversationId, ownerId, chosen.id],
+    );
+  });
+  return {
+    ok: true,
+    data: {
+      model_id: chosen.id,
+      model_name: chosen.name,
+      supports_tools: chosen.supports_tools,
+      supports_images: chosen.supports_images,
+      applies_from: 'next_turn',
+    },
   };
 }

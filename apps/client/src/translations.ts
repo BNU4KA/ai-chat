@@ -466,4 +466,12 @@ export const russian: Record<string, string> = {
   Cancel: 'Отмена',
   Close: 'Закрыть',
   'Actions for': 'Действия для',
+  Pinned: 'Закреплённые',
+  Pin: 'Закрепить',
+  Unpin: 'Открепить',
+  'Pin conversation': 'Закрепить разговор',
+  'Unpin conversation': 'Открепить разговор',
+  'Coming soon': 'Скоро',
+  Popular: 'Самые популярные',
+  'All models': 'Все модели',
 };
