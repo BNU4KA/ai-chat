@@ -63,14 +63,14 @@ integration DTOs must expose only the safe columns listed below; lock them as fi
 | GET /profile | — | 200 profile including email and is_admin; provision once from verified Auth identity if needed |
 | PATCH /profile | display_name?, theme?, timezone? (valid IANA), locale? (auto/en/ru) | 200 profile/version |
 | GET /capabilities | — | 200 configured tool groups, safe limits, disabled reasons |
-| GET /credentials/openrouter | — | 200 {configured,source,last_four,status,version,validated_at}; source is personal or managed; managed hides last_four; version is the personal slot revision |
+| GET /credentials/openrouter | — | 200 {configured,source,has_personal_key,last_four,status,version,validated_at}; source is the key actually used; managed hides last_four; version is the personal slot revision when source is managed |
 | PUT /credentials/openrouter | {api_key:string} | 200 masked credential; validate before replacing |
 | DELETE /credentials/openrouter | — | 204; invalidate further provider calls and cancel affected personal-key runs |
 | GET /admin/openrouter-keys | — | 200 key metadata; admin only; never returns the secret |
 | POST /admin/openrouter-keys | {label,api_key} | 201 key metadata after provider validation |
 | DELETE /admin/openrouter-keys/:id | — | 204; assigned profiles detach |
 | GET /admin/users | query?, limit?, cursor? | 200 users with key source, chat count, and recorded spend |
-| PATCH /admin/users/:id/openrouter-key | {managed_key_id:uuid\|null} | 200 updated user |
+| PATCH /admin/users/:id/openrouter-key | {managed_key_id:uuid\|null, key_priority?:personal\|server} | 200 updated user. Omitted priority stays unchanged. `server` uses the assigned server key; otherwise a personal key wins, then a server key |
 | DELETE /admin/users/:id | — | 202 account purge scheduled; cannot delete the caller |
 | GET /models | search?, tools_required? | 200 paginated normalized catalog plus cache metadata |
 | GET /conversations | query?, limit?, cursor? | 200 collection |

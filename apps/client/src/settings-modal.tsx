@@ -401,7 +401,9 @@ export function SettingsContent({
                 {!saved.data?.configured
                   ? 'No key connected'
                   : saved.data.source === 'managed'
-                    ? 'Using an administrator key. Saving your own key overrides it.'
+                    ? saved.data.has_personal_key
+                      ? 'Using an administrator key. Your saved key is not in use.'
+                      : 'Using an administrator key.'
                     : `Connected · ••••${saved.data.last_four ?? ''}`}
               </Copy>
               <Field
@@ -420,7 +422,7 @@ export function SettingsContent({
                 <Button disabled={busy || !key.trim()} onPress={() => void saveKey()}>
                   {busy ? 'Validating…' : 'Save key'}
                 </Button>
-                {saved.data?.configured && saved.data.source !== 'managed' && (
+                {saved.data?.has_personal_key && (
                   <Button
                     secondary
                     onPress={() =>

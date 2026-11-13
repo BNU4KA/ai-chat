@@ -21,6 +21,7 @@ export type AdminUser = {
   created_at: string;
   deletion_requested_at: string | null;
   key_source: 'personal' | 'managed' | 'missing';
+  key_priority: 'personal' | 'server';
   has_personal_key: boolean;
   managed_key: { id: string; label: string; last_four: string } | null;
   conversations_count: number;
@@ -54,8 +55,15 @@ export const createAdminKey = (label: string, apiKey: string) =>
   api<AdminKey>('/v1/admin/openrouter-keys', json('POST', { label, api_key: apiKey }));
 export const deleteAdminKey = (id: string) =>
   api<void>(`/v1/admin/openrouter-keys/${id}`, json('DELETE'));
-export const assignAdminKey = (userId: string, managedKeyId: string | null) =>
-  api<AdminUser>(`/v1/admin/users/${userId}/openrouter-key`, json('PATCH', { managed_key_id: managedKeyId }));
+export const assignAdminKey = (
+  userId: string,
+  managedKeyId: string | null,
+  keyPriority: 'personal' | 'server',
+) =>
+  api<AdminUser>(
+    `/v1/admin/users/${userId}/openrouter-key`,
+    json('PATCH', { managed_key_id: managedKeyId, key_priority: keyPriority }),
+  );
 export const deleteAdminUser = (id: string) =>
   api<{ deletion_status: string }>(`/v1/admin/users/${id}`, json('DELETE'));
 export const useCapabilities=()=>useQuery({queryKey:['capabilities'],queryFn:()=>api<Capabilities>('/v1/capabilities'),refetchInterval:10000});

@@ -72,7 +72,9 @@ export function registerAdmin(app: FastifyInstance): void {
     const params = request.params as { id: string };
     if (!isUuid(params.id)) throw new AppError(422, 'VALIDATION_ERROR', 'Invalid user id');
     const body = adminAssignKeySchema.parse(request.body ?? {});
-    return { data: await assignManagedOpenRouterKey(params.id, body.managed_key_id) };
+    return {
+      data: await assignManagedOpenRouterKey(params.id, body.managed_key_id, body.key_priority),
+    };
   });
 
   app.delete('/v1/admin/users/:id', async (request, reply) => {

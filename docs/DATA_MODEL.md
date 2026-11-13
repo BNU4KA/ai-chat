@@ -22,7 +22,7 @@ Unless listed otherwise, rows have id uuid, owner_id uuid, created_at timestampt
 
 | Table | Additional fields |
 | --- | --- |
-| profiles | id = auth.users.id, email text?, display_name text?, avatar_url text?, locale text auto/en/ru default auto (existing values preserved), timezone text, theme system/light/dark, deletion_requested_at timestamptz?, managed_openrouter_key_id uuid?; no separate owner_id |
+| profiles | id = auth.users.id, email text?, display_name text?, avatar_url text?, locale text auto/en/ru default auto (existing values preserved), timezone text, theme system/light/dark, deletion_requested_at timestamptz?, managed_openrouter_key_id uuid?, key_priority personal/server default personal; no separate owner_id |
 | conversations | title text, title_source auto/manual, model_id text?, enabled_tools text[], deleted_at timestamptz? |
 | messages | conversation_id uuid, run_id uuid?, seq bigint, role user/assistant, content text, status pending/complete/partial/failed/cancelled, client_message_id uuid? |
 | runs | conversation_id uuid, user_message_id uuid, assistant_message_id uuid, attempt int, status enum, model_id text, tool_snapshot jsonb, credential_version int, cancel_requested_at timestamptz?, execution_ms int, model_calls int, tool_calls int, checkpoint jsonb, error_code text?, usage jsonb, started_at timestamptz?, finished_at timestamptz? |
@@ -51,8 +51,10 @@ Usage schema: input_tokens?, output_tokens?, cost_usd?, cost_status estimated/co
 provider_generation_ids[]. Store decimal cost as numeric/string, not an IEEE float for accounting.
 Do not combine estimated and confirmed amounts into a single misleading total.
 The admin user list sums recorded `usage.cost_usd` values and labels that figure as recorded
-spend. It is not an OpenRouter invoice. A run stores `keySource` and `managedKeyId` inside
-`tool_snapshot` so a personal key and a server key with the same version stay distinct.
+spend. It is not an OpenRouter invoice. `profiles.key_priority` chooses which OpenRouter key a
+new run uses: `server` uses the assigned server key when one is assigned, otherwise a personal
+key wins, then a server key. A run stores `keySource` and `managedKeyId` inside `tool_snapshot`
+so a personal key and a server key with the same version stay distinct.
 
 ## Required constraints and indexes
 

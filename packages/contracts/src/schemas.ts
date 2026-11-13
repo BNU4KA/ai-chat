@@ -38,6 +38,7 @@ export const profilePatchSchema = z
 export const credentialSchema = z.object({
   configured: z.boolean(),
   source: z.enum(['personal', 'managed']).nullable(),
+  has_personal_key: z.boolean(),
   last_four: z.string().nullable(),
   status: z.enum(['missing', 'valid']),
   version: z.number().int(),
@@ -75,6 +76,7 @@ export const adminUserSchema = z.object({
   created_at: timestamp,
   deletion_requested_at: timestamp.nullable(),
   key_source: z.enum(['personal', 'managed', 'missing']),
+  key_priority: z.enum(['personal', 'server']),
   has_personal_key: z.boolean(),
   managed_key: adminManagedKeyRefSchema.nullable(),
   conversations_count: z.number().int(),
@@ -84,6 +86,7 @@ export const adminUserSchema = z.object({
 export const adminAssignKeySchema = z
   .object({
     managed_key_id: z.uuid().nullable(),
+    key_priority: z.enum(['personal', 'server']).optional(),
   })
   .strict();
 

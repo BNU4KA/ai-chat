@@ -882,3 +882,45 @@ keys only; no live OpenRouter call):
   `database` and `queue` ok. Unauthenticated `GET /v1/admin/users` returned 401. The public
   admin bundle returned 200. `ADMIN_EMAILS` is set in the server environment and visible to
   the API process. The owner account is the only admin.
+
+## Admin tables and key priority — 2026-11-13
+
+Keys and users render as tables. Adding a key and assigning one open dialogs. `profiles.key_priority`
+is `personal` or `server` (default `personal`). Server priority uses the assigned server key; otherwise
+a personal key wins, then a server key. Credential status includes `has_personal_key` so a saved
+personal key can still be removed while a server key is in use.
+
+Checks on Node 26.13.0, local Postgres `ai-chat-pg` at `127.0.0.1:54329` (synthetic keys only):
+
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed.
+- `pnpm test`: 53 passed across 15 files.
+- `pnpm test:integration`: 42 passed across 7 files, including server priority overriding a personal key
+  and an omitted priority leaving the stored value.
+- Signed-in browser pass of the new tables was not run.
+- Hosted migration `0007_key_priority.sql` is applied. Production release `20261113T213243Z` is the
+  current API and worker. Readiness returned `database` and `queue` ok. The public admin
+  bundle containing the tables returned 200.
+
+## Admin dialog layout — 2026-11-13
+
+Key and priority choices in the admin dialogs are full-width rows, and the dialog actions sit
+on the right under a divider. This is a web-only release. API and worker stayed on
+`20261113T213243Z`.
+
+- Web export secret scan of `apps/client/dist` passed, and the bundle contains the public site origin.
+- Production web release `20261113T214810Z` published the dialog styles. Public readiness returned
+  `database` and `queue` ok. The public admin bundle returned 200.
+
+## Admin navigation layout — 2026-11-13
+
+The keys table is the same width as the users table. Section switching is a left-hand list, matching
+the settings dialog. API and worker stayed on `20261113T213243Z`.
+
+- Web export secret scan of `apps/client/dist` passed.
+- Production web release `20261113T220213Z` published the side navigation. Public readiness returned
+  `database` and `queue` ok. The public admin bundle returned 200.
+- The side options were then lowered. Web release `20261113T220409Z` published that offset.
+- The divider was lowered with the options. Web release `20261113T220614Z` is current. Public
+  readiness returned `database` and `queue` ok. Bundle `admin-da3015be1ef96bff9712fb57bc76b641.js`
+  returned 200. Signed-in click-through of the live page was not run.

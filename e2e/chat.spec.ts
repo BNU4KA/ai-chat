@@ -110,6 +110,8 @@ async function fixture(
     if (path === '/v1/credentials/openrouter')
       return data({
         configured: true,
+        source: 'personal',
+        has_personal_key: true,
         last_four: 'test',
         status: 'valid',
         version: 1,

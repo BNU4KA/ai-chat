@@ -326,6 +326,17 @@ function sealedFrom(row: Row) {
   };
 }
 
+function preferredSource(
+  priority: string | null | undefined,
+  hasPersonal: boolean,
+  hasManaged: boolean,
+): 'personal' | 'managed' | null {
+  if (priority === 'server' && hasManaged) return 'managed';
+  if (hasPersonal) return 'personal';
+  if (hasManaged) return 'managed';
+  return null;
+}
+
 export async function readEffectiveOpenRouterSecret(
   ownerId: string,
 ): Promise<EffectiveOpenRouterSecret | null> {
@@ -335,8 +346,21 @@ export async function readEffectiveOpenRouterSecret(
        from encrypted_credentials where owner_id = $1 and provider = 'openrouter'`,
       [ownerId],
     );
+    const managed = await tx.query(
+      `select p.key_priority, k.id, k.version, k.ciphertext, k.nonce, k.auth_tag, k.encryption_key_version
+       from profiles p
+       left join managed_openrouter_keys k on k.id = p.managed_openrouter_key_id
+       where p.id = $1 and p.deletion_requested_at is null`,
+      [ownerId],
+    );
     const owned = personal.rows[0] as Row | undefined;
-    if (owned) {
+    const row = managed.rows[0] as Row | undefined;
+    const choice = preferredSource(
+      row?.key_priority as string | undefined,
+      Boolean(owned),
+      Boolean(row?.id),
+    );
+    if (choice === 'personal' && owned) {
       const version = Number(owned.credential_version);
       return {
         source: 'personal',
@@ -346,24 +370,18 @@ export async function readEffectiveOpenRouterSecret(
         aad: credentialAad(ownerId, 'openrouter', version),
       };
     }
-    const managed = await tx.query(
-      `select k.id, k.version, k.ciphertext, k.nonce, k.auth_tag, k.encryption_key_version
-       from profiles p
-       join managed_openrouter_keys k on k.id = p.managed_openrouter_key_id
-       where p.id = $1 and p.deletion_requested_at is null`,
-      [ownerId],
-    );
-    const key = managed.rows[0] as Row | undefined;
-    if (!key) return null;
-    const version = Number(key.version);
-    const managedKeyId = String(key.id);
-    return {
-      source: 'managed',
-      version,
-      managedKeyId,
-      sealed: sealedFrom(key),
-      aad: credentialAad(managedKeyId, 'managed_openrouter', version),
-    };
+    if (choice === 'managed' && row?.id) {
+      const version = Number(row.version);
+      const managedKeyId = String(row.id);
+      return {
+        source: 'managed',
+        version,
+        managedKeyId,
+        sealed: sealedFrom(row),
+        aad: credentialAad(managedKeyId, 'managed_openrouter', version),
+      };
+    }
+    return null;
   });
 }
 
@@ -380,36 +398,46 @@ export async function getEffectiveOpenRouterStatus(ownerId: string) {
     );
     const slot = Number(revision.rows[0]?.revision ?? 0);
     const owned = personal.rows[0] as Row | undefined;
-    if (owned) {
+    const profile = await tx.query(
+      `select p.key_priority, k.id, k.validated_at
+       from profiles p
+       left join managed_openrouter_keys k on k.id = p.managed_openrouter_key_id
+       where p.id = $1`,
+      [ownerId],
+    );
+    const row = profile.rows[0] as Row | undefined;
+    const hasPersonal = Boolean(owned);
+    const choice = preferredSource(
+      row?.key_priority as string | undefined,
+      hasPersonal,
+      Boolean(row?.id),
+    );
+    if (choice === 'personal' && owned) {
       return {
         configured: true,
         source: 'personal' as const,
+        has_personal_key: true,
         last_four: (owned.last_four as string | null) ?? null,
         status: 'valid' as const,
         version: Number(owned.credential_version),
         validated_at: iso(owned.validated_at as Date | null),
       };
     }
-    const managed = await tx.query(
-      `select k.validated_at
-       from profiles p
-       join managed_openrouter_keys k on k.id = p.managed_openrouter_key_id
-       where p.id = $1`,
-      [ownerId],
-    );
-    if (managed.rows[0]) {
+    if (choice === 'managed' && row) {
       return {
         configured: true,
         source: 'managed' as const,
+        has_personal_key: hasPersonal,
         last_four: null,
         status: 'valid' as const,
         version: slot,
-        validated_at: iso(managed.rows[0].validated_at as Date | null),
+        validated_at: iso(row.validated_at as Date | null),
       };
     }
     return {
       configured: false,
       source: null,
+      has_personal_key: hasPersonal,
       last_four: null,
       status: 'missing' as const,
       version: slot,
@@ -419,38 +447,44 @@ export async function getEffectiveOpenRouterStatus(ownerId: string) {
 }
 
 async function runKeyForOwner(tx: Tx, ownerId: string) {
+  const profile = await tx.query(
+    'select key_priority, managed_openrouter_key_id from profiles where id = $1',
+    [ownerId],
+  );
+  const priority = profile.rows[0]?.key_priority as string | undefined;
+  const managedId = (profile.rows[0]?.managed_openrouter_key_id as string | null | undefined) ?? null;
   const credential = await tx.query(
     `select credential_version from encrypted_credentials where provider = 'openrouter'`,
   );
-  if (credential.rowCount) {
+  const personalVersion = credential.rowCount
+    ? Number(credential.rows[0]?.credential_version)
+    : null;
+  const lookupManaged = Boolean(managedId) && (priority === 'server' || personalVersion == null);
+  const managed = lookupManaged
+    ? await withWorker(async (worker) => {
+        const found = await worker.query(
+          'select version from managed_openrouter_keys where id = $1',
+          [managedId],
+        );
+        return found.rows[0];
+      })
+    : null;
+  const choice = preferredSource(priority, personalVersion != null, Boolean(managed));
+  if (choice === 'personal' && personalVersion != null) {
     return {
       source: 'personal' as const,
-      version: Number(credential.rows[0]?.credential_version),
+      version: personalVersion,
       managedKeyId: null as string | null,
     };
   }
-  const assigned = await tx.query(
-    'select managed_openrouter_key_id from profiles where id = $1',
-    [ownerId],
-  );
-  const managedId = assigned.rows[0]?.managed_openrouter_key_id as string | null | undefined;
-  if (!managedId) {
-    throw new AppError(422, 'KEY_MISSING', 'Add an OpenRouter key before starting a run');
+  if (choice === 'managed' && managedId && managed) {
+    return {
+      source: 'managed' as const,
+      version: Number(managed.version),
+      managedKeyId: String(managedId),
+    };
   }
-  const managed = await withWorker(async (worker) => {
-    const found = await worker.query('select version from managed_openrouter_keys where id = $1', [
-      managedId,
-    ]);
-    return found.rows[0];
-  });
-  if (!managed) {
-    throw new AppError(422, 'KEY_MISSING', 'Add an OpenRouter key before starting a run');
-  }
-  return {
-    source: 'managed' as const,
-    version: Number(managed.version),
-    managedKeyId: String(managedId),
-  };
+  throw new AppError(422, 'KEY_MISSING', 'Add an OpenRouter key before starting a run');
 }
 
 function conversationFrom(row: Row) {
@@ -1522,7 +1556,7 @@ function plainDecimal(value: unknown): string {
   return raw.replace(/0+$/, '').replace(/\.$/, '') || '0';
 }
 
-const ADMIN_USER_SQL = `select p.id, p.email, p.display_name, p.avatar_url, p.created_at, p.deletion_requested_at,
+const ADMIN_USER_SQL = `select p.id, p.email, p.display_name, p.avatar_url, p.created_at, p.deletion_requested_at, p.key_priority,
   exists(select 1 from encrypted_credentials c where c.owner_id = p.id and c.provider = 'openrouter') as has_personal,
   k.id as managed_id, k.label as managed_label, k.last_four as managed_last_four,
   (select count(*)::int from conversations c where c.owner_id = p.id and c.deleted_at is null) as conversations_count,
@@ -1538,7 +1572,8 @@ const ADMIN_USER_SQL = `select p.id, p.email, p.display_name, p.avatar_url, p.cr
 function adminUserFrom(row: Row) {
   const hasPersonal = Boolean(row.has_personal);
   const managedId = (row.managed_id as string | null) ?? null;
-  const source = hasPersonal ? 'personal' : managedId ? 'managed' : 'missing';
+  const priority = row.key_priority === 'server' ? 'server' : 'personal';
+  const source = preferredSource(priority, hasPersonal, Boolean(managedId)) ?? 'missing';
   return {
     id: String(row.id),
     email: (row.email as string | null) ?? null,
@@ -1546,7 +1581,8 @@ function adminUserFrom(row: Row) {
     avatar_url: (row.avatar_url as string | null) ?? null,
     created_at: mustIso(row.created_at as Date),
     deletion_requested_at: iso(row.deletion_requested_at as Date | null),
-    key_source: source as 'personal' | 'managed' | 'missing',
+    key_source: source,
+    key_priority: priority,
     has_personal_key: hasPersonal,
     managed_key: managedId
       ? {
@@ -1693,7 +1729,11 @@ export async function getAdminUser(id: string) {
   });
 }
 
-export async function assignManagedOpenRouterKey(userId: string, managedKeyId: string | null) {
+export async function assignManagedOpenRouterKey(
+  userId: string,
+  managedKeyId: string | null,
+  keyPriority?: 'personal' | 'server',
+) {
   if (managedKeyId) {
     const exists = await withWorker(async (tx) => {
       const found = await tx.query('select id from managed_openrouter_keys where id = $1', [
@@ -1706,10 +1746,11 @@ export async function assignManagedOpenRouterKey(userId: string, managedKeyId: s
   try {
     await withOwner(userId, async (tx) => {
       const updated = await tx.query(
-        `update profiles set managed_openrouter_key_id = $2, updated_at = now()
+        `update profiles set managed_openrouter_key_id = $2,
+           key_priority = coalesce($3, key_priority), updated_at = now()
          where id = $1 and deletion_requested_at is null
          returning id`,
-        [userId, managedKeyId],
+        [userId, managedKeyId, keyPriority ?? null],
       );
       if (!updated.rowCount) throw new AppError(404, 'NOT_FOUND', 'Profile not found');
     });

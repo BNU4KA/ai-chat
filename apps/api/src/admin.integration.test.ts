@@ -131,6 +131,7 @@ it('keeps server keys admin-only, prefers a personal key, and schedules account 
   });
   expect(assigned.statusCode).toBe(200);
   expect(assigned.json().data.key_source).toBe('managed');
+  expect(assigned.json().data.key_priority).toBe('personal');
   expect(assigned.json().data.managed_key.last_four).toBe('4242');
 
   const credential = await app.inject({
@@ -141,6 +142,7 @@ it('keeps server keys admin-only, prefers a personal key, and schedules account 
   expect(credential.json().data).toMatchObject({
     configured: true,
     source: 'managed',
+    has_personal_key: false,
     last_four: null,
     status: 'valid',
     version: 0,
@@ -211,9 +213,55 @@ it('keeps server keys admin-only, prefers a personal key, and schedules account 
   expect(personal.json().data).toMatchObject({
     configured: true,
     source: 'personal',
+    has_personal_key: true,
     last_four: '2222',
     version: 2,
   });
+
+  const priority = await app.inject({
+    method: 'PATCH',
+    url: `/v1/admin/users/${memberId}/openrouter-key`,
+    headers: { ...auth(adminToken), 'content-type': 'application/json' },
+    payload: { managed_key_id: key.id, key_priority: 'server' },
+  });
+  expect(priority.statusCode).toBe(200);
+  expect(priority.json().data.key_priority).toBe('server');
+  expect(priority.json().data.key_source).toBe('managed');
+  expect(priority.json().data.has_personal_key).toBe(true);
+  const kept = await app.inject({
+    method: 'PATCH',
+    url: `/v1/admin/users/${memberId}/openrouter-key`,
+    headers: { ...auth(adminToken), 'content-type': 'application/json' },
+    payload: { managed_key_id: key.id },
+  });
+  expect(kept.json().data.key_priority).toBe('server');
+  expect((await readEffectiveOpenRouterSecret(memberId))?.source).toBe('managed');
+  const overridden = await app.inject({
+    method: 'GET',
+    url: '/v1/credentials/openrouter',
+    headers: auth(memberToken),
+  });
+  expect(overridden.json().data).toMatchObject({
+    source: 'managed',
+    has_personal_key: true,
+    last_four: null,
+    version: 2,
+  });
+  const serverChat = await createConversation(memberId, {
+    modelId: 'synthetic/model',
+    enabledTools: [],
+  });
+  const serverRun = await createMessageRun(memberId, serverChat.id, randomUUID(), {
+    clientMessageId: randomUUID(),
+    text: 'Hello with server priority',
+    fileIds: [],
+  });
+  const serverStored = await withWorker(
+    async (tx) =>
+      (await tx.query('select tool_snapshot from runs where id = $1', [serverRun.body.run.id]))
+        .rows[0],
+  );
+  expect(serverStored?.tool_snapshot).toMatchObject({ keySource: 'managed', managedKeyId: key.id });
 
   const self = await app.inject({
     method: 'DELETE',

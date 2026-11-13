@@ -277,20 +277,11 @@ export function buildServer(): FastifyInstance {
       body.api_key,
       credentialAad(request.ownerId, 'openrouter', nextVersion),
     );
-    const saved = await saveOpenRouter(request.ownerId, expected, {
+    await saveOpenRouter(request.ownerId, expected, {
       ...sealed,
       lastFour: lastFour(body.api_key),
     });
-    return {
-      data: {
-        configured: true,
-        source: 'personal',
-        last_four: saved.last_four,
-        status: 'valid',
-        version: Number(saved.credential_version),
-        validated_at: new Date(String(saved.validated_at)).toISOString(),
-      },
-    };
+    return { data: await getEffectiveOpenRouterStatus(request.ownerId) };
   });
 
   app.delete('/v1/credentials/openrouter', async (request, reply) => {
