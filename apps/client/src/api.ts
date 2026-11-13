@@ -18,8 +18,17 @@ export async function authorizedFetch(path: string, init: RequestInit = {}, refr
   }
   if(response.status===401&&refreshed)await supabase?.auth.signOut({scope:'local'});
   if (!response.ok) {
-    const body = await response.json().catch(() => null) as {error?: {code: string; message: string; details?: Record<string, unknown>}} | null;
-    throw new ApiError(response.status, body?.error?.code ?? 'REQUEST_FAILED', body?.error?.message ?? 'The request failed. Please try again.', body?.error?.details);
+    const body = await response.json().catch(() => null) as {
+      message?: string;
+      error?: { code?: string; message?: string; details?: Record<string, unknown> } | string;
+    } | null;
+    const error = body && typeof body.error === 'object' ? body.error : undefined;
+    const message =
+      error?.message ??
+      (response.status === 404
+        ? 'This server does not support that request yet.'
+        : 'The request failed. Please try again.');
+    throw new ApiError(response.status, error?.code ?? 'REQUEST_FAILED', message, error?.details);
   }
   return response as unknown as Response;
 }

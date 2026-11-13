@@ -1,5 +1,56 @@
 export const russian: Record<string, string> = {
   Workspace: 'Рабочее пространство',
+  'More information': 'Подробнее',
+  Account: 'Аккаунт',
+  'This is the Google account you use to sign in. Signing out ends the session on this device.':
+    'Это аккаунт Google, через который вы входите. Выход завершает сессию на этом устройстве.',
+  'Account, language, model key, connections, appearance, and stored data.':
+    'Аккаунт, язык, ключ модели, подключения, оформление и сохранённые данные.',
+  'Light, dark, or follow this device. The timezone is used for calendar times and scheduled tasks.':
+    'Светлая, тёмная или как на устройстве. Часовой пояс используется для календаря и запланированных задач.',
+  'Projects, documents, message search, scheduled tasks, and notifications. A project note is used only in chats you attach to that project.':
+    'Проекты, документы, поиск по сообщениям, запланированные задачи и уведомления. Заметка проекта используется только в чатах, которые вы к нему подключили.',
+  'Attach this chat to a project and keep a short note that replaces older messages in later requests. The original messages stay in the chat.':
+    'Подключите чат к проекту и сохраните короткую заметку. В следующих запросах она заменит старые сообщения. Оригиналы останутся в чате.',
+  'Versioned notes you can edit, export, or revise from the chat. Deleting a document removes its versions.':
+    'Заметки с версиями: их можно править, экспортировать или попросить чат переписать. Удаление документа удаляет и версии.',
+  'Finds words in your messages across chats and opens the matching message.':
+    'Ищет слова в сообщениях всех чатов и открывает найденное сообщение.',
+  'Results from scheduled tasks. Open a result to read it in the chat.':
+    'Результаты запланированных задач. Откройте результат, чтобы прочитать его в чате.',
+  'This server does not support that request yet.': 'Этот сервер пока не поддерживает такой запрос.',
+  'The request failed': 'Запрос не выполнен. Попробуйте ещё раз.',
+  'Note the model will read': 'Заметка, которую прочитает модель',
+  'What the note replaces': 'Что заменяет заметка',
+  'Keep goals, constraints, decisions and open questions. The model reads this note instead of the older messages it covers. The messages stay in the chat.':
+    'Оставьте цели, ограничения, решения и открытые вопросы. Модель читает эту заметку вместо старых сообщений, которые она покрывает. Сами сообщения остаются в чате.',
+  'No cutoff yet. Prepare excerpts to cover the older messages and keep your latest question in full.':
+    'Граница ещё не выбрана. Подготовьте выдержки: заметка покроет старые сообщения, а последний вопрос останется целиком.',
+  'The note replaces every message through the line below. Later messages are still sent in full. The replaced messages stay visible in the chat.':
+    'Заметка заменяет все сообщения до строки ниже включительно. Более поздние сообщения по-прежнему уходят целиком. Заменённые сообщения остаются видимыми в чате.',
+  'Pick a project to let this chat use that project\'s memory and files you shared with it. Until you pick one, this chat stands alone. The note is a summary you edit yourself. After you use it, the model reads the note instead of the older messages it covers. Those messages stay visible here. Messages after the cutoff are still sent in full, so leave your latest question outside the note. Prepare excerpts drafts the note from older messages and sets the cutoff to the message before your latest question. Read it, edit it, then use the note. Restore full context clears the note and sends the whole chat again.':
+    'Выберите проект, чтобы этот чат использовал его память и файлы, которыми вы с ним поделились. Пока проект не выбран, чат сам по себе. Заметка — это краткое содержание, которое вы правите сами. После сохранения модель читает заметку вместо старых сообщений, которые она покрывает. Эти сообщения остаются в чате. Сообщения после границы по-прежнему уходят целиком, поэтому последний вопрос оставьте за её пределами. «Подготовить выдержки» заполняет заметку старыми сообщениями и ставит границу перед последним вопросом. Прочитайте, поправьте и затем используйте заметку. «Восстановить полный контекст» стирает заметку, и модель снова видит весь чат.',
+  'A document is a note with saved versions. Open one here to edit it, or save an assistant answer as a new document from the actions under that answer. You can also create and organize documents in Projects & tasks.':
+    'Документ — это заметка с сохранёнными версиями. Откройте её здесь, чтобы править, или сохраните ответ ассистента как новый документ кнопками под ответом. Создавать и раскладывать документы можно также в «Проектах и задачах».',
+  'Each button places a ready-made instruction in the message box. Nothing is sent until you press send. Research mode asks the model to cite sources. Turn on the tools that instruction needs, then send it yourself.':
+    'Каждая кнопка кладёт готовую инструкцию в поле сообщения. Ничего не отправляется, пока вы сами не нажмёте «Отправить». Режим исследования просит модель указывать источники. Включите нужные инструменты и отправьте инструкцию сами.',
+  'A run budget caps the estimated model cost of one reply. The figure is a catalog estimate, not the final OpenRouter invoice. Leave it empty for no cap. If the model price is unknown, a capped run will not start. This preview skips tool results and project material; the server checks the full request before sending it.':
+    'Бюджет запуска ограничивает расчётную стоимость одного ответа. Это оценка по каталогу, а не итоговый счёт OpenRouter. Пустое поле значит, что предела нет. Если цена модели неизвестна, запуск с бюджетом не начнётся. Эта оценка не включает результаты инструментов и материалы проекта; сервер проверяет полный запрос перед отправкой.',
+  'This searches your primary Google calendar for open times between the start and end you enter. It does not know if other people are free. Choosing a time only writes a draft in the message box. Creating the event still needs a separate confirmation in the chat.':
+    'Ищет свободное время в вашем основном календаре Google между указанными началом и концом. Занятость других людей не проверяется. Выбор времени только вставляет черновик в поле сообщения. Создание встречи всё равно требует отдельного подтверждения в чате.',
+  'This is the Google account that signs you in. The name and email come from that account. Signing out ends the session on this device and does not delete your chats.':
+    'Это аккаунт Google, через который вы входите. Имя и почта берутся из него. Выход завершает сессию на этом устройстве и не удаляет чаты.',
+  "Automatic uses this device's language. Russian or English overrides it. The choice is saved on your account and follows you to every device.":
+    '«Автоматически» берёт язык этого устройства. «Русский» или «English» его заменяют. Выбор сохраняется в аккаунте и действует на всех устройствах.',
+  'The agent calls models with your own OpenRouter key. The key is encrypted on the server and is not shown again after you save it. Model requests spend your OpenRouter balance. Mail, calendar, and other tools are not paid from that balance.':
+    'Агент вызывает модели вашим ключом OpenRouter. Ключ шифруется на сервере и после сохранения больше не показывается. Запросы к моделям списываются с баланса OpenRouter. Почта, календарь и другие инструменты с этого баланса не оплачиваются.',
+  'System follows this device. Light and dark stay fixed. The calendar timezone is used for scheduled tasks and for the times you see on the calendar. It does not change the language.':
+    '«Системная» повторяет это устройство. «Светлая» и «Тёмная» остаются постоянными. Часовой пояс календаря нужен для задач по расписанию и для времени в календаре. На язык он не влияет.',
+  'Signing in with Google does not let the agent read mail or the calendar. Connect those separately. The agent still asks in the chat before it sends mail or changes an event.':
+    'Вход через Google не даёт агенту читать почту или календарь. Их подключают отдельно. Перед отправкой письма или изменением события агент всё равно спрашивает в чате.',
+  'Conversations and documents are stored so they sync between devices. Open this to see what is kept and to delete the account. Deleting the account does not unsend mail or undo calendar changes.':
+    'Чаты и документы хранятся, чтобы быть доступными на всех устройствах. Здесь видно, что именно хранится, и можно удалить аккаунт. Удаление аккаунта не отзывает уже отправленные письма и не отменяет изменения в календаре.',
+  'Search timezones': 'Поиск часового пояса',
   'Workspace sections': 'Разделы рабочего пространства',
   'Work tools sections': 'Разделы рабочих инструментов',
   'Choose scheduled model': 'Выбрать модель для расписания',
@@ -56,6 +107,7 @@ export const russian: Record<string, string> = {
     'Сохранение отменит прежнее подтверждение. Проверьте и подтвердите новую версию отдельно.',
   'Projects & tasks': 'Проекты и задачи',
   Projects: 'Проекты',
+  'Shared files': 'Общие файлы',
   Documents: 'Документы',
   'Search messages': 'Поиск сообщений',
   'Scheduled tasks': 'Задачи по расписанию',
@@ -161,6 +213,14 @@ export const russian: Record<string, string> = {
   'Hello,': 'Привет,',
   there: 'друг',
   'What’s on your mind?': 'О чём хотите поговорить?',
+  'What can I help with?': 'Чем я могу помочь?',
+  'AI can make mistakes. Review external actions before confirming.':
+    'ИИ может ошибаться. Проверяйте внешние действия перед подтверждением.',
+  'Welcome to AI Chat': 'Добро пожаловать в AI Chat',
+  'Sign in to continue to your conversations, models, and connected tools.':
+    'Войдите, чтобы продолжить работу с диалогами, моделями и подключёнными инструментами.',
+  'Google sign-in only identifies your account. Gmail and Calendar access are requested separately when you connect those tools.':
+    'Вход через Google только подтверждает вашу учётную запись. Доступ к Gmail и Календарю запрашивается отдельно при подключении этих инструментов.',
   'Ask AI Chat': 'Спросите AI Chat',
   Message: 'Сообщение',
   Tools: 'Инструменты',
@@ -270,10 +330,6 @@ export const russian: Record<string, string> = {
   'Connecting…': 'Подключение…',
   'Sign-in is not available yet. Please contact the service owner.':
     'Вход пока недоступен. Свяжитесь с владельцем сервиса.',
-  'Your first sign-in creates your account. Gmail and Calendar are connected separately, only when you choose.':
-    'При первом входе создаётся аккаунт. Gmail и Календарь подключаются отдельно, только по вашему выбору.',
-  'Bring your own OpenRouter key. Conversations and files sync through the server. Relevant content is shared with the model and tools you use.':
-    'Добавьте свой ключ OpenRouter. Разговоры и файлы синхронизируются через сервер. Необходимое содержимое передаётся выбранной модели и инструментам.',
   'Connect your model key': 'Подключите ключ модели',
   'Use your own OpenRouter balance. Your key is encrypted on the server so tasks can continue when you close the app.':
     'Используйте свой баланс OpenRouter. Ключ зашифрован на сервере, чтобы задачи продолжались после закрытия приложения.',
@@ -316,6 +372,8 @@ export const russian: Record<string, string> = {
   'Jump to latest ↓': 'К последним сообщениям ↓',
   'Tools & conversation': 'Инструменты и разговор',
   'Conversation files': 'Файлы разговора',
+  'Chat actions': 'Действия с чатом',
+  Thought: 'Размышление',
   'Rename conversation': 'Переименовать разговор',
   'Delete conversation': 'Удалить разговор',
   'Delete conversation?': 'Удалить разговор?',

@@ -2,20 +2,22 @@
 
 ## Layout and visual rules
 
-Use a Gemini-inspired visual language while retaining AI Chat branding: neutral surfaces,
-blue accents, rounded pill controls, a rounded composer, and light-weight greeting typography.
-Light palette: white canvas, #f0f4f9 sidebar/composer, #0b57d0 accent. Dark palette:
-#131314 canvas, #1e1f20 sidebar/composer, #a8c7fa accent. Keep semantic colors in
-theme tokens shared by chat, dialogs, settings, and authentication.
+Use the owner-approved ChatGPT UI Kit visual language while retaining AI Chat branding and
+original assets: neutral monochrome surfaces, compact controls, a rounded floating composer,
+borderless assistant responses, restrained user bubbles, and dense conversation navigation.
+Light palette: white canvas, #f9f9f9 sidebar, #0d0d0d primary action. Dark palette:
+#000000 canvas/sidebar, #212121 composer/surfaces, #2f2f2f controls, white primary action. Keep semantic
+color, spacing, radius, typography, and elevation tokens shared by chat, dialogs, settings,
+workspace, and authentication. Do not copy ChatGPT logos, names, or proprietary assets.
 Use system typography and consistent
 8-point spacing, 16 px base text on web, accessible native text scaling. Use tokens for color,
 spacing, radii, and typography. Do not add marketing screens, dashboards, mascots, animations,
 or an agent marketplace. No fake screenshots or completed-feature claims.
 
-Desktop >= 1024 px: 280 px history sidebar that collapses to a 72 px icon rail, flexible main
+Desktop >= 1024 px: 260 px history sidebar that collapses to a 60 px icon rail, flexible main
 area, chat column max-width 800 px. On web it starts collapsed and expands over the chat on
 mouse hover, without shifting content. It collapses when the pointer leaves, except while
-search is focused. The menu toggle pins/unpins the expanded sidebar. Width changes use a 240 ms eased
+search is focused. The menu toggle pins/unpins the expanded sidebar. Width changes use a 180 ms eased
 transition, disabled when the web user prefers reduced motion.
 The sidebar has a menu toggle, compact New chat action,
 search, recent conversations, and bottom-anchored settings/account controls.
@@ -35,12 +37,12 @@ not a status signal. Use native pickers where appropriate.
 | --------------------- | ---------------------------------------------------------------------------- |
 | /sign-in              | App name, short purpose, Continue with Google, privacy/data-flow explanation |
 | /auth/callback        | Web OAuth completion, spinner, recoverable error with Back to sign in        |
-| /onboarding/key       | Masked key entry, Show/Hide, Save and continue, Skip for now                 |
+| /onboarding/key       | Redirects to `/?panel=key`. Dialog: masked key, Show/Hide, Save, Skip        |
 | /                     | Conversation list/new chat; redirect to selected conversation after creation |
 | /chat/:id             | Header, messages, tool cards, composer, sources, active-run state            |
-| /settings             | Profile, key, connections, theme, data controls, sign out                    |
-| /settings/connections | Independent Gmail/Calendar capability status and consent actions             |
-| /settings/data        | Conversation deletion and account deletion explanation                       |
+| /settings             | Redirects to `/?panel=settings`. Dialog over the current chat                |
+| /settings/connections | Redirects to `/?panel=connections`. Back returns to settings in the dialog   |
+| /settings/data        | Redirects to `/?panel=data`. Typed account deletion stays in the dialog      |
 
 Native paths map to Expo Router dynamic files. Unauthenticated deep links resume the intended
 owned route after login. Unauthorized/missing conversation IDs show a generic Not found screen.
@@ -185,14 +187,14 @@ copy controls. There are no rating controls or overflow menus. User copy appears
 below, and right-aligned with the user bubble. Icons are subdued gray at rest and become
 clearer on hover; accessible names remain available without hover. Retry retains confirmation.
 
-The focused composer has no inner textarea outline. A thin multicolor border circulates
-around the whole composer. Message/attachment entry, dialogs, tooltips and control states
-use gentle transitions. Shared loading visuals are original Fool tarot-inspired cards with
-restrained rocking and star motion. Respect reduced-motion preferences with static artwork
-and a visible static focus border.
+The focused composer has no inner textarea outline. The whole composer receives a restrained
+high-contrast focus boundary and subtle elevation. Message/attachment entry, dialogs, tooltips,
+sidebar width, and control states use gentle transitions. Shared loading visuals use neutral
+skeletons for content and compact activity marks for inline work. Respect reduced-motion
+preferences by disabling shimmer and motion while preserving a visible static focus boundary.
 
 
-### Language and tarot motion (owner update, 2026-11-11)
+### Language and loading motion
 
 Profile settings expose Region → Language → Automatic / Русский / English. New profiles use
 Automatic; preserve existing saved values. Supported preferred device languages take priority;
@@ -202,17 +204,17 @@ profile API, override device locale, and survive sign-out/device changes. Locali
 includes labels, placeholders, loading, settings, onboarding and action controls. Model output,
 user input, original documents, filenames and provider/model names retain their original language.
 
-The composer border remains softly illuminated and circulates even when unfocused; focus
-increases its visibility. Loading is a gentle 22-major-arcana journey from 0 (The Fool) through
-XXI (The World), with an overlapping crossfade/card draw and no numeric progress claim.
-Home-only background cards drift slowly around the edges behind a pointer-transparent layer.
-Respect reduced motion with static artwork and pause decorative motion while the app is hidden.
+The composer uses a quiet border at rest and a stronger focus boundary while editing. Loading
+uses content-shaped skeletons without implying percentage progress. Inline model, file, tool,
+and streaming work uses a compact activity mark. Respect reduced motion with static skeletons
+and pause non-essential motion while the app is hidden.
 
 ## Owner-approved workspace expansion — 2026-11-11
 
 EXPANSION_SPEC.md supersedes the original no-branching/no-proposal-editing and isolated-file
-rules for the explicitly listed features. `/workspace` contains projects, documents, full-text
-message search, daily/weekly tasks and persisted notices. Chat Work tools exposes project
+rules for the explicitly listed features. Workspace opens as a wide dialog over the current chat
+(`panel=workspace`): projects, documents, full-text message search, daily/weekly tasks and
+persisted notices. `/workspace` redirects there and keeps a `document` query when present. Work tools and Projects & tasks open from the chat header, beside the profile control. The work-tools sidebar closes with its own close control, Escape, or Back. Chat Work tools exposes project
 membership, reviewed context boundaries, documents, workflow starters, research, run budgets
 and primary-calendar meeting suggestions. Selection actions prepare drafts without submitting.
 Original chats and document versions remain available. Source citations open saved evidence;

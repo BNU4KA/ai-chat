@@ -448,6 +448,42 @@ Live browser SSO was refreshed during the final smoke check and returned success
 hosted home screen with the restored English preference. Russian and English homepage previews
 were captured locally and are not included in the public repository.
 
+## T13 — Composer note, toasts, sign-in cards, sidebar icons, smoother answers — 2026-11-11
+
+Owner UI polish. Published as frontend-only release `20261111T131936Z`. Runtime stays `20261111T111852Z`. The static symlink was switched atomically and the previous web release was kept. API and worker were not restarted. Public readiness reports database and queue ok. The hosted sign-in screen shows the tarot cards and the moving Google button border.
+
+- The OpenRouter balance note under the composer is centered and uses a slightly darker quiet color.
+- Save and copy confirmations render as a top-right toast in the app surface, with the greeting accent.
+- The sign-in screen uses the same drifting tarot cards as a new chat.
+- Sidebar chat, new, and settings marks are drawn icons. The narrow-screen history button uses the same menu mark.
+- A streaming assistant reply reveals text in small steps, then catches up. Reduced motion shows the full text at once.
+- Shared buttons, the new-chat control, suggestion chips, and language choices use the parchment, gold edge, and ink colors. Danger actions stay red.
+- The Google sign-in button has the same moving color border as the composer, drawn thicker so it stays visible on the dark page.
+
+Checks: client typecheck and eslint on the touched files passed. `smooth-text` unit test passed.
+Desktop Playwright: Google sign-in, one persisted answer with the copy toast, and the Russian home
+scenario passed against synthetic fixtures. Sign-in cards and the expanded sidebar chat icon were
+visually checked locally. No provider call or schema change. Commit `6138610` is on `origin/master`.
+
+## T13 — Denser cards, chat actions, faster composer — 2026-11-11
+
+Published as frontend-only release `20261111T135627Z`. Runtime stays `20261111T111852Z`.
+The static symlink was switched atomically and the previous web release was kept. API and
+worker were not restarted. Public readiness reports database and queue ok. The new layout
+bundle includes the thinking line and the smaller composer controls.
+
+- Wide screens show more drifting tarot cards.
+- Each chat row can be renamed or deleted through the existing conversation API.
+- A sent message appears before the server accepts it. A chosen file shows its name immediately, and the attach control stays the same size.
+- Model steps collapse into one shimmering Thinking line and open into a short list. They are no longer repeated as large cards under the answer.
+- Attach, tools, model, and send are smaller, transparent, and outlined in the moving colors.
+
+Checks: client typecheck and eslint on the touched files passed. A synthetic browser session confirmed the denser home cards, the 32px transparent composer controls, a collapsed Thought line that opens the tool list, and the rename/delete row menu. The file-picker timing could not be driven by the automated picker. No provider call or schema change. Commit `67b14e7` is on `origin/master`.
+
+## GitHub web deploy — 2026-11-11
+
+A dedicated deploy key can log in to the VPS as root. Its private half is stored as the `SSH_PRIVATE_KEY` Actions secret. `deploy/publish-web.sh` switches the static release and does not restart the API or worker. `.github/workflows/deploy-web.yml` builds the web client after CI succeeds on `master`. The other Actions secrets are `SSH_HOST`, `EXPO_PUBLIC_API_URL`, `EXPO_PUBLIC_SUPABASE_URL`, and `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. Server secrets stay in `/etc/ai-chat/server.env`. Client typecheck on CI was failing because React Native's types omit web hover state and CSS width transitions; `apps/client/src/react-native.d.ts` adds those fields. Local client typecheck passed after that change. CI run `43041714287` then passed, and Deploy web run `43041953787` published `/srv/ai-chat/releases/20261111T144829Z`. Public readiness still reports database and queue ok. API and worker were not restarted.
+
 ## T15–T19 — Functional expansion — 2026-11-11 (in progress)
 
 Owner requested all eight main and five additional proposals. Scope and acceptance are recorded
@@ -556,52 +592,149 @@ fixed defects as unresolved findings; retain the regression scenarios when editi
 Owner explicitly requested commit and push of the expansion and review fixes. Publishing to
 `codex/workspace-expansion`; `origin/master` has newer independent UI changes and an automatic
 web deployment workflow. This branch preserves both histories without changing master or
-triggering its deployment. Merge/integration with those newer UI changes remains a separate step.
-The verification evidence above applies to this branch before integration with master.
+triggering its deployment. The verification evidence above applies to this branch before integration with master.
 
-## T13 — ChatGPT Web UI/UX alignment — 2026-11-13 (local, uncommitted)
+## Merge with master UI — 2026-11-12
 
-Owner explicitly requested replacing the Gemini/Tarot visual language with a 1-in-1 ChatGPT web
-UI/UX (graphite dark `#212121` / `#181818` / `#303030` and light `#ffffff` / `#f9f9f9` / `#f4f4f4`
-palettes), keeping all workspace expansion features (Projects, Documents/Library, Scheduled tasks,
-Notifications, Message search, Work tools) integrated into ChatGPT-style navigation and using the
-owner-specified brand string `"it's kawasaki, bitches"`.
+Merged `origin/master` into `codex/workspace-expansion`. Workspace tools, citation evidence,
+quiet actions, and source cards stay, together with the thinking trace, optimistic send,
+parchment buttons, and smooth assistant text.
 
-Implemented in `apps/client`:
+Checks: `tsc --noEmit` passed in contracts, database, integrations, agent-runtime, services, api,
+worker, and client. ESLint passed on `chat.tsx`, `markdown.tsx`, and `ui.tsx`. `vitest run` passed
+49 tests. Node v24.2.0; the pinned pnpm 12.18.0 shim returns ENOEXEC on this machine, so
+`pnpm typecheck` itself was not the runner. Integration and browser suites were not rerun.
 
+## Secondary screens as dialogs — 2026-11-12
+
+Settings, the OpenRouter key, Gmail/Calendar connections, account deletion, and the workspace
+open in a dialog over the current chat. Old URLs redirect to `/?panel=...` and keep a document
+id. Google sign-in, `/auth/callback`, and `/auth/integration` are unchanged. Creating a project
+stays the form on the Projects tab inside the workspace dialog.
+
+Checks: client `tsc --noEmit` passed. ESLint passed on the touched client files. Playwright
+desktop scenario for settings, Gmail/Calendar, and typed account deletion passed against a
+synthetic API. Node v24.2.0. The full browser suite was not rerun.
+
+## Cool chrome, parchment on the cards — 2026-11-12
+
+Shared buttons, the new-chat control, suggestion chips, and language choices use the cool
+surfaces and blue accent. Parchment and gold remain on the tarot artwork and the loader.
+Client `tsc --noEmit` and ESLint on the touched files passed. The already-running web server
+was still serving the previous parchment button colors, so this pass was not rechecked in that
+browser session.
+
+## Header tools and quieter dialogs — 2026-11-12
+
+Work tools and Projects & tasks sit in the chat header beside the profile control. The work-tools
+sidebar closes with a close control, not a selection-styled button. Dialog sections use a heading
+and an information control instead of nested bordered cards. Buttons are shorter. A missing server
+route now says the server does not support that request yet. `origin/master` still has no
+workspace routes, so a client of this branch talking to that API cannot load projects until the
+API is deployed. An empty or non-uuid document parameter no longer requests `/v1/documents/`.
+
+Checks: client `tsc --noEmit` passed. ESLint passed on the touched client files. Playwright desktop
+passed workspace persistence, work tools, settings and account deletion, long-context advice,
+Russian workspace navigation, and opening a document citation. Node v24.2.0. The full browser
+suite was not rerun. No local API was listening on port 3001, so this was not checked against
+the hosted server.
+
+## Composer, settings density, and context copy — 2026-11-12
+
+The composer grows with the draft up to 200px. Quiet and secondary buttons keep a border and a
+raised fill so header and settings actions stay visible. Calendar timezone is a dropdown and saves
+on change. Settings puts the account, key actions, and the connections/data actions on rows.
+The context note explains the cutoff in words and no longer asks for a message sequence. The
+workspace “server does not support that request” text is still the 404 from an API without the
+workspace routes; this branch has the routes, and the published master API does not.
+
+Checks: client `tsc --noEmit` passed. ESLint passed on the touched client files. Playwright desktop
+passed settings, the context-note sidebar, and Russian workspace navigation. Node v24.2.0.
+
+## T13 — ChatGPT UI/UX redesign — 2026-11-12
+
+Replaced the Gemini/tarot presentation with the owner-approved ChatGPT UI Kit direction while
+preserving existing client behavior and server contracts. The client now uses shared monochrome
+light/dark tokens, a 60/260 px responsive sidebar, a compact header, a floating composer,
+borderless assistant responses, restrained user bubbles, responsive dialogs, neutral skeletons,
+inline activity marks, compact attachments, and consistent settings/workspace surfaces. Desktop
+hover expansion still overlays chat without moving it; pinning, search focus retention, mobile
+drawer dismissal, streaming/reconnect, optimistic send, files, tools, approvals, sources,
+workspace, localization, reduced motion, and accessibility states remain intact.
+
+Removed the three tarot implementation files and all runtime references. No endpoint, database
+schema, provider behavior, dependency, or unsupported Figma capability was added. Voice and image
+generation remain outside scope. The updated UX contract records the new visual direction.
+
+Verification on Node v24.2.0:
+
+- Client `tsc --noEmit`: passed.
+- ESLint on all changed client and browser-test files: passed.
+- Unit suite: 49 passed across 14 files.
+- Full Playwright desktop/mobile-web suite: 36 passed, 2 opt-in live-health checks skipped.
+- Targeted post-adjustment attachment scenarios: 2 passed.
+- Production Expo web export: passed.
+- `git diff --check`: passed.
+
+The first sandboxed browser run could not launch Chrome because process control was denied; the
+same full suite passed outside that sandbox. No native device/build smoke, provider request,
+deployment, production migration, commit, or push was performed. T19 native/live acceptance and
+owner-reviewed release remain the next task.
+
+Follow-up browser comparison against the current public `chatgpt.com` found that the first dark
+palette was too light. Computed production styles use #000000 for the canvas/sidebar, #212121 for
+the composer, and a 15% white sidebar border. The client tokens and visual assertions now match
+those values. Eight focused desktop/mobile browser scenarios for the sidebar, localized home,
+workspace themes, and Russian workspace styling passed after the correction.
+
+The follow-up parity pass inspected the current anonymous ChatGPT composer and attempted two
+neutral prompts. Both public generations ended with ChatGPT's own “Chat stopped unexpectedly”,
+including one retry, so no authenticated successful-response state is claimed as live evidence.
+The client now matches the observed 52–60 px one-row composer geometry, 768 px content column,
+compact suggestion pills, 44 px circular send/stop controls, 18 px user bubble, role-label-free
+message layout, desktop sidebar divider, bounded mobile action menu, and rounded error state.
+
+Post-pass verification on Node v24.2.0: client `tsc --noEmit`, ESLint on the touched client and
+browser-test files, 49 unit tests across 14 files, 36 Playwright desktop/mobile-web scenarios
+with 2 opt-in health checks skipped, production Expo web export, and `git diff --check` passed.
+The final sidebar-menu regression passed separately on desktop and mobile after adding viewport
+clamping and a 44 px action target.
+
+The motion follow-up inspected the current public ChatGPT CSS and matched its loading/streaming
+behavior: skeletons now shimmer from -100% to 250% over 1.4 seconds on web and native, streamed
+text reveals the newest short segment without breaking citations or long unspaced scripts, and
+drawer, dialog, message, attachment, composer, button, and toast transitions use the same short
+restrained timing. The mobile drawer now animates both entrance and exit while remaining mounted
+for dismissal. Reduced-motion disables decorative movement without hiding toast content.
+
+Verification: client `tsc --noEmit`, ESLint on all motion-related files and browser tests,
+50 unit tests across 14 files, 36 Playwright desktop/mobile-web scenarios with 2 opt-in health
+checks skipped, production Expo web export, and `git diff --check` passed. The drawer regression
+also passed separately on desktop and mobile after the final lifecycle adjustment.
+
+The dropdown/menu parity pass matched ChatGPT popover motion: context menus scale in from 0.86 over 0.22s with a 20 px radius and soft shadow, selection lists use borderless hover/selected rows with checkmarks, Choice chips share the same soft selection surface, and timezone picking uses the same animated dialog list on every platform. Reduced-motion still collapses decorative transitions without hiding content.
+
+## T13 — ChatGPT Web UI/UX alignment (merge with origin) — 2026-11-13 (local)
+
+Merged `origin/codex/workspace-expansion` (including `.github/workflows/deploy-web.yml`,
+`deploy/publish-web.sh`, `api.ts`, `upload.ts`, `motion.ts`, `react-native.d.ts`, and `toast.tsx`)
+with local commit `bd8409a` ("redesign"):
+
+- Kept the owner-approved graphite dark (`#212121` / `#181818` / `#303030`) and light (`#ffffff` /
+  `#f9f9f9` / `#f4f4f4`) ChatGPT palettes and brand string `"it's kawasaki, bitches"`.
 - Replaced Tarot background, Tarot card loader, and rainbow conic-gradient composer border with
   ChatGPT-style pulsing thinking dot, streaming cursor, circular ring spinner, single-line 52 px
   pill composer that expands to multiline on wrap/attachments, message/menu/popover/drawer
   entrance animations, hover action reveal, and custom scrollbars (`web-effects.web.tsx`,
   `composer-frame.tsx`, `fool-spinner.tsx`).
-- Added crisp SVG icon set (`chatgpt-icons.tsx`) matching ChatGPT web sidebar, composer, message
-  action, and modal chrome.
-- Reworked `sidebar.tsx`: desktop starts open at 260 px and collapses smoothly (220 ms,
-  reduced-motion aware) to a 52 px rail; mobile uses a 300 px animated slide-in edge drawer; adds
-  date-grouped history (`Today`, `Yesterday`, `Previous 7 Days`, `Previous 30 Days`, `Older`),
-  hover/active per-row `···` rename/delete menu, Projects/Library/Scheduled/Notifications quick
-  navigation, and bottom profile popover menu.
-- Added centered ChatGPT Search modal (`search-modal.tsx`, `Cmd/Ctrl+K` and sidebar trigger) across
-  conversations and message text, plus a two-column ChatGPT Settings modal (`settings-modal.tsx`,
-  reused on `/settings`, `/settings/connections`, and `/settings/data`) and kept `/workspace`
-  inside the persistent sidebar shell.
-- Reworked `chat.tsx`, `chat-extras.tsx`, `message-actions.tsx`, `markdown.tsx`, `dialog.tsx`,
-  `model-list.tsx`, `attachment.tsx`, `ui.tsx`, `sign-in.tsx`, `workspace.tsx`, and
-  `translations.ts`: top-left floating model dropdown popover, clean `"Ready when you are."` home
-  screen, unlabeled right-aligned user bubbles with inline editing & Copy, unbubbled assistant
-  responses with icon-only action toolbar (`Copy`, `Retry`, `Share`, `···` menu), syntax-highlighted
-  code blocks with header bar & copy feedback, and floating scroll-to-bottom button.
+- Added crisp SVG icon set (`chatgpt-icons.tsx`), date-grouped sidebar with hover/active `···`
+  rename/delete menu, centered `SearchModal` (`Cmd/Ctrl+K`), two-column `SettingsModal`, top-left
+  floating model dropdown popover, syntax-highlighted code blocks, inline user message editing,
+  icon-only assistant action toolbar (`Copy`, `Retry`, `Share`, `···`), and persistent-sidebar
+  `/workspace` layout.
 
 Checks on Node 26.13.0 / pnpm 12.18.0 (synthetic API/provider fixtures; no live OpenRouter/Google
-generation, no native device test, no deployment, no commit or push):
+generation, no native device test, no deployment, no push):
 
-- `pnpm typecheck`: passed across all workspace packages.
-- `pnpm lint`: passed (`eslint .`).
-- `pnpm test`: passed.
-- `pnpm build`: passed (API/worker typecheck + Expo web production export to `apps/client/dist`).
-- `pnpm test:e2e --reporter=list`: 36 passed across `desktop` and `mobile-web`, 2 optional
-  live-health checks skipped. Desktop dark/light, mobile drawer, response actions, and Markdown
-  table/code-block screenshots were visually inspected.
-
-Next task: owner visual review of the updated UI on desktop/mobile web, followed by remaining
-T19 native/live acceptance checks and owner-authorized release/merge.
+- `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build`, and `pnpm test:e2e --reporter=list`
+  (re-run after merge).

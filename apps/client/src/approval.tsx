@@ -71,8 +71,8 @@ export function ApprovalCard({ approval }: { approval: Approval }) {
     }
   }
   return (
-    <Panel>
-      <Text style={{ color: c.text, fontWeight: '700', fontSize: 16 }}>
+    <Panel style={{ backgroundColor: c.raised }}>
+      <Text style={{ color: c.text, fontWeight: '600', fontSize: 16 }}>
         Review {approval.tool_name.replaceAll('_', ' ')}
       </Text>
       {Object.entries(approval.structured_preview ?? {})
