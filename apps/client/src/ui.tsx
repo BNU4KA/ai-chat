@@ -187,7 +187,15 @@ export function Panel({
   );
 }
 
-export function Page({ title, children }: { title: string; children: ReactNode }) {
+export function Page({
+  title,
+  children,
+  wide = false,
+}: {
+  title: string;
+  children: ReactNode;
+  wide?: boolean;
+}) {
   const { colors: c } = useTheme();
   const router = useRouter();
   return (
@@ -195,7 +203,7 @@ export function Page({ title, children }: { title: string; children: ReactNode }
       style={{ flex: 1, backgroundColor: c.background }}
       contentContainerStyle={{
         width: '100%',
-        maxWidth: 740,
+        maxWidth: wide ? 1440 : 740,
         alignSelf: 'center',
         padding: 24,
         gap: 18,

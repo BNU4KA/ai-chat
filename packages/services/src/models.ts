@@ -1,9 +1,8 @@
 import { AppError, LIMITS, modelSchema } from '@ai-chat/contracts';
 import {
-  credentialAad,
   loadKeyring,
   open,
-  readOpenRouterSecret,
+  readEffectiveOpenRouterSecret,
   withOwner,
   withWorker,
 } from '@ai-chat/database';
@@ -14,20 +13,16 @@ type Model = ReturnType<typeof modelSchema.parse>;
 const cache = new Map<string, { at: number; models: Model[] }>();
 const pending = new Map<string, Promise<Model[]>>();
 export async function modelCatalog(ownerId: string): Promise<Model[]> {
-  const stored = await readOpenRouterSecret(ownerId);
+  const stored = await readEffectiveOpenRouterSecret(ownerId);
   if (!stored) throw new AppError(422, 'KEY_MISSING', 'Add your OpenRouter key to choose a model.');
-  const id = `${ownerId}:${stored.version}`;
+  const id = `${ownerId}:${stored.source}:${stored.managedKeyId ?? 'personal'}:${stored.version}`;
   const saved = cache.get(id);
   const now = Date.now();
   if (saved && now - saved.at < LIMITS.catalogFreshMs) return saved.models;
   if (pending.has(id)) return pending.get(id)!;
   const promise = (async () => {
     try {
-      const key = open(
-        loadKeyring(process.env.ENCRYPTION_KEYS),
-        stored.sealed,
-        credentialAad(ownerId, 'openrouter', stored.version),
-      );
+      const key = open(loadKeyring(process.env.ENCRYPTION_KEYS), stored.sealed, stored.aad);
       const models = (await fetchModelCatalog(key)).map((model) => modelSchema.parse(model));
       for (const old of cache.keys()) if (old.startsWith(`${ownerId}:`)) cache.delete(old);
       if (cache.size > 1000) cache.delete(cache.keys().next().value!);

@@ -7,6 +7,7 @@ import {
   truncateCodePoints,
   type ToolGroup,
 } from '@ai-chat/contracts';
+import { credentialAad } from './crypto.ts';
 import type { Tx } from './pool.ts';
 import { withOwner, withWorker } from './pool.ts';
 
@@ -67,25 +68,39 @@ async function lockProfile(tx: Tx, ownerId: string): Promise<void> {
 
 export async function ensureProfile(
   ownerId: string,
-  input: { displayName: string | null; avatarUrl: string | null; timezone: string },
+  input: {
+    displayName: string | null;
+    avatarUrl: string | null;
+    timezone: string;
+    email?: string | null;
+  },
 ): Promise<Row> {
   return withOwner(ownerId, async (tx) => {
+    const email = input.email?.trim() || null;
+    const syncEmail = async (row: Row): Promise<Row> => {
+      if (!email || row.email === email) return row;
+      const updated = await tx.query(
+        'update profiles set email = $2, updated_at = now() where id = $1 returning *',
+        [ownerId, email],
+      );
+      return (updated.rows[0] as Row) ?? row;
+    };
     const existing = await tx.query('select * from profiles where id = $1 for update', [ownerId]);
     if (existing.rowCount && existing.rows[0]?.deletion_requested_at) {
       throw new AppError(404, 'NOT_FOUND', 'Profile not found');
     }
-    if (existing.rowCount) return existing.rows[0] as Row;
+    if (existing.rowCount) return syncEmail(existing.rows[0] as Row);
     const inserted = await tx.query(
-      `insert into profiles (id, display_name, avatar_url, timezone)
-       values ($1, $2, $3, $4)
+      `insert into profiles (id, display_name, avatar_url, timezone, email)
+       values ($1, $2, $3, $4, $5)
        on conflict(id) do nothing returning *`,
-      [ownerId, input.displayName, input.avatarUrl, input.timezone],
+      [ownerId, input.displayName, input.avatarUrl, input.timezone, email],
     );
     const row =
       inserted.rows[0] ?? (await tx.query('select * from profiles where id=$1', [ownerId])).rows[0];
     if (!row || row.deletion_requested_at)
       throw new AppError(404, 'NOT_FOUND', 'Profile not found');
-    return row as Row;
+    return syncEmail(row as Row);
   });
 }
 
@@ -253,7 +268,8 @@ export async function deleteOpenRouter(ownerId: string, expectedVersion: number)
     await cancelKeyRuns(tx, ownerId, version);
     await tx.query(
       `update runs set cancel_requested_at = coalesce(cancel_requested_at, now()), updated_at = now()
-       where status in ${ACTIVE} and credential_version = $1`,
+       where status in ${ACTIVE} and credential_version = $1
+         and coalesce(tool_snapshot->>'keySource', 'personal') = 'personal'`,
       [version],
     );
   });
@@ -286,6 +302,189 @@ export async function readOpenRouterSecret(ownerId: string): Promise<{
       },
     };
   });
+}
+
+export type EffectiveOpenRouterSecret = {
+  source: 'personal' | 'managed';
+  version: number;
+  managedKeyId: string | null;
+  sealed: {
+    ciphertext: Buffer;
+    nonce: Buffer;
+    authTag: Buffer;
+    encryptionKeyVersion: string;
+  };
+  aad: string;
+};
+
+function sealedFrom(row: Row) {
+  return {
+    ciphertext: row.ciphertext as Buffer,
+    nonce: row.nonce as Buffer,
+    authTag: row.auth_tag as Buffer,
+    encryptionKeyVersion: String(row.encryption_key_version),
+  };
+}
+
+function preferredSource(
+  priority: string | null | undefined,
+  hasPersonal: boolean,
+  hasManaged: boolean,
+): 'personal' | 'managed' | null {
+  if (priority === 'server' && hasManaged) return 'managed';
+  if (hasPersonal) return 'personal';
+  if (hasManaged) return 'managed';
+  return null;
+}
+
+export async function readEffectiveOpenRouterSecret(
+  ownerId: string,
+): Promise<EffectiveOpenRouterSecret | null> {
+  return withWorker(async (tx) => {
+    const personal = await tx.query(
+      `select credential_version, ciphertext, nonce, auth_tag, encryption_key_version
+       from encrypted_credentials where owner_id = $1 and provider = 'openrouter'`,
+      [ownerId],
+    );
+    const managed = await tx.query(
+      `select p.key_priority, k.id, k.version, k.ciphertext, k.nonce, k.auth_tag, k.encryption_key_version
+       from profiles p
+       left join managed_openrouter_keys k on k.id = p.managed_openrouter_key_id
+       where p.id = $1 and p.deletion_requested_at is null`,
+      [ownerId],
+    );
+    const owned = personal.rows[0] as Row | undefined;
+    const row = managed.rows[0] as Row | undefined;
+    const choice = preferredSource(
+      row?.key_priority as string | undefined,
+      Boolean(owned),
+      Boolean(row?.id),
+    );
+    if (choice === 'personal' && owned) {
+      const version = Number(owned.credential_version);
+      return {
+        source: 'personal',
+        version,
+        managedKeyId: null,
+        sealed: sealedFrom(owned),
+        aad: credentialAad(ownerId, 'openrouter', version),
+      };
+    }
+    if (choice === 'managed' && row?.id) {
+      const version = Number(row.version);
+      const managedKeyId = String(row.id);
+      return {
+        source: 'managed',
+        version,
+        managedKeyId,
+        sealed: sealedFrom(row),
+        aad: credentialAad(managedKeyId, 'managed_openrouter', version),
+      };
+    }
+    return null;
+  });
+}
+
+export async function getEffectiveOpenRouterStatus(ownerId: string) {
+  return withWorker(async (tx) => {
+    const personal = await tx.query(
+      `select credential_version, last_four, validated_at
+       from encrypted_credentials where owner_id = $1 and provider = 'openrouter'`,
+      [ownerId],
+    );
+    const revision = await tx.query(
+      'select revision from credential_revisions where owner_id = $1',
+      [ownerId],
+    );
+    const slot = Number(revision.rows[0]?.revision ?? 0);
+    const owned = personal.rows[0] as Row | undefined;
+    const profile = await tx.query(
+      `select p.key_priority, k.id, k.validated_at
+       from profiles p
+       left join managed_openrouter_keys k on k.id = p.managed_openrouter_key_id
+       where p.id = $1`,
+      [ownerId],
+    );
+    const row = profile.rows[0] as Row | undefined;
+    const hasPersonal = Boolean(owned);
+    const choice = preferredSource(
+      row?.key_priority as string | undefined,
+      hasPersonal,
+      Boolean(row?.id),
+    );
+    if (choice === 'personal' && owned) {
+      return {
+        configured: true,
+        source: 'personal' as const,
+        has_personal_key: true,
+        last_four: (owned.last_four as string | null) ?? null,
+        status: 'valid' as const,
+        version: Number(owned.credential_version),
+        validated_at: iso(owned.validated_at as Date | null),
+      };
+    }
+    if (choice === 'managed' && row) {
+      return {
+        configured: true,
+        source: 'managed' as const,
+        has_personal_key: hasPersonal,
+        last_four: null,
+        status: 'valid' as const,
+        version: slot,
+        validated_at: iso(row.validated_at as Date | null),
+      };
+    }
+    return {
+      configured: false,
+      source: null,
+      has_personal_key: hasPersonal,
+      last_four: null,
+      status: 'missing' as const,
+      version: slot,
+      validated_at: null,
+    };
+  });
+}
+
+async function runKeyForOwner(tx: Tx, ownerId: string) {
+  const profile = await tx.query(
+    'select key_priority, managed_openrouter_key_id from profiles where id = $1',
+    [ownerId],
+  );
+  const priority = profile.rows[0]?.key_priority as string | undefined;
+  const managedId = (profile.rows[0]?.managed_openrouter_key_id as string | null | undefined) ?? null;
+  const credential = await tx.query(
+    `select credential_version from encrypted_credentials where provider = 'openrouter'`,
+  );
+  const personalVersion = credential.rowCount
+    ? Number(credential.rows[0]?.credential_version)
+    : null;
+  const lookupManaged = Boolean(managedId) && (priority === 'server' || personalVersion == null);
+  const managed = lookupManaged
+    ? await withWorker(async (worker) => {
+        const found = await worker.query(
+          'select version from managed_openrouter_keys where id = $1',
+          [managedId],
+        );
+        return found.rows[0];
+      })
+    : null;
+  const choice = preferredSource(priority, personalVersion != null, Boolean(managed));
+  if (choice === 'personal' && personalVersion != null) {
+    return {
+      source: 'personal' as const,
+      version: personalVersion,
+      managedKeyId: null as string | null,
+    };
+  }
+  if (choice === 'managed' && managedId && managed) {
+    return {
+      source: 'managed' as const,
+      version: Number(managed.version),
+      managedKeyId: String(managedId),
+    };
+  }
+  throw new AppError(422, 'KEY_MISSING', 'Add an OpenRouter key before starting a run');
 }
 
 function conversationFrom(row: Row) {
@@ -659,12 +858,7 @@ export async function createMessageRun(
     if (busy.rowCount) {
       throw new AppError(409, 'ACTIVE_RUN_EXISTS', 'This conversation already has an active run');
     }
-    const credential = await tx.query(
-      `select credential_version from encrypted_credentials where provider = 'openrouter'`,
-    );
-    if (!credential.rowCount) {
-      throw new AppError(422, 'KEY_MISSING', 'Add an OpenRouter key before starting a run');
-    }
+    const runKey = await runKeyForOwner(tx, ownerId);
     let firstName: string | null = null;
     if (input.fileIds.length) {
       const files = await tx.query(
@@ -728,8 +922,10 @@ export async function createMessageRun(
           outputPrice: input.outputPrice,
           budgetUsd: chat.budget_usd,
           researchMode: chat.research_mode,
+          keySource: runKey.source,
+          managedKeyId: runKey.managedKeyId,
         }),
-        credential.rows[0]?.credential_version,
+        runKey.version,
       ],
     );
     await tx.query(`update messages set run_id = $2 where id = any($1::uuid[])`, [
@@ -1146,11 +1342,7 @@ export async function retryMessage(
     if (countOf(activeUser.rows[0] as Row) >= LIMITS.activeRunsPerUser) {
       throw new AppError(409, 'USER_RUN_LIMIT', 'Three runs are already active');
     }
-    const credential = await tx.query(
-      `select credential_version from encrypted_credentials where provider = 'openrouter'`,
-    );
-    if (!credential.rowCount)
-      throw new AppError(422, 'KEY_MISSING', 'Add an OpenRouter key before starting a run');
+    const runKey = await runKeyForOwner(tx, ownerId);
     const chat = conversation.rows[0] as Row;
     const attempt = await tx.query(
       `select coalesce(max(attempt), 0) + 1 as attempt from runs where user_message_id = $1`,
@@ -1186,8 +1378,10 @@ export async function retryMessage(
           ...modelMeta,
           budgetUsd: chat.budget_usd,
           researchMode: chat.research_mode,
+          keySource: runKey.source,
+          managedKeyId: runKey.managedKeyId,
         }),
-        credential.rows[0]?.credential_version,
+        runKey.version,
       ],
     );
     await tx.query(`update messages set run_id = $2 where id = $1`, [assistantId, runId]);
@@ -1306,7 +1500,7 @@ export async function latestMessages(
 
 async function cancelKeyRuns(tx: Tx, owner: string, version: number) {
   const rows = await tx.query(
-    `update runs set cancel_requested_at=coalesce(cancel_requested_at,now()),status=case when status='waiting_approval' then 'queued' else status end,updated_at=now() where owner_id=$1 and credential_version=$2 and status in ('queued','running','waiting_approval') returning id`,
+    `update runs set cancel_requested_at=coalesce(cancel_requested_at,now()),status=case when status='waiting_approval' then 'queued' else status end,updated_at=now() where owner_id=$1 and credential_version=$2 and status in ('queued','running','waiting_approval') and coalesce(tool_snapshot->>'keySource','personal')='personal' returning id`,
     [owner, version],
   );
   for (const row of rows.rows) {
@@ -1353,4 +1547,218 @@ export async function requestReplay(owner: string, route: string, key: string, h
       throw new AppError(409, 'REQUEST_IN_PROGRESS', 'The request is still being processed');
     return { status: Number(row.response_status), body: row.response_body };
   });
+}
+
+function plainDecimal(value: unknown): string {
+  const raw = String(value ?? '0');
+  if (!/^[0-9]+(\.[0-9]+)?$/.test(raw)) return '0';
+  if (!raw.includes('.')) return raw;
+  return raw.replace(/0+$/, '').replace(/\.$/, '') || '0';
+}
+
+const ADMIN_USER_SQL = `select p.id, p.email, p.display_name, p.avatar_url, p.created_at, p.deletion_requested_at, p.key_priority,
+  exists(select 1 from encrypted_credentials c where c.owner_id = p.id and c.provider = 'openrouter') as has_personal,
+  k.id as managed_id, k.label as managed_label, k.last_four as managed_last_four,
+  (select count(*)::int from conversations c where c.owner_id = p.id and c.deleted_at is null) as conversations_count,
+  coalesce((
+    select sum(case
+      when coalesce(r.usage->>'cost_usd', '') ~ '^[0-9]+([.][0-9]+)?$' then (r.usage->>'cost_usd')::numeric
+      else 0 end)
+    from runs r where r.owner_id = p.id
+  ), 0)::text as total_cost_usd
+ from profiles p
+ left join managed_openrouter_keys k on k.id = p.managed_openrouter_key_id`;
+
+function adminUserFrom(row: Row) {
+  const hasPersonal = Boolean(row.has_personal);
+  const managedId = (row.managed_id as string | null) ?? null;
+  const priority = row.key_priority === 'server' ? 'server' : 'personal';
+  const source = preferredSource(priority, hasPersonal, Boolean(managedId)) ?? 'missing';
+  return {
+    id: String(row.id),
+    email: (row.email as string | null) ?? null,
+    display_name: (row.display_name as string | null) ?? null,
+    avatar_url: (row.avatar_url as string | null) ?? null,
+    created_at: mustIso(row.created_at as Date),
+    deletion_requested_at: iso(row.deletion_requested_at as Date | null),
+    key_source: source,
+    key_priority: priority,
+    has_personal_key: hasPersonal,
+    managed_key: managedId
+      ? {
+          id: String(managedId),
+          label: String(row.managed_label ?? ''),
+          last_four: String(row.managed_last_four ?? ''),
+        }
+      : null,
+    conversations_count: Number(row.conversations_count ?? 0),
+    total_cost_usd: plainDecimal(row.total_cost_usd),
+  };
+}
+
+export async function scheduleAccountDeletion(ownerId: string, expectedVersion: number | null) {
+  await withOwner(ownerId, async (tx) => {
+    const current = await tx.query(
+      'select version from profiles where id = $1 and deletion_requested_at is null for update',
+      [ownerId],
+    );
+    if (!current.rowCount) throw new AppError(404, 'NOT_FOUND', 'Profile not found');
+    if (expectedVersion !== null && Number(current.rows[0]?.version) !== expectedVersion) {
+      throw new AppError(409, 'VERSION_CONFLICT', 'Profile was updated', {
+        version: Number(current.rows[0]?.version),
+      });
+    }
+    await tx.query(
+      `update profiles set deletion_requested_at = now(), version = version + 1, updated_at = now() where id = $1`,
+      [ownerId],
+    );
+    await tx.query(
+      `update runs set cancel_requested_at = coalesce(cancel_requested_at, now()), updated_at = now()
+       where status in ('queued', 'running', 'waiting_approval')`,
+    );
+    await tx.query(
+      `insert into outbox (owner_id, topic, payload) values ($1, 'account.purge', '{}'::jsonb)`,
+      [ownerId],
+    );
+  });
+}
+
+function managedKeyFrom(row: Row, assigned: number) {
+  return {
+    id: String(row.id),
+    label: String(row.label),
+    last_four: String(row.last_four),
+    version: Number(row.version),
+    validated_at: mustIso(row.validated_at as Date),
+    created_at: mustIso(row.created_at as Date),
+    assigned_users_count: assigned,
+  };
+}
+
+export async function listManagedOpenRouterKeys() {
+  return withWorker(async (tx) => {
+    const found = await tx.query(
+      `select k.id, k.label, k.last_four, k.version, k.validated_at, k.created_at,
+         (select count(*)::int from profiles p where p.managed_openrouter_key_id = k.id) as assigned_users_count
+       from managed_openrouter_keys k
+       order by k.created_at desc, k.id desc`,
+    );
+    return found.rows.map((row) =>
+      managedKeyFrom(row as Row, Number((row as Row).assigned_users_count ?? 0)),
+    );
+  });
+}
+
+export async function insertManagedOpenRouterKey(input: {
+  id: string;
+  label: string;
+  ciphertext: Buffer;
+  nonce: Buffer;
+  authTag: Buffer;
+  encryptionKeyVersion: string;
+  lastFour: string;
+}) {
+  return withWorker(async (tx) => {
+    const inserted = await tx.query(
+      `insert into managed_openrouter_keys (
+         id, label, ciphertext, nonce, auth_tag, encryption_key_version, last_four
+       ) values ($1, $2, $3, $4, $5, $6, $7)
+       returning id, label, last_four, version, validated_at, created_at`,
+      [
+        input.id,
+        input.label,
+        input.ciphertext,
+        input.nonce,
+        input.authTag,
+        input.encryptionKeyVersion,
+        input.lastFour,
+      ],
+    );
+    return managedKeyFrom(inserted.rows[0] as Row, 0);
+  });
+}
+
+export async function deleteManagedOpenRouterKey(id: string): Promise<boolean> {
+  return withWorker(async (tx) => {
+    const removed = await tx.query('delete from managed_openrouter_keys where id = $1 returning id', [
+      id,
+    ]);
+    return Boolean(removed.rowCount);
+  });
+}
+
+export async function listAdminUsers(query: string | null, limit: number, cursor: string | null) {
+  return withWorker(async (tx) => {
+    const params: unknown[] = [limit + 1];
+    let where = 'true';
+    const needle = query?.trim();
+    if (needle) {
+      params.push(`%${needle.replace(/[\\%_]/g, (char) => `\\${char}`)}%`);
+      where += ` and (coalesce(p.email, '') ilike $${params.length} escape '\\' or coalesce(p.display_name, '') ilike $${params.length} escape '\\')`;
+    }
+    if (cursor) {
+      const decoded = Buffer.from(cursor, 'base64url').toString('utf8');
+      const splitAt = decoded.lastIndexOf('|');
+      const createdAt = decoded.slice(0, splitAt);
+      const id = decoded.slice(splitAt + 1);
+      if (!createdAt || !/^[0-9a-f-]{36}$/i.test(id) || Number.isNaN(Date.parse(createdAt))) {
+        throw new AppError(422, 'VALIDATION_ERROR', 'Invalid cursor');
+      }
+      params.push(createdAt, id);
+      where += ` and (p.created_at, p.id) < ($${params.length - 1}::timestamptz, $${params.length}::uuid)`;
+    }
+    const found = await tx.query(
+      `${ADMIN_USER_SQL} where ${where} order by p.created_at desc, p.id desc limit $1`,
+      params,
+    );
+    const rows = found.rows.slice(0, limit);
+    const last = rows.at(-1) as Row | undefined;
+    const next =
+      found.rows.length > limit && last
+        ? Buffer.from(`${mustIso(last.created_at as Date)}|${String(last.id)}`).toString('base64url')
+        : null;
+    return { items: rows.map((row) => adminUserFrom(row as Row)), next };
+  });
+}
+
+export async function getAdminUser(id: string) {
+  return withWorker(async (tx) => {
+    const found = await tx.query(`${ADMIN_USER_SQL} where p.id = $1`, [id]);
+    if (!found.rowCount) throw new AppError(404, 'NOT_FOUND', 'Profile not found');
+    return adminUserFrom(found.rows[0] as Row);
+  });
+}
+
+export async function assignManagedOpenRouterKey(
+  userId: string,
+  managedKeyId: string | null,
+  keyPriority?: 'personal' | 'server',
+) {
+  if (managedKeyId) {
+    const exists = await withWorker(async (tx) => {
+      const found = await tx.query('select id from managed_openrouter_keys where id = $1', [
+        managedKeyId,
+      ]);
+      return Boolean(found.rowCount);
+    });
+    if (!exists) throw new AppError(404, 'NOT_FOUND', 'Server key not found');
+  }
+  try {
+    await withOwner(userId, async (tx) => {
+      const updated = await tx.query(
+        `update profiles set managed_openrouter_key_id = $2,
+           key_priority = coalesce($3, key_priority), updated_at = now()
+         where id = $1 and deletion_requested_at is null
+         returning id`,
+        [userId, managedKeyId, keyPriority ?? null],
+      );
+      if (!updated.rowCount) throw new AppError(404, 'NOT_FOUND', 'Profile not found');
+    });
+  } catch (error) {
+    if (typeof error === 'object' && error !== null && 'code' in error && error.code === '23503') {
+      throw new AppError(404, 'NOT_FOUND', 'Server key not found');
+    }
+    throw error;
+  }
+  return getAdminUser(userId);
 }

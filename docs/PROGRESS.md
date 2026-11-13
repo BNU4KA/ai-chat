@@ -824,6 +824,32 @@ Checks on Node 26.13.0 / pnpm 12.18.0: `pnpm exec vitest run --config vitest.con
 52 tests), `pnpm typecheck`, `pnpm lint`, `pnpm build`, `git diff --check` passed; `pnpm test:e2e
 --reporter=list` passed 42 scenarios (`desktop` + `mobile-web`, synthetic fixtures), 2 skipped.
 
+## T08 — Tavily primary + OpenRouter web-search fallback — 2026-11-13
+
+- Added `searchWebOpenRouter` (`packages/integrations/src/openrouter.ts`) using OpenRouter's
+  `plugins: [{ id: 'web', max_results }]` and `url_citation` annotations.
+- Updated `searchWeb` (`packages/integrations/src/tavily.ts`) to surface `TavilyError` with
+  `fallbackable` status on `401/402/403/429/432/433/434/5xx`, enable `include_published_date`,
+  and preserve up to 1,200 chars of excerpt per hit per Tavily's `/search` OpenAPI spec.
+- Updated worker `searchWeb` port (`apps/worker/src/index.ts`) to use `TAVILY_API_KEY` when
+  configured and automatically fall back to `searchWebOpenRouter` when Tavily is missing, invalid,
+  rate-limited, or out of credits.
+- Updated API `/v1/capabilities` and `defaultTools()` (`apps/api/src/server.ts`) so `web` is
+  always available and enabled by default for new chats.
+- Added owner-supplied `TAVILY_API_KEY` only to gitignored local `.env` (not tracked in Git).
+
+Checks on Node 26.13.0 / pnpm 12.18.0: live smoke call to `https://api.tavily.com/search` via
+`searchWeb` returned 2 results with URLs and excerpts; `vitest` (15 files, 53 tests), `pnpm typecheck`,
+`pnpm lint`, `pnpm build`, `pnpm test:e2e --reporter=list` (42 passed, 2 skipped), and
+`git diff --check` passed. (OpenRouter fallback tested with synthetic fixtures; no live OpenRouter
+web-search request performed.)
+
+Committed as `139403c` on `codex/workspace-expansion` and pushed. Production runtime
+`20261113T200404Z` is the previous runtime with the search changes applied: Tavily first, OpenRouter
+web-plugin fallback, and `web` available for new chats. `TAVILY_API_KEY` is in `/etc/ai-chat/server.env`.
+API and worker were restarted; public readiness returned database and queue ok. The static web release
+was left unchanged. Previous runtime `20261111T111852Z` remains on disk for rollback.
+
 Checks on Node 26.13.0 / pnpm 12.18.0 (synthetic fixtures; no live provider, native build,
 commit, or push):
 
@@ -831,3 +857,70 @@ commit, or push):
 - `pnpm test:e2e --reporter=list`: 38 passed (`desktop` + `mobile-web`), 2 skipped (live health);
   verified side-positioned popover, tools dialog, thinking skeleton + transient tool pill, and
   updated screenshots visually inspected.
+
+## Admin panel — managed OpenRouter keys — 2026-11-13
+
+Administrators listed in `ADMIN_EMAILS` can store encrypted server OpenRouter keys, assign one
+key to a user, and schedule that user's existing account purge. Chat and the model catalog use
+the personal key when it exists, otherwise the assigned server key. Runs record `keySource` and
+`managedKeyId`. Ordinary clients never receive the server secret or its `last_four`.
+
+Checks on Node 26.13.0, local Postgres container `ai-chat-pg` at `127.0.0.1:54329` (synthetic
+keys only; no live OpenRouter call):
+
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed.
+- `pnpm test`: 53 passed across 15 files.
+- `DATABASE_URL=postgres://postgres@127.0.0.1:54329/ai_chat pnpm test:integration`: 42 passed
+  across 7 files, including admin access, key priority, RLS denial for `app_api`, and
+  `account.purge` outbox insertion.
+- Signed-in browser pass of `/admin` was not run: the screen requires an admin session.
+- Hosted migrations `0004`–`0006` are applied.
+- Commit `d6d974b` is on `codex/workspace-expansion`. Production release `20261113T211213Z`
+  is the current API, worker, and web. The first install was OOM-killed during `pnpm install`
+  on the 894 MB VPS; a 2 GB swap file was added, and the retry passed. Readiness returned
+  `database` and `queue` ok. Unauthenticated `GET /v1/admin/users` returned 401. The public
+  admin bundle returned 200. `ADMIN_EMAILS` is set in the server environment and visible to
+  the API process. The owner account is the only admin.
+
+## Admin tables and key priority — 2026-11-13
+
+Keys and users render as tables. Adding a key and assigning one open dialogs. `profiles.key_priority`
+is `personal` or `server` (default `personal`). Server priority uses the assigned server key; otherwise
+a personal key wins, then a server key. Credential status includes `has_personal_key` so a saved
+personal key can still be removed while a server key is in use.
+
+Checks on Node 26.13.0, local Postgres `ai-chat-pg` at `127.0.0.1:54329` (synthetic keys only):
+
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed.
+- `pnpm test`: 53 passed across 15 files.
+- `pnpm test:integration`: 42 passed across 7 files, including server priority overriding a personal key
+  and an omitted priority leaving the stored value.
+- Signed-in browser pass of the new tables was not run.
+- Hosted migration `0007_key_priority.sql` is applied. Production release `20261113T213243Z` is the
+  current API and worker. Readiness returned `database` and `queue` ok. The public admin
+  bundle containing the tables returned 200.
+
+## Admin dialog layout — 2026-11-13
+
+Key and priority choices in the admin dialogs are full-width rows, and the dialog actions sit
+on the right under a divider. This is a web-only release. API and worker stayed on
+`20261113T213243Z`.
+
+- Web export secret scan of `apps/client/dist` passed, and the bundle contains the public site origin.
+- Production web release `20261113T214810Z` published the dialog styles. Public readiness returned
+  `database` and `queue` ok. The public admin bundle returned 200.
+
+## Admin navigation layout — 2026-11-13
+
+The keys table is the same width as the users table. Section switching is a left-hand list, matching
+the settings dialog. API and worker stayed on `20261113T213243Z`.
+
+- Web export secret scan of `apps/client/dist` passed.
+- Production web release `20261113T220213Z` published the side navigation. Public readiness returned
+  `database` and `queue` ok. The public admin bundle returned 200.
+- The side options were then lowered. Web release `20261113T220409Z` published that offset.
+- The divider was lowered with the options. Web release `20261113T220614Z` is current. Public
+  readiness returned `database` and `queue` ok. Bundle `admin-da3015be1ef96bff9712fb57bc76b641.js`
+  returned 200. Signed-in click-through of the live page was not run.

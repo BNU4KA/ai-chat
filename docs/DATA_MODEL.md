@@ -22,7 +22,7 @@ Unless listed otherwise, rows have id uuid, owner_id uuid, created_at timestampt
 
 | Table | Additional fields |
 | --- | --- |
-| profiles | id = auth.users.id, display_name text?, avatar_url text?, locale text auto/en/ru default auto (existing values preserved), timezone text, theme system/light/dark, deletion_requested_at timestamptz?; no separate owner_id |
+| profiles | id = auth.users.id, email text?, display_name text?, avatar_url text?, locale text auto/en/ru default auto (existing values preserved), timezone text, theme system/light/dark, deletion_requested_at timestamptz?, managed_openrouter_key_id uuid?, key_priority personal/server default personal; no separate owner_id |
 | conversations | title text, title_source auto/manual, model_id text?, enabled_tools text[], deleted_at timestamptz? |
 | messages | conversation_id uuid, run_id uuid?, seq bigint, role user/assistant, content text, status pending/complete/partial/failed/cancelled, client_message_id uuid? |
 | runs | conversation_id uuid, user_message_id uuid, assistant_message_id uuid, attempt int, status enum, model_id text, tool_snapshot jsonb, credential_version int, cancel_requested_at timestamptz?, execution_ms int, model_calls int, tool_calls int, checkpoint jsonb, error_code text?, usage jsonb, started_at timestamptz?, finished_at timestamptz? |
@@ -35,6 +35,7 @@ Unless listed otherwise, rows have id uuid, owner_id uuid, created_at timestampt
 | run_sources | run_id uuid, citation_id text, kind web/file/mail/calendar, title text, url text?, file_id uuid?, page int?, excerpt text?, retrieved_at timestamptz |
 | integrations | provider google, google_subject text, account_email text, capabilities jsonb, granted_scopes text[], status connected/reauth_required/disconnecting/disconnected, last_error_code text? |
 | encrypted_credentials | provider openrouter/google, integration_id uuid?, credential_version int, ciphertext bytea, nonce bytea, auth_tag bytea, encryption_key_version text, last_four text?, validated_at timestamptz?, updated_at timestamptz |
+| managed_openrouter_keys | label text, ciphertext bytea, nonce bytea, auth_tag bytea, encryption_key_version text, last_four text, version int, validated_at timestamptz; no owner_id; worker role only |
 | oauth_states | state_hash text, code_verifier_ciphertext bytea, integration_capability text, return_target text, expires_at timestamptz, consumed_at timestamptz? |
 | idempotency_records | route text, key uuid, request_hash text, response_status int?, response_body jsonb?, expires_at timestamptz |
 | outbox | topic text, payload jsonb, dispatched_at timestamptz?, retry_at timestamptz?, attempts int |
@@ -49,6 +50,11 @@ secret-handling helper as credentials; the abbreviated field name does not autho
 Usage schema: input_tokens?, output_tokens?, cost_usd?, cost_status estimated/confirmed/unknown,
 provider_generation_ids[]. Store decimal cost as numeric/string, not an IEEE float for accounting.
 Do not combine estimated and confirmed amounts into a single misleading total.
+The admin user list sums recorded `usage.cost_usd` values and labels that figure as recorded
+spend. It is not an OpenRouter invoice. `profiles.key_priority` chooses which OpenRouter key a
+new run uses: `server` uses the assigned server key when one is assigned, otherwise a personal
+key wins, then a server key. A run stores `keySource` and `managedKeyId` inside `tool_snapshot`
+so a personal key and a server key with the same version stay distinct.
 
 ## Required constraints and indexes
 

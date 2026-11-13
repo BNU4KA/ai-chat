@@ -1,5 +1,6 @@
 import { LIMITS } from '@ai-chat/contracts';
 import type { ModelAdapter, ModelResult } from '@ai-chat/agent-runtime';
+import type { WebHit } from './tavily.ts';
 
 const OPENROUTER = 'https://openrouter.ai/api/v1';
 
@@ -338,6 +339,78 @@ export async function generateOpenRouterImage(
     mime,
     costUsd: body.usage?.cost == null ? null : String(body.usage.cost),
   };
+}
+
+export async function searchWebOpenRouter(
+  input: {
+    apiKey: string;
+    model?: string;
+    query: string;
+    maxResults: number;
+    signal?: AbortSignal;
+  },
+  fetchImpl: typeof fetch = fetch,
+): Promise<WebHit[]> {
+  const signal = input.signal
+    ? AbortSignal.any([input.signal, AbortSignal.timeout(LIMITS.modelTimeoutMs)])
+    : AbortSignal.timeout(LIMITS.modelTimeoutMs);
+  const response = await fetchImpl(`${OPENROUTER}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${input.apiKey}`,
+      'content-type': 'application/json',
+    },
+    signal,
+    body: JSON.stringify({
+      model: input.model ?? 'anthropic/claude-haiku-5.5',
+      messages: [
+        {
+          role: 'user',
+          content: `Search the web and provide concise factual findings with sources for: ${input.query}`,
+        },
+      ],
+      plugins: [{ id: 'web', max_results: input.maxResults }],
+      max_tokens: 700,
+      stream: false,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error('OpenRouter web search is unavailable');
+  }
+  const body = (await response.json()) as {
+    choices?: {
+      message?: {
+        content?: string;
+        annotations?: {
+          type?: string;
+          url_citation?: { url?: string; title?: string; content?: string };
+        }[];
+      };
+    }[];
+  };
+  const msg = body.choices?.[0]?.message;
+  const seen = new Set<string>();
+  const hits: WebHit[] = [];
+  for (const ann of msg?.annotations ?? []) {
+    if (ann?.type !== 'url_citation' || !ann.url_citation?.url) continue;
+    const url = ann.url_citation.url;
+    if (seen.has(url)) continue;
+    seen.add(url);
+    hits.push({
+      title: ann.url_citation.title || url,
+      url,
+      excerpt: (ann.url_citation.content || msg?.content || '').slice(0, 500),
+    });
+    if (hits.length >= input.maxResults) break;
+  }
+  if (!hits.length && msg?.content?.trim()) {
+    hits.push({
+      title: 'Web search summary',
+      url: '',
+      excerpt: msg.content.trim().slice(0, 500),
+    });
+  }
+  return hits;
 }
 
 function perMillion(value: string | number | undefined): string | null {

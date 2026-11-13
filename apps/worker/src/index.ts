@@ -17,12 +17,11 @@ import {
 } from '@ai-chat/services';
 import { executeRun } from '@ai-chat/agent-runtime';
 import {
-  credentialAad,
   databaseConnectionString,
   loadKeyring,
   markOutbox,
   open,
-  readOpenRouterSecret,
+  readEffectiveOpenRouterSecret,
   takeOutbox,
   purgeConversation,
   recoverExpiredRuns,
@@ -33,6 +32,8 @@ import {
   generateOpenRouterImage,
   readPublicPage,
   searchWeb,
+  searchWebOpenRouter,
+  TavilyError,
   removeStoredObjects,
 } from '@ai-chat/integrations';
 import { PgBoss } from 'pg-boss';
@@ -63,18 +64,40 @@ await boss.work('file.process', async (jobs) => {
 const model = createOpenRouterModel();
 const keyring = process.env.ENCRYPTION_KEYS ? loadKeyring(process.env.ENCRYPTION_KEYS) : null;
 
+function expectedRunKey(run: Record<string, unknown>) {
+  const snap = (run.tool_snapshot ?? {}) as { keySource?: string; managedKeyId?: string | null };
+  const source = snap.keySource === 'managed' ? 'managed' : 'personal';
+  return {
+    source,
+    version: Number(run.credential_version),
+    managedKeyId: source === 'managed' && typeof snap.managedKeyId === 'string' ? snap.managedKeyId : null,
+  };
+}
+
 async function readOwnerKey(ownerId: string) {
   if (!keyring) return null;
-  const stored = await readOpenRouterSecret(ownerId);
+  const stored = await readEffectiveOpenRouterSecret(ownerId);
   if (!stored) return null;
   return {
     version: stored.version,
-    apiKey: open(
-      keyring,
-      stored.sealed,
-      credentialAad(ownerId, 'openrouter', stored.version),
-    ),
+    source: stored.source,
+    managedKeyId: stored.managedKeyId,
+    apiKey: open(keyring, stored.sealed, stored.aad),
   };
+}
+
+async function readRunKey(ownerId: string, run: Record<string, unknown>) {
+  const key = await readOwnerKey(ownerId);
+  if (!key) return null;
+  const expected = expectedRunKey(run);
+  if (
+    key.version !== expected.version ||
+    key.source !== expected.source ||
+    key.managedKeyId !== expected.managedKeyId
+  ) {
+    return null;
+  }
+  return key;
 }
 
 await boss.work('run.execute', async (jobs) => {
@@ -103,7 +126,7 @@ await boss.work('run.execute', async (jobs) => {
           modelQuery,
           signal,
         }) => {
-          const key = await readOwnerKey(ownerId);
+          const key = await readRunKey(ownerId, run);
           if (!key) {
             return {
               ok: false,
@@ -149,21 +172,43 @@ await boss.work('run.execute', async (jobs) => {
             };
           }
         },
-        searchWeb: process.env.TAVILY_API_KEY
-          ? async (query, max) => {
-              const hits = await searchWeb(process.env.TAVILY_API_KEY ?? '', query, max);
-              return {
-                ok: true,
-                data: hits,
-                sources: hits.map((hit) => ({
-                  kind: 'web',
-                  title: hit.title,
-                  url: hit.url,
-                  excerpt: hit.excerpt,
-                })),
-              };
+        searchWeb: async (query, max) => {
+          const tavilyKey = process.env.TAVILY_API_KEY?.trim();
+          let hits;
+          if (tavilyKey) {
+            try {
+              hits = await searchWeb(tavilyKey, query, max);
+            } catch (error) {
+              if (error instanceof TavilyError && !error.fallbackable) throw error;
+              console.log({
+                service: 'worker',
+                status: 'tavily_fallback_to_openrouter',
+                http_status: error instanceof TavilyError ? error.status : null,
+              });
             }
-          : undefined,
+          }
+          if (!hits) {
+            const key = await readRunKey(String(run.owner_id), run);
+            if (!key) throw new Error('OpenRouter key is missing for web search');
+            hits = await searchWebOpenRouter({
+              apiKey: key.apiKey,
+              query,
+              maxResults: max,
+            });
+          }
+          return {
+            ok: true,
+            data: hits,
+            sources: hits
+              .filter((hit) => hit.url)
+              .map((hit) => ({
+                kind: 'web',
+                title: hit.title,
+                url: hit.url,
+                excerpt: hit.excerpt,
+              })),
+          };
+        },
         readPage: async (url) => {
           const page = await readPublicPage(url);
           return {

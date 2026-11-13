@@ -81,6 +81,12 @@ export function applicationOpenApi() {
   route('/v1/credentials/openrouter', 'get', 'credentialSchema');
   route('/v1/credentials/openrouter', 'put', 'credentialSchema', 'credentialPutSchema');
   route('/v1/credentials/openrouter', 'delete');
+  route('/v1/admin/openrouter-keys', 'get', 'adminOpenRouterKeySchema', undefined, true);
+  route('/v1/admin/openrouter-keys', 'post', 'adminOpenRouterKeySchema', 'adminOpenRouterKeyCreateSchema');
+  route('/v1/admin/openrouter-keys/{id}', 'delete');
+  route('/v1/admin/users', 'get', 'adminUserSchema', undefined, true);
+  route('/v1/admin/users/{id}/openrouter-key', 'patch', 'adminUserSchema', 'adminAssignKeySchema');
+  route('/v1/admin/users/{id}', 'delete');
   route('/v1/models', 'get', 'modelSchema', undefined, true);
   route('/v1/capabilities', 'get');
   route('/v1/conversations', 'get', 'conversationSchema', undefined, true);
@@ -148,6 +154,9 @@ export function applicationOpenApi() {
   }
   const successStatuses: [string, string, string][] = [
     ['/v1/credentials/openrouter', 'delete', '204'],
+    ['/v1/admin/openrouter-keys', 'post', '201'],
+    ['/v1/admin/openrouter-keys/{id}', 'delete', '204'],
+    ['/v1/admin/users/{id}', 'delete', '202'],
     ['/v1/conversations', 'post', '201'],
     ['/v1/conversations/{id}', 'delete', '202'],
     ['/v1/conversations/{id}/messages', 'post', '202'],
@@ -169,6 +178,14 @@ export function applicationOpenApi() {
     operation.responses[status] =
       status === '204' ? { description: 'Removed; no response body' } : operation.responses['200'];
     delete operation.responses['200'];
+  }
+  for (const [path, method] of [
+    ['/v1/admin/openrouter-keys/{id}', 'delete'],
+    ['/v1/admin/users/{id}', 'delete'],
+    ['/v1/admin/users/{id}/openrouter-key', 'patch'],
+  ] as const) {
+    const operation = paths[path]![method] as { parameters: { name: string }[] };
+    operation.parameters = operation.parameters.filter((parameter) => parameter.name !== 'If-Match');
   }
   const capabilityOperation = paths['/v1/integrations/google/capabilities/{capability}']!
     .delete as { parameters: { name: string; schema: unknown }[] };
