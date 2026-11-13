@@ -21,12 +21,14 @@ export function Attachment({
   onRemove,
   onOpen,
   compact = false,
+  large = false,
 }: {
   file?: FileRecord;
   id: string;
   onRemove?: () => void;
   onOpen?: () => void;
   compact?: boolean;
+  large?: boolean;
 }) {
   const { colors: c } = useTheme();
   const photo = !!file?.detected_mime?.startsWith('image/');
@@ -39,6 +41,32 @@ export function Attachment({
   });
   const ready = file?.status === 'ready';
   const failed = file?.status === 'failed';
+  if (large && photo && ready && preview.data) {
+    return (
+      <Pressable
+        testID="attachment-card"
+        accessibilityRole={onOpen ? 'button' : undefined}
+        accessibilityLabel={`Open attachment ${file?.filename ?? ''}`}
+        onPress={onOpen}
+        disabled={!onOpen}
+        style={{
+          alignSelf: 'flex-start',
+          borderRadius: 16,
+          overflow: 'hidden',
+          borderWidth: 1,
+          borderColor: c.border,
+          backgroundColor: c.raised,
+        }}
+      >
+        <Image
+          accessibilityLabel={file?.filename ?? 'Attached photo'}
+          source={{ uri: preview.data.url }}
+          style={{ width: 280, height: 280 }}
+          resizeMode="cover"
+        />
+      </Pressable>
+    );
+  }
   return (
     <View
       testID="attachment-card"

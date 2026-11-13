@@ -26,6 +26,7 @@ export type ChatGptIconName =
   | 'paperclip'
   | 'settings'
   | 'sliders'
+  | 'pin'
   | 'close';
 
 export function ChatGptIcon({
@@ -347,6 +348,23 @@ export function ChatGptIcon({
         <Circle cx={5.5} cy={4.5} r={1.4} fill={color} stroke="none" />
         <Circle cx={10.5} cy={8} r={1.4} fill={color} stroke="none" />
         <Circle cx={6.5} cy={11.5} r={1.4} fill={color} stroke="none" />
+      </Svg>
+    );
+  }
+  if (name === 'pin') {
+    return (
+      <Svg
+        width={size}
+        height={size}
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke={color}
+        strokeWidth={1.35}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden={true}
+      >
+        <Path d="M9.8 2.2 13.8 6.2 12.1 7.9 10.6 7.4 7.7 10.3 8.2 12.2 6.8 13.6 4.6 11.4 2.1 13.9 4.6 11.4 2.4 9.2 3.8 7.8 5.7 8.3 8.6 5.4 8.1 3.9z" />
       </Svg>
     );
   }

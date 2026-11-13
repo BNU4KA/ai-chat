@@ -32,7 +32,8 @@ export function useRun(runId:string|undefined){
    setReconnecting(false);
    await readEvents(runId,snapshot.run.last_event_seq,controller.signal,event=>{
      cache.setQueryData<Snapshot>(['run',runId],old=>old?applyRunEvent(old,event):old);
-     if(['run.completed','run.failed','run.cancelled'].includes(event.type)){void cache.invalidateQueries({queryKey:['messages']});void cache.invalidateQueries({queryKey:['runs']});void cache.invalidateQueries({queryKey:['conversations']});}
+     if(event.type==='tool.completed'){void cache.invalidateQueries({queryKey:['conversation']});void cache.invalidateQueries({queryKey:['files']});}
+     if(['run.completed','run.failed','run.cancelled'].includes(event.type)){void cache.invalidateQueries({queryKey:['messages']});void cache.invalidateQueries({queryKey:['runs']});void cache.invalidateQueries({queryKey:['conversations']});void cache.invalidateQueries({queryKey:['conversation']});void cache.invalidateQueries({queryKey:['files']});}
    });
    const current=cache.getQueryData<Snapshot>(['run',runId]);if(current&&!activeStatus(current.run.status))break;
  }catch{if(controller.signal.aborted)break;if(mounted)setReconnecting(true);}

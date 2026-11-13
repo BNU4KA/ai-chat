@@ -53,6 +53,7 @@ export const modelSchema = z.object({
   context_length: z.number().int().nullable(),
   supports_tools: z.boolean(),
   supports_images: z.boolean().default(false),
+  supports_image_output: z.boolean().optional().default(false),
   max_output_tokens: z.number().int().nullable().optional(),
   input_price_per_million_usd: z.string().nullable(),
   output_price_per_million_usd: z.string().nullable(),

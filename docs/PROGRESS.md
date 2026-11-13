@@ -751,11 +751,52 @@ generation, no native device test, no deployment, no push):
 - Tool activity pills (`chat.tsx`): rendered as compact inline pills only while the run is active
   (or if a tool ends `unknown`/`failed`) and hidden cleanly once the run finishes with succeeded
   tools.
-- Smooth streaming (`chat.tsx`, `smooth-text.ts`): wrapped pending assistant Markdown in
-  `StreamingMarkdown` using `revealStep` at 60 fps (`requestAnimationFrame` on web) for fluid
-  token-by-token reveal while respecting `prefers-reduced-motion`.
+- Smooth streaming (`chat.tsx`, `markdown.tsx`, `web-effects.web.tsx`, `smooth-text.ts`):
+  paced streaming reveal at ~1 char/frame (gentler burst cap `gap / 18`) with smooth post-completion
+  catch-up and per-word trailing fade (`splitStreamTail` + `chatgpt-tail-in`) while respecting
+  `prefers-reduced-motion`.
 - Thinking skeleton (`fool-spinner.tsx`, `web-effects.web.tsx`): added 3 animated shimmer
   response-line skeleton bars (`ThinkingSkeleton`) beneath `Thinking…`.
+- Removed the bottom `Sources` panel (`chat.tsx`); inline `[S1]` citation links still open the
+  `Source evidence` dialog.
+- Disabled `Library`, `Scheduled`, and `Notifications` sidebar items with a `"Coming soon"` hover
+  tooltip (`sidebar.tsx`).
+- Added account-scoped chat pinning (`pinned-chats.ts`, `sidebar.tsx`, `chat.tsx`, `workspace.tsx`,
+  `chatgpt-icons.tsx`) with a `Pinned` section at top and `Pin` / `Unpin` actions in the sidebar
+  row menu and conversation dialog.
+- Removed the duplicate top-right profile avatar button from chat and workspace headers (`chat.tsx`,
+  `workspace.tsx`), keeping profile & Settings at the bottom-left of the sidebar.
+- Replaced fixed single-line textarea height with live `scrollHeight` / `onContentSizeChange`
+  auto-expansion in a stable unremounted wrapper (`chat.tsx`), preserving cursor/focus when
+  wrapping between 1-row and multi-row composer states.
+- Added smooth FLIP glide transition (`360 ms cubic-bezier(0.22, 1, 0.36, 1)`) from centered home
+  composer to bottom-docked active thread without unmounting the page (`window.history.replaceState`
+  on web).
+
+## T06/T08/T13 — Concise prompt, Popular models, switch_model, and generate_image — 2026-11-13 (local, uncommitted)
+
+- Updated `SYSTEM` prompt (`packages/agent-runtime/src/execute.ts`) for concise, concrete,
+  zero-fluff default replies (expanding only on complex tasks or explicit detail requests).
+- Added `Popular` (`Самые популярные`) section at the top of `ModelList` (`apps/client/src/model-list.tsx`)
+  picking one optimal price/quality model each from Google (`Gemini 2.5 Flash` / `Gemini 3.8 Flash`),
+  OpenAI (`GPT-5 Mini` / `GPT-4.1 Mini` / `GPT-4o Mini`), and Anthropic (`Claude Haiku 4.5` /
+  `Claude 3.5 Haiku`) from the live catalog.
+- Added built-in `switch_model` and `generate_image` tools (`packages/contracts`,
+  `packages/integrations`, `packages/services`, `packages/agent-runtime`, `apps/worker`):
+  - `switch_model`: matches OpenRouter catalog entries by name/ID and updates `conversations.model_id`
+    when explicitly requested in chat; client refreshes active conversation metadata on completion.
+  - `generate_image`: picks an image-output OpenRouter model (`supports_image_output`), calls
+    OpenRouter `modalities: ['image', 'text']`, stores the generated image in private Supabase
+    Storage linked to the assistant message via `files` + `message_files`, and renders a large
+    preview in `Attachment` (`apps/client/src/attachment.tsx`).
+- Also passed `supportsTools` through `tool_snapshot` (`repo.ts`, `server.ts`, `models.ts`) so
+  text-only models never receive tool definitions.
+
+Checks on Node 26.13.0 / pnpm 12.18.0 (synthetic OpenRouter/storage fixtures; no live paid image
+generation or live model switch run performed; no commit or push):
+
+- `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build`, `git diff --check`: passed.
+- `pnpm test:e2e --reporter=list`: 40 passed (`desktop` + `mobile-web`), 2 skipped (live health).
 
 Checks on Node 26.13.0 / pnpm 12.18.0 (synthetic fixtures; no live provider, native build,
 commit, or push):

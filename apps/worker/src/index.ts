@@ -11,6 +11,9 @@ import {
   revokeConnection,
   purgeAccount,
   maintainTasks,
+  pickImageModel,
+  switchConversationModel,
+  saveGeneratedImage,
 } from '@ai-chat/services';
 import { executeRun } from '@ai-chat/agent-runtime';
 import {
@@ -27,6 +30,7 @@ import {
 } from '@ai-chat/database';
 import {
   createOpenRouterModel,
+  generateOpenRouterImage,
   readPublicPage,
   searchWeb,
   removeStoredObjects,
@@ -59,6 +63,20 @@ await boss.work('file.process', async (jobs) => {
 const model = createOpenRouterModel();
 const keyring = process.env.ENCRYPTION_KEYS ? loadKeyring(process.env.ENCRYPTION_KEYS) : null;
 
+async function readOwnerKey(ownerId: string) {
+  if (!keyring) return null;
+  const stored = await readOpenRouterSecret(ownerId);
+  if (!stored) return null;
+  return {
+    version: stored.version,
+    apiKey: open(
+      keyring,
+      stored.sealed,
+      credentialAad(ownerId, 'openrouter', stored.version),
+    ),
+  };
+}
+
 await boss.work('run.execute', async (jobs) => {
   for (const job of jobs) {
     const runId = String((job.data as { runId?: string }).runId ?? '');
@@ -75,6 +93,62 @@ await boss.work('run.execute', async (jobs) => {
         ...projectDocumentPorts(String(run.owner_id), String(run.conversation_id)),
         ...filePorts(String(run.owner_id), String(run.conversation_id)),
         ...googlePorts(String(run.owner_id), runId),
+        switchModel: async ({ ownerId, conversationId, query }) =>
+          switchConversationModel(ownerId, conversationId, query),
+        generateImage: async ({
+          ownerId,
+          conversationId,
+          assistantMessageId,
+          prompt,
+          modelQuery,
+          signal,
+        }) => {
+          const key = await readOwnerKey(ownerId);
+          if (!key) {
+            return {
+              ok: false,
+              error: { code: 'KEY_MISSING', message: 'OpenRouter key is missing.', retryable: false },
+            };
+          }
+          try {
+            const chosen = await pickImageModel(ownerId, modelQuery);
+            const generated = await generateOpenRouterImage({
+              apiKey: key.apiKey,
+              model: chosen.id,
+              prompt,
+              signal,
+            });
+            const ext = generated.mime.split('/')[1]?.replace('jpeg', 'jpg') || 'png';
+            const saved = await saveGeneratedImage({
+              ownerId,
+              conversationId,
+              assistantMessageId,
+              bytes: generated.bytes,
+              mime: generated.mime,
+              filename: `generated-${Date.now()}.${ext}`,
+            });
+            return {
+              ok: true,
+              data: {
+                ...saved,
+                model_id: chosen.id,
+                model_name: chosen.name,
+                cost_usd: generated.costUsd,
+              },
+            };
+          } catch (error) {
+            const code =
+              error instanceof Error && 'code' in error ? String(error.code) : 'PROVIDER_ERROR';
+            return {
+              ok: false,
+              error: {
+                code,
+                message: error instanceof Error ? error.message : 'Image generation failed',
+                retryable: false,
+              },
+            };
+          }
+        },
         searchWeb: process.env.TAVILY_API_KEY
           ? async (query, max) => {
               const hits = await searchWeb(process.env.TAVILY_API_KEY ?? '', query, max);
@@ -106,19 +180,7 @@ await boss.work('run.execute', async (jobs) => {
           };
         },
       },
-      loadKey: async (ownerId) => {
-        if (!keyring) return null;
-        const stored = await readOpenRouterSecret(ownerId);
-        if (!stored) return null;
-        return {
-          version: stored.version,
-          apiKey: open(
-            keyring,
-            stored.sealed,
-            credentialAad(ownerId, 'openrouter', stored.version),
-          ),
-        };
-      },
+      loadKey: readOwnerKey,
     });
   }
 });

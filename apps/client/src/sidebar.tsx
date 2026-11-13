@@ -48,10 +48,12 @@ type SidebarProps = {
   selectedId?: string;
   activeSection?: 'projects' | 'documents' | 'schedules' | 'notices' | 'search';
   conversations: Conversation[];
+  pinnedIds?: string[];
   onToggle: () => void;
   onNew: () => void;
   onOpenSearch: () => void;
   onSelect: (id: string) => void;
+  onTogglePin?: (conversation: Conversation) => void;
   onRename?: (conversation: Conversation) => void;
   onDelete?: (conversation: Conversation) => void;
   onWorkspace?: (tab: 'projects' | 'documents' | 'schedules' | 'notices' | 'search') => void;
@@ -74,6 +76,7 @@ function SidebarNavRow({
   expanded,
   onPress,
   disabled = false,
+  comingSoon = false,
   accessibilityLabel,
   badge,
   active = false,
@@ -83,59 +86,92 @@ function SidebarNavRow({
   expanded: boolean;
   onPress: () => void;
   disabled?: boolean;
+  comingSoon?: boolean;
   accessibilityLabel?: string;
   badge?: number;
   active?: boolean;
 }) {
-  const { colors: c } = useTheme();
+  const { colors: c, isDark } = useTheme();
+  const [hovered, setHovered] = useState(false);
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel ?? label}
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed, hovered }) => ({
-        height: 36,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: expanded ? 'flex-start' : 'center',
-        paddingHorizontal: expanded ? 10 : 0,
-        gap: 10,
-        borderRadius: 8,
-        backgroundColor: active
-          ? c.selected
-          : pressed || hovered
-            ? c.hover
-            : 'transparent',
-        opacity: disabled ? 0.45 : 1,
-      })}
+    <View
+      style={{ position: 'relative' }}
+      onPointerEnter={() => setHovered(true)}
+      onPointerLeave={() => setHovered(false)}
     >
-      <View style={{ width: 20, alignItems: 'center', justifyContent: 'center' }}>
-        <ChatGptIcon name={icon} size={17} color={c.text} />
-      </View>
-      {expanded && (
-        <Text numberOfLines={1} style={{ flex: 1, fontSize: 14, color: c.text, fontWeight: '400' }}>
-          {label}
-        </Text>
-      )}
-      {expanded && !!badge && badge > 0 && (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel ?? label}
+        accessibilityState={{ disabled: disabled || comingSoon }}
+        disabled={disabled || comingSoon}
+        onPress={onPress}
+        style={({ pressed }) => ({
+          height: 36,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: expanded ? 'flex-start' : 'center',
+          paddingHorizontal: expanded ? 10 : 0,
+          gap: 10,
+          borderRadius: 8,
+          backgroundColor: active
+            ? c.selected
+            : !disabled && !comingSoon && (pressed || hovered)
+              ? c.hover
+              : 'transparent',
+          opacity: comingSoon ? 0.45 : disabled ? 0.45 : 1,
+        })}
+      >
+        <View style={{ width: 20, alignItems: 'center', justifyContent: 'center' }}>
+          <ChatGptIcon name={icon} size={17} color={comingSoon ? c.muted : c.text} />
+        </View>
+        {expanded && (
+          <Text
+            numberOfLines={1}
+            style={{ flex: 1, fontSize: 14, color: comingSoon ? c.muted : c.text, fontWeight: '400' }}
+          >
+            {label}
+          </Text>
+        )}
+        {expanded && !comingSoon && !!badge && badge > 0 && (
+          <View
+            style={{
+              minWidth: 18,
+              height: 18,
+              borderRadius: 9,
+              paddingHorizontal: 5,
+              backgroundColor: c.info,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Text translate={false} style={{ color: '#ffffff', fontSize: 11, fontWeight: '600' }}>
+              {badge > 99 ? '99+' : badge}
+            </Text>
+          </View>
+        )}
+      </Pressable>
+      {comingSoon && hovered && Platform.OS === 'web' && (
         <View
+          testID="coming-soon-tooltip"
+          pointerEvents="none"
           style={{
-            minWidth: 18,
-            height: 18,
-            borderRadius: 9,
-            paddingHorizontal: 5,
-            backgroundColor: c.info,
-            alignItems: 'center',
-            justifyContent: 'center',
+            position: 'absolute',
+            right: expanded ? 8 : undefined,
+            left: expanded ? undefined : 46,
+            top: 6,
+            paddingHorizontal: 8,
+            paddingVertical: 3,
+            borderRadius: 6,
+            backgroundColor: isDark ? '#3a3a3a' : '#0d0d0d',
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: c.border,
+            zIndex: 50,
           }}
         >
-          <Text translate={false} style={{ color: '#ffffff', fontSize: 11, fontWeight: '600' }}>
-            {badge > 99 ? '99+' : badge}
-          </Text>
+          <Text style={{ fontSize: 11, fontWeight: '500', color: '#ffffff' }}>Coming soon</Text>
         </View>
       )}
-    </Pressable>
+    </View>
   );
 }
 
@@ -172,7 +208,7 @@ export function ConversationSidebar(props: SidebarProps) {
       return;
     }
     const menuWidth = 160;
-    const menuHeight = 86;
+    const menuHeight = 124;
     if (target && typeof target.measureInWindow === 'function') {
       target.measureInWindow((x, y, w, h) => {
         const fitsRight = x + w + 8 + menuWidth <= winWidth - 8;
@@ -193,19 +229,31 @@ export function ConversationSidebar(props: SidebarProps) {
     .join('')
     .toUpperCase();
 
+  const pinnedSet = useMemo(() => new Set(props.pinnedIds ?? []), [props.pinnedIds]);
+
   const grouped = useMemo(() => {
+    const pinnedItems: Conversation[] = [];
+    for (const id of props.pinnedIds ?? []) {
+      const found = props.conversations.find((c) => c.id === id);
+      if (found) pinnedItems.push(found);
+    }
     const order = ['Today', 'Yesterday', 'Previous 7 Days', 'Previous 30 Days', 'Older'];
     const map = new Map<string, Conversation[]>();
     for (const item of props.conversations) {
+      if (pinnedSet.has(item.id)) continue;
       const bucket = dateBucket(item.updated_at || item.created_at);
       const arr = map.get(bucket);
       if (arr) arr.push(item);
       else map.set(bucket, [item]);
     }
-    return order
+    const sections = order
       .filter((key) => map.has(key))
       .map((key) => ({ label: key, items: map.get(key)! }));
-  }, [props.conversations]);
+    if (pinnedItems.length) {
+      return [{ label: 'Pinned', items: pinnedItems }, ...sections];
+    }
+    return sections;
+  }, [props.conversations, props.pinnedIds, pinnedSet]);
 
   return (
     <View
@@ -329,23 +377,23 @@ export function ConversationSidebar(props: SidebarProps) {
               icon="library"
               label="Library"
               expanded={props.expanded}
-              active={props.activeSection === 'documents'}
-              onPress={() => props.onWorkspace!('documents')}
+              comingSoon
+              onPress={() => {}}
             />
             <SidebarNavRow
               icon="scheduled"
               label="Scheduled"
               expanded={props.expanded}
-              active={props.activeSection === 'schedules'}
-              onPress={() => props.onWorkspace!('schedules')}
+              comingSoon
+              onPress={() => {}}
             />
             <SidebarNavRow
               icon="bell"
               label="Notifications"
               expanded={props.expanded}
-              active={props.activeSection === 'notices'}
+              comingSoon
               badge={props.unreadNotices}
-              onPress={() => props.onWorkspace!('notices')}
+              onPress={() => {}}
             />
           </>
         )}
@@ -400,17 +448,23 @@ export function ConversationSidebar(props: SidebarProps) {
                       style={({ pressed, hovered }) => ({
                         flex: 1,
                         height: 36,
-                        justifyContent: 'center',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
                         paddingHorizontal: 10,
                         borderRadius: 8,
                         backgroundColor:
                           !selected && !menuOpen && (pressed || hovered) ? c.hover : 'transparent',
                       })}
                     >
+                      {pinnedSet.has(item.id) && (
+                        <ChatGptIcon name="pin" size={12} color={c.muted} />
+                      )}
                       <Text
                         translate={false}
                         numberOfLines={1}
                         style={{
+                          flex: 1,
                           fontSize: 14,
                           color: c.text,
                           fontWeight: selected ? '500' : '400',
@@ -419,7 +473,7 @@ export function ConversationSidebar(props: SidebarProps) {
                         {item.title}
                       </Text>
                     </Pressable>
-                    {(props.onRename || props.onDelete) && (
+                    {(props.onTogglePin || props.onRename || props.onDelete) && (
                       <Pressable
                         testID="sidebar-row-more"
                         accessibilityRole="button"
@@ -688,6 +742,30 @@ export function ConversationSidebar(props: SidebarProps) {
                   : {}),
               }}
             >
+              {props.onTogglePin && (
+                <Pressable
+                  accessibilityRole="menuitem"
+                  onPress={() => {
+                    const target = menuTarget.item;
+                    setMenuTarget(null);
+                    props.onTogglePin!(target);
+                  }}
+                  style={({ hovered }) => ({
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 8,
+                    paddingHorizontal: 10,
+                    paddingVertical: 8,
+                    borderRadius: 8,
+                    backgroundColor: hovered ? c.hover : 'transparent',
+                  })}
+                >
+                  <ChatGptIcon name="pin" size={14} color={c.text} />
+                  <Text style={{ fontSize: 13, color: c.text }}>
+                    {pinnedSet.has(menuTarget.item.id) ? 'Unpin' : 'Pin'}
+                  </Text>
+                </Pressable>
+              )}
               {props.onRename && (
                 <Pressable
                   accessibilityRole="menuitem"

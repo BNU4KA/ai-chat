@@ -22,6 +22,7 @@ import { useModels, useCredential, useProfile, useCapabilities } from './queries
 import { useLocale } from './locale';
 import { ConversationSidebar, ConversationDrawer, useSidebarTransition } from './sidebar';
 import { ChatGptIcon } from './chatgpt-icons';
+import { usePinnedChats } from './pinned-chats';
 import { SearchModal } from './search-modal';
 import { SettingsModal } from './settings-modal';
 import type { Conversation } from './types';
@@ -205,7 +206,7 @@ export default function WorkspacePage() {
   const router = useRouter(),
     cache = useQueryClient(),
     auth = useAuth(),
-    { colors: c, isDark } = useTheme(),
+    { colors: c } = useTheme(),
     { language } = useLocale();
   const wide = useWindowDimensions().width >= 1024;
   const sidebarTransition = useSidebarTransition();
@@ -342,6 +343,7 @@ export default function WorkspacePage() {
       setBusy(false);
     }
   }
+  const { pinnedIds, togglePin } = usePinnedChats(profile.data?.id);
   const conversations = history.data?.pages.flatMap((page) => page.data) ?? [];
   const unreadNotices = (notices.data ?? []).filter((n) => !n.read_at).length;
   const sidebarSection: 'projects' | 'documents' | 'schedules' | 'notices' | 'search' | undefined =
@@ -354,6 +356,7 @@ export default function WorkspacePage() {
       expanded={mobile || sidebarExpanded}
       activeSection={sidebarSection}
       conversations={conversations}
+      pinnedIds={pinnedIds}
       onToggle={() => {
         if (mobile) setDrawer(false);
         else setSidebarExpanded((v) => !v);
@@ -370,6 +373,7 @@ export default function WorkspacePage() {
         setDrawer(false);
         router.replace(`/chat/${cid}`);
       }}
+      onTogglePin={(item) => togglePin(item.id)}
       onWorkspace={(next) => {
         setDrawer(false);
         setTab(normalizeTab(next));
@@ -448,23 +452,6 @@ export default function WorkspacePage() {
             <Button secondary quiet label="Back to conversations" onPress={() => router.replace('/')}>
               ← Back
             </Button>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Settings"
-              onPress={() => setSettingsOpen('general')}
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 16,
-                backgroundColor: isDark ? '#7c3aed' : '#0d0d0d',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Text translate={false} style={{ color: '#ffffff', fontWeight: '600', fontSize: 13 }}>
-                {(profile.data?.display_name ?? 'A').slice(0, 1).toUpperCase()}
-              </Text>
-            </Pressable>
           </View>
         </View>
 

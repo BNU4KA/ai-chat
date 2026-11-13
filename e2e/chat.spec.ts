@@ -656,6 +656,9 @@ test('Russian auto locale and profile override persist on the ChatGPT home layou
     "Спросите it's kawasaki, bitches",
   );
   await expect(page.locator('html')).toHaveAttribute('lang', 'ru');
+  if (test.info().project.name === 'mobile-web') {
+    await page.getByRole('button', { name: 'Открыть историю', exact: true }).click();
+  }
   await page.getByRole('button', { name: 'Настройки', exact: true }).last().click();
   await expect(page.getByTestId('settings-modal')).toBeVisible();
   await expect(page.getByText('Язык', { exact: true })).toBeVisible();
@@ -1028,10 +1031,10 @@ for (const scheme of ['light', 'dark'] as const) {
       if (m.type() === 'error') errors.push(m.text());
     });
     await page.goto('/');
-    await page
-      .getByTestId('chat-header')
-      .getByRole('button', { name: 'Settings', exact: true })
-      .click();
+    if (info.project.name === 'mobile-web') {
+      await page.getByRole('button', { name: 'Open conversation history' }).click();
+    }
+    await page.getByRole('button', { name: 'Settings', exact: true }).last().click();
     await expect(page.getByTestId('settings-modal')).toBeVisible();
     await expect(page.getByText('Settings', { exact: true }).last()).toHaveCSS(
       'color',
@@ -1386,7 +1389,17 @@ test('sidebar row menu opens beside the list, tools dialog uses clean rows, and 
   });
 
   await page.goto('/');
+  await expect(
+    page.getByTestId('chat-header').getByRole('button', { name: 'Settings', exact: true }),
+  ).toHaveCount(0);
+
   if (info.project.name === 'desktop') {
+    await expect(page.getByRole('button', { name: 'Library', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Scheduled', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Notifications', exact: true })).toBeDisabled();
+    await page.getByRole('button', { name: 'Library', exact: true }).hover({ force: true });
+    await expect(page.getByTestId('coming-soon-tooltip')).toHaveText('Coming soon');
+
     const secondRow = page.getByRole('button', { name: 'Second synthetic chat', exact: true });
     const yBefore = (await secondRow.boundingBox())!.y;
     await page.getByRole('button', { name: 'Actions for First synthetic chat', exact: true }).click();
@@ -1399,9 +1412,22 @@ test('sidebar row menu opens beside the list, tools dialog uses clean rows, and 
       animations: 'disabled',
     });
     await page.keyboard.press('Escape');
+
+    await page
+      .getByRole('button', { name: 'Actions for Second synthetic chat', exact: true })
+      .click();
+    await page.getByRole('menuitem', { name: 'Pin', exact: true }).click();
+    await expect(page.getByText('Pinned', { exact: true })).toBeVisible();
+    await page.reload();
+    await expect(page.getByText('Pinned', { exact: true })).toBeVisible();
   }
 
-  await page.getByLabel('Message', { exact: true }).fill('Read my file');
+  const msgInput = page.getByLabel('Message', { exact: true });
+  await msgInput.fill('Line one\nLine two\nLine three');
+  await expect
+    .poll(async () => (await msgInput.boundingBox())!.height)
+    .toBeGreaterThan(48);
+  await msgInput.fill('Read my file');
   await page.getByRole('button', { name: 'Send ↑', exact: true }).click();
   await expect(page.getByTestId('thinking-skeleton-line')).toHaveCount(3);
   await expect(page.getByTestId('tool-activity-pill')).toBeVisible();
@@ -1419,4 +1445,84 @@ test('sidebar row menu opens beside the list, tools dialog uses clean rows, and 
     path: `/tmp/ai-chat-tools-dialog-${info.project.name}.png`,
     animations: 'disabled',
   });
+});
+
+test('model picker shows Popular section first with Google, OpenAI, and Anthropic Haiku', async ({
+  context,
+  page,
+}) => {
+  await seed(context);
+  await fixture(page);
+  await page.route('http://localhost:3001/v1/models**', (route) =>
+    route.fulfill({
+      json: {
+        data: [
+          {
+            id: 'meta/llama-3',
+            name: 'Llama 3',
+            supports_tools: true,
+            supports_images: false,
+            supports_image_output: false,
+            context_length: 128000,
+            input_price_per_million_usd: '0.1',
+            output_price_per_million_usd: '0.2',
+            supported_parameters: ['tools'],
+            catalog_fetched_at: time,
+            catalog_stale: false,
+          },
+          {
+            id: 'google/gemini-2.5-flash',
+            name: 'Google: Gemini 2.5 Flash',
+            supports_tools: true,
+            supports_images: true,
+            supports_image_output: false,
+            context_length: 1000000,
+            input_price_per_million_usd: '0.15',
+            output_price_per_million_usd: '0.6',
+            supported_parameters: ['tools'],
+            catalog_fetched_at: time,
+            catalog_stale: false,
+          },
+          {
+            id: 'openai/gpt-5-mini',
+            name: 'OpenAI: GPT-5 Mini',
+            supports_tools: true,
+            supports_images: true,
+            supports_image_output: false,
+            context_length: 400000,
+            input_price_per_million_usd: '0.25',
+            output_price_per_million_usd: '2',
+            supported_parameters: ['tools'],
+            catalog_fetched_at: time,
+            catalog_stale: false,
+          },
+          {
+            id: 'anthropic/claude-haiku-4.5',
+            name: 'Anthropic: Claude Haiku 4.5',
+            supports_tools: true,
+            supports_images: true,
+            supports_image_output: false,
+            context_length: 200000,
+            input_price_per_million_usd: '1',
+            output_price_per_million_usd: '5',
+            supported_parameters: ['tools'],
+            catalog_fetched_at: time,
+            catalog_stale: false,
+          },
+        ],
+      },
+    }),
+  );
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Choose model', exact: true }).click();
+  await expect(page.getByText('Popular', { exact: true })).toBeVisible();
+  await expect(page.getByText('All models', { exact: true })).toBeVisible();
+  const popularY = (await page.getByText('Popular', { exact: true }).boundingBox())!.y;
+  const geminiY = (await page.getByText('Google: Gemini 2.5 Flash', { exact: true }).boundingBox())!
+    .y;
+  const allY = (await page.getByText('All models', { exact: true }).boundingBox())!.y;
+  const llamaY = (await page.getByText('Llama 3', { exact: true }).boundingBox())!.y;
+  expect(geminiY).toBeGreaterThan(popularY);
+  expect(allY).toBeGreaterThan(geminiY);
+  expect(llamaY).toBeGreaterThan(allY);
 });

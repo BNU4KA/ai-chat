@@ -79,3 +79,40 @@ it('uses provider input modalities to distinguish photo-capable models', async (
   expect(models[0]).toMatchObject({ supports_images: true, supports_tools: true });
   expect(models[1]).toMatchObject({ supports_images: false });
 });
+
+it('extracts image output modality and decodes generated images', async () => {
+  const { fetchModelCatalog, generateOpenRouterImage } = await import('./openrouter.ts');
+  const models = await fetchModelCatalog('synthetic', async () =>
+    Response.json({
+      data: [
+        {
+          id: 'google/gemini-2.5-flash-image',
+          name: 'Gemini 2.5 Flash Image',
+          architecture: { input_modalities: ['text', 'image'], output_modalities: ['image', 'text'] },
+          pricing: {},
+        },
+      ],
+    }),
+  );
+  expect(models[0]).toMatchObject({ supports_image_output: true });
+
+  const pngBase64 =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j0O0AAAAASUVORK5CYII=';
+  const generated = await generateOpenRouterImage(
+    { apiKey: 'synthetic', model: 'google/gemini-2.5-flash-image', prompt: 'A red square' },
+    async () =>
+      Response.json({
+        usage: { cost: 0.02 },
+        choices: [
+          {
+            message: {
+              images: [{ image_url: { url: `data:image/png;base64,${pngBase64}` } }],
+            },
+          },
+        ],
+      }),
+  );
+  expect(generated.mime).toBe('image/png');
+  expect(generated.costUsd).toBe('0.02');
+  expect(generated.bytes.byteLength).toBeGreaterThan(20);
+});

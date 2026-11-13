@@ -407,6 +407,7 @@ export function buildServer(): FastifyInstance {
       fileIds: body.file_ids,
       contextLength: model.contextLength,
       maxOutputTokens: model.maxOutputTokens,
+      supportsTools: model.supportsTools,
       googleSubject: model.googleSubject,
       googleIntegrationId: model.googleIntegrationId,
       inputPrice:model.inputPrice,outputPrice:model.outputPrice,

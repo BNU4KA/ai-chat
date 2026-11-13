@@ -1,7 +1,7 @@
 import { ModelList } from './model-list';
 import { transferDraft, consumeDraft } from './draft-transfer';
 import { Pressable, Text } from './locale-ui';
-import { useEffect, useRef, useState, type ComponentRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ComponentRef } from 'react';
 import {
   KeyboardAvoidingView,
   Linking,
@@ -39,7 +39,7 @@ import { ComposerFrame } from './composer-frame';
 import { FoolSpinner, ThinkingSkeleton } from './fool-spinner';
 import { ChatGptIcon, type ChatGptIconName } from './chatgpt-icons';
 import { useMotionPaused } from './motion';
-import { revealStep } from './smooth-text';
+import { usePinnedChats } from './pinned-chats';
 import { pickAndUpload } from './upload';
 import type { Conversation, Message, Run, FileRecord, Snapshot } from './types';
 
@@ -56,25 +56,36 @@ function StreamingMarkdown({
   const [shown, setShown] = useState(streaming && !reduced ? 0 : text.length);
 
   useEffect(() => {
-    if (!streaming || reduced) {
+    if (reduced) {
       setShown(text.length);
       return;
     }
     if (shown >= text.length) return;
-    if (Platform.OS === 'web') {
-      const frame = requestAnimationFrame(() => {
-        setShown((cur) => revealStep(cur, text.length));
+    const step = () => {
+      setShown((cur) => {
+        if (cur >= text.length) return text.length;
+        const gap = text.length - cur;
+        const delta = streaming
+          ? gap > 90
+            ? Math.min(8, Math.ceil(gap / 18))
+            : 1
+          : gap > 40
+            ? Math.min(12, Math.ceil(gap / 10))
+            : Math.min(3, gap);
+        return Math.min(text.length, cur + delta);
       });
+    };
+    if (Platform.OS === 'web') {
+      const frame = requestAnimationFrame(step);
       return () => cancelAnimationFrame(frame);
     }
-    const timer = setTimeout(() => {
-      setShown((cur) => revealStep(cur, text.length));
-    }, 16);
+    const timer = setTimeout(step, 18);
     return () => clearTimeout(timer);
   }, [text, streaming, reduced, shown]);
 
-  const visible = !streaming || reduced ? text : text.slice(0, shown);
-  return <Markdown text={visible} onCitation={onCitation} />;
+  const active = !reduced && (streaming || shown < text.length);
+  const visible = active ? text.slice(0, shown) : text;
+  return <Markdown text={visible} streaming={active} onCitation={onCitation} />;
 }
 
 type Group = 'web' | 'files' | 'gmail' | 'calendar';
@@ -111,6 +122,8 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
   const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(null);
   const [passageOpenId, setPassageOpenId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
+  const [inputHeight, setInputHeight] = useState(24);
+  const [optimisticUser, setOptimisticUser] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -126,10 +139,15 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [atBottom, setAtBottom] = useState(true);
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
+  const inputRef = useRef<ComponentRef<typeof Field>>(null);
+  const composerWrapRef = useRef<ComponentRef<typeof View>>(null);
+  const pendingFlipTop = useRef<number | null>(null);
   const pending = useRef<{ body: string; key: string; clientId: string } | null>(null);
   const sending = useRef(false);
   const creating = useRef<Promise<string> | null>(null);
+  const reducedMotion = useMotionPaused();
   const profile = useProfile();
+  const { pinnedIds, togglePin, unpin } = usePinnedChats(profile.data?.id);
   const credential = useCredential();
   const capabilities = useCapabilities();
   const models = useModels(!!credential.data?.configured);
@@ -147,6 +165,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
   useEffect(() => {
     setDraft(profile.data?.id ? (consumeDraft(profile.data.id, routeId ?? 'home') ?? '') : '');
     setSelectedFiles([]);
+    setOptimisticUser(null);
     setError(null);
     pending.current = null;
     setEditingMessageId(null);
@@ -258,6 +277,40 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     visibleMessages.sort((a, b) => (BigInt(a.seq) < BigInt(b.seq) ? -1 : 1));
   }
 
+  const isHome = !routeId && !visibleMessages.length && optimisticUser === null;
+
+  useLayoutEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const el = inputRef.current as unknown as HTMLTextAreaElement | null;
+    if (!el || typeof el.scrollHeight !== 'number') return;
+    if (!draft) {
+      el.style.height = '24px';
+      setInputHeight(24);
+      return;
+    }
+    el.style.height = '24px';
+    const next = Math.min(200, Math.max(24, el.scrollHeight));
+    el.style.height = `${next}px`;
+    setInputHeight(next);
+  }, [draft, wide, selectedFiles.length]);
+
+  useLayoutEffect(() => {
+    if (isHome || pendingFlipTop.current === null || Platform.OS !== 'web') return;
+    const prevTop = pendingFlipTop.current;
+    pendingFlipTop.current = null;
+    if (reducedMotion) return;
+    const el = composerWrapRef.current as unknown as HTMLElement | null;
+    if (!el || typeof el.getBoundingClientRect !== 'function') return;
+    const newTop = el.getBoundingClientRect().top;
+    const dy = prevTop - newTop;
+    if (Math.abs(dy) < 4) return;
+    el.style.transition = 'none';
+    el.style.transform = `translateY(${dy}px)`;
+    void el.offsetHeight;
+    el.style.transition = 'transform 360ms cubic-bezier(0.22, 1, 0.36, 1)';
+    el.style.transform = 'translateY(0px)';
+  }, [isHome, reducedMotion]);
+
   async function ensureChat() {
     if (id) return id;
     if (creating.current) return creating.current;
@@ -289,11 +342,15 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
   async function createChat() {
     creating.current = null;
     setCreatedChat(null);
+    setOptimisticUser(null);
     setDraft('');
     setSelectedFiles([]);
     setError(null);
     setDrawer(false);
-    router.replace('/');
+    if (routeId) router.replace('/');
+    else if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.history.replaceState(null, '', '/');
+    }
   }
 
   async function patch(body: Partial<Conversation>, explicitTarget?: Conversation | null) {
@@ -333,9 +390,23 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     sending.current = true;
     setBusy(true);
     setError(null);
+    const outgoingText = draft;
+    const outgoingFiles = selectedFiles;
+    const startingFromHome = isHome;
+    if (startingFromHome) {
+      if (Platform.OS === 'web') {
+        const el = composerWrapRef.current as unknown as HTMLElement | null;
+        if (el && typeof el.getBoundingClientRect === 'function') {
+          pendingFlipTop.current = el.getBoundingClientRect().top;
+        }
+      }
+      setOptimisticUser(outgoingText);
+      setDraft('');
+      setSelectedFiles([]);
+    }
     try {
       const targetId = await ensureChat();
-      const body = JSON.stringify({ text: draft, file_ids: selectedFiles });
+      const body = JSON.stringify({ text: outgoingText, file_ids: outgoingFiles });
       if (pending.current?.body !== body)
         pending.current = { body, key: Crypto.randomUUID(), clientId: Crypto.randomUUID() };
       const saved = pending.current;
@@ -343,23 +414,37 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
         `/v1/conversations/${targetId}/messages`,
         json(
           'POST',
-          { client_message_id: saved.clientId, text: draft, file_ids: selectedFiles },
+          { client_message_id: saved.clientId, text: outgoingText, file_ids: outgoingFiles },
           undefined,
           saved.key,
         ),
       );
       pending.current = null;
-      setDraft('');
-      setSelectedFiles([]);
+      if (!startingFromHome) {
+        setDraft('');
+        setSelectedFiles([]);
+      }
       setAtBottom(true);
       cache.setQueryData(['runs', targetId], (old: Run[] | undefined) => [
         value.run,
         ...(old ?? []),
       ]);
       await cache.invalidateQueries({ queryKey: ['messages', targetId] });
-      if (!routeId) router.replace(`/chat/${targetId}`);
+      setOptimisticUser(null);
+      if (!routeId) {
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          window.history.replaceState(null, '', `/chat/${targetId}`);
+        } else {
+          router.replace(`/chat/${targetId}`);
+        }
+      }
       void cache.invalidateQueries({ queryKey: ['conversations'] });
     } catch (e) {
+      if (startingFromHome) {
+        setOptimisticUser(null);
+        setDraft(outgoingText);
+        setSelectedFiles(outgoingFiles);
+      }
       setError(e);
     } finally {
       setBusy(false);
@@ -419,6 +504,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     if (!target) return;
     try {
       await api(`/v1/conversations/${target.id}`, json('DELETE', undefined, target.version));
+      unpin(target.id);
       setDialog(null);
       setTargetChat(null);
       await cache.invalidateQueries({ queryKey: ['conversations'] });
@@ -444,7 +530,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
   const webEnabled = chat.data?.enabled_tools.includes('web') ?? true;
   const webAvailable = capabilities.data?.tools.web === 'available';
   const multilineComposer =
-    draft.includes('\n') || draft.length > (wide ? 54 : 26) || selectedFiles.length > 0;
+    draft.includes('\n') || inputHeight > 28 || selectedFiles.length > 0;
 
   const attachBtn = (
     <Pressable
@@ -566,25 +652,39 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
 
   const inputField = (
     <Field
+      ref={inputRef}
       accessibilityLabel="Message"
       placeholder={`Ask ${BRAND_NAME}`}
       value={draft}
-      onChangeText={setDraft}
+      onChangeText={(next) => {
+        setDraft(next);
+        if (!next) setInputHeight(24);
+      }}
       multiline
+      onContentSizeChange={(e) => {
+        if (Platform.OS !== 'web') {
+          setInputHeight(Math.min(200, Math.max(24, Math.ceil(e.nativeEvent.contentSize.height))));
+        }
+      }}
       onFocus={() => setComposerFocused(true)}
       onBlur={() => setComposerFocused(false)}
       style={{
-        flex: multilineComposer ? undefined : 1,
         borderWidth: 0,
-        minHeight: multilineComposer ? 40 : 24,
-        height: multilineComposer ? undefined : 24,
+        minHeight: 24,
+        height: inputHeight,
         maxHeight: 200,
         backgroundColor: 'transparent',
         outlineWidth: 0,
         paddingHorizontal: 6,
-        paddingVertical: multilineComposer ? 6 : 0,
+        paddingVertical: 0,
         fontSize: 16,
         lineHeight: 24,
+        ...(Platform.OS === 'web'
+          ? ({ overflowY: inputHeight >= 200 ? 'auto' : 'hidden', resize: 'none' } as Record<
+              string,
+              unknown
+            >)
+          : {}),
       }}
       onKeyPress={(event) => {
         if (Platform.OS === 'web') {
@@ -604,9 +704,10 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
 
   const composer = (
     <View
+      ref={composerWrapRef}
       style={{
         width: '100%',
-        maxWidth: !routeId && !visibleMessages.length ? 680 : 792,
+        maxWidth: isHome ? 680 : 792,
         alignSelf: 'center',
         paddingHorizontal: 12,
         paddingBottom: wide ? 14 : 10,
@@ -642,24 +743,41 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
       )}
 
       <ComposerFrame focused={composerFocused} compact={!multilineComposer}>
-        {multilineComposer ? (
-          <>
+        <View style={{ gap: multilineComposer ? 8 : 0, position: 'relative' }}>
+          <View
+            style={{
+              paddingLeft: multilineComposer ? 0 : 40,
+              paddingRight: multilineComposer ? 0 : 122,
+              minHeight: multilineComposer ? undefined : 36,
+              justifyContent: 'center',
+            }}
+          >
             {inputField}
+          </View>
+          <View
+            pointerEvents="box-none"
+            style={
+              multilineComposer
+                ? { flexDirection: 'row', gap: 6, alignItems: 'center' }
+                : {
+                    position: 'absolute',
+                    left: 0,
+                    right: 0,
+                    top: 0,
+                    bottom: 0,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }
+            }
+          >
+            {attachBtn}
             <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
-              {attachBtn}
               {toolsBtn}
-              <View style={{ flex: 1 }} />
               {actionBtn}
             </View>
-          </>
-        ) : (
-          <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
-            {attachBtn}
-            {inputField}
-            {toolsBtn}
-            {actionBtn}
           </View>
-        )}
+        </View>
       </ComposerFrame>
 
       {imageIncompatible && (
@@ -680,6 +798,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
       expanded={mobile || sidebarExpanded}
       selectedId={id}
       conversations={conversations}
+      pinnedIds={pinnedIds}
       onToggle={() => {
         if (mobile) setDrawer(false);
         else setSidebarExpanded((value) => !value);
@@ -693,6 +812,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
         router.replace(`/chat/${conversationId}`);
         setDrawer(false);
       }}
+      onTogglePin={(item) => togglePin(item.id)}
       onRename={(item) => {
         setTargetChat(item);
         setTitle(item.title);
@@ -893,25 +1013,6 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                 <ChatGptIcon name="dots" size={17} color={c.muted} />
               </Pressable>
             )}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Settings"
-              onPress={() => setSettingsTab('general')}
-              style={({ hovered }) => ({
-                width: 32,
-                height: 32,
-                borderRadius: 16,
-                backgroundColor: isDark ? '#7c3aed' : '#0d0d0d',
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginLeft: 2,
-                opacity: hovered ? 0.85 : 1,
-              })}
-            >
-              <Text translate={false} style={{ color: '#ffffff', fontWeight: '600', fontSize: 13 }}>
-                {(profile.data?.display_name ?? 'A').slice(0, 1).toUpperCase()}
-              </Text>
-            </Pressable>
           </View>
         </View>
 
@@ -965,11 +1066,10 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
               )}
               <ScrollView keyboardShouldPersistTaps="handled">
                 <ModelList
-                  models={(models.data ?? [])
-                    .filter((m) =>
-                      `${m.name} ${m.id}`.toLowerCase().includes(modelSearch.toLowerCase()),
-                    )
-                    .slice(0, 60)}
+                  showPopular={!modelSearch.trim()}
+                  models={(models.data ?? []).filter((m) =>
+                    `${m.name} ${m.id}`.toLowerCase().includes(modelSearch.toLowerCase()),
+                  )}
                   selected={chat.data?.model_id ?? homeModel}
                   onSelect={(model) => void patch({ model_id: model.id })}
                 />
@@ -990,11 +1090,11 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
           onOpenChange={setWorkToolsOpen}
         />
 
-        {!routeId && !visibleMessages.length ? (
-          <KeyboardAvoidingView
-            style={{ flex: 1 }}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          >
+        <KeyboardAvoidingView
+          style={{ flex: 1, position: 'relative' }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          {isHome ? (
             <ScrollView
               contentContainerStyle={{
                 flexGrow: 1,
@@ -1028,54 +1128,73 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
               </View>
               {composer}
             </ScrollView>
-          </KeyboardAvoidingView>
-        ) : (
-          <KeyboardAvoidingView
-            style={{ flex: 1, position: 'relative' }}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          >
-            <ScrollView
-              ref={scroll}
-              style={{ flex: 1 }}
-              contentContainerStyle={{
-                paddingHorizontal: wide ? 24 : 14,
-                paddingTop: 16,
-                paddingBottom: 28,
-                gap: 24,
-                maxWidth: 792,
-                width: '100%',
-                alignSelf: 'center',
-              }}
-              onScroll={(event) => {
-                const n = event.nativeEvent;
-                setAtBottom(
-                  n.contentOffset.y + n.layoutMeasurement.height >= n.contentSize.height - 100,
-                );
-              }}
-              scrollEventThrottle={150}
-              onContentSizeChange={() => {
-                if (atBottom && !params.message) scroll.current?.scrollToEnd({ animated: false });
-              }}
-            >
-              {messages.hasNextPage && (
-                <Button secondary onPress={() => void messages.fetchNextPage()}>
-                  Load earlier messages
-                </Button>
-              )}
-              {!visibleMessages.length && (
-                <View style={{ paddingVertical: wide ? 80 : 40, alignItems: 'center', gap: 14 }}>
-                  <Text
-                    style={{
-                      fontSize: wide ? 28 : 24,
-                      fontWeight: '500',
-                      letterSpacing: -0.4,
-                      color: c.greeting,
-                    }}
-                  >
-                    Ready when you are.
-                  </Text>
-                </View>
-              )}
+          ) : (
+            <>
+              <ScrollView
+                ref={scroll}
+                style={{ flex: 1 }}
+                contentContainerStyle={{
+                  paddingHorizontal: wide ? 24 : 14,
+                  paddingTop: 16,
+                  paddingBottom: 28,
+                  gap: 24,
+                  maxWidth: 792,
+                  width: '100%',
+                  alignSelf: 'center',
+                }}
+                onScroll={(event) => {
+                  const n = event.nativeEvent;
+                  setAtBottom(
+                    n.contentOffset.y + n.layoutMeasurement.height >= n.contentSize.height - 100,
+                  );
+                }}
+                scrollEventThrottle={150}
+                onContentSizeChange={() => {
+                  if (atBottom && !params.message) scroll.current?.scrollToEnd({ animated: false });
+                }}
+              >
+                {messages.hasNextPage && (
+                  <Button secondary onPress={() => void messages.fetchNextPage()}>
+                    Load earlier messages
+                  </Button>
+                )}
+                {!visibleMessages.length && optimisticUser === null && (
+                  <View style={{ paddingVertical: wide ? 80 : 40, alignItems: 'center', gap: 14 }}>
+                    <Text
+                      style={{
+                        fontSize: wide ? 28 : 24,
+                        fontWeight: '500',
+                        letterSpacing: -0.4,
+                        color: c.greeting,
+                      }}
+                    >
+                      Ready when you are.
+                    </Text>
+                  </View>
+                )}
+                {optimisticUser !== null && !visibleMessages.some((m) => m.role === 'user') && (
+                  <>
+                    <View
+                      testID="chat-message"
+                      style={{ alignSelf: 'flex-end', maxWidth: '78%', gap: 6 }}
+                    >
+                      <View
+                        testID="user-message-bubble"
+                        style={{
+                          paddingHorizontal: 18,
+                          paddingVertical: 11,
+                          borderRadius: 22,
+                          backgroundColor: c.userBubble,
+                        }}
+                      >
+                        <Markdown text={optimisticUser} />
+                      </View>
+                    </View>
+                    <View testID="chat-message" style={{ alignSelf: 'stretch' }}>
+                      <ThinkingSkeleton />
+                    </View>
+                  </>
+                )}
               {visibleMessages.map((message) => {
                 const isUser = message.role === 'user';
                 const isEditing = isUser && editingMessageId === message.id;
@@ -1207,6 +1326,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                           <Attachment
                             key={fileId}
                             id={fileId}
+                            large={!isUser}
                             file={files.data?.find((file) => file.id === fileId)}
                             onOpen={() =>
                               void api<{ url: string }>(`/v1/files/${fileId}/download`)
@@ -1337,16 +1457,6 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
               {snapshot.data?.approvals.map((approval) => (
                 <ApprovalCard key={approval.id} approval={approval} />
               ))}
-              {!!snapshot.data?.sources.length && (
-                <Panel>
-                  <Copy small muted>
-                    Sources
-                  </Copy>
-                  {snapshot.data.sources.map((source) => (
-                    <SourceCard key={source.citation_id} source={source} onError={setError} />
-                  ))}
-                </Panel>
-              )}
               <RunUsage run={snapshot.data?.run} />
               {snapshot.data?.run.error_code && (
                 <ErrorNotice
@@ -1384,8 +1494,9 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
               </View>
             )}
             {composer}
-          </KeyboardAvoidingView>
-        )}
+            </>
+          )}
+        </KeyboardAvoidingView>
       </View>
 
       <ConversationDrawer visible={drawer && !wide} close={() => setDrawer(false)}>
@@ -1422,9 +1533,10 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
             <FoolSpinner size={24} label="Loading models" />
           )}
           <ModelList
-            models={(models.data ?? [])
-              .filter((m) => `${m.name} ${m.id}`.toLowerCase().includes(modelSearch.toLowerCase()))
-              .slice(0, 60)}
+            showPopular={!modelSearch.trim()}
+            models={(models.data ?? []).filter((m) =>
+              `${m.name} ${m.id}`.toLowerCase().includes(modelSearch.toLowerCase()),
+            )}
             selected={chat.data?.model_id ?? homeModel}
             onSelect={(model) => void patch({ model_id: model.id })}
           />
@@ -1553,6 +1665,34 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
             </View>
             <ChatGptIcon name="chevronRight" size={15} color={c.muted} />
           </Pressable>
+
+          {!!(targetChat ?? chat.data) && (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                const current = targetChat ?? chat.data;
+                if (current) togglePin(current.id);
+                setDialog(null);
+              }}
+              style={({ hovered, pressed }) => ({
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 10,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                borderTopWidth: StyleSheet.hairlineWidth,
+                borderTopColor: c.borderSubtle,
+                backgroundColor: hovered || pressed ? c.hover : 'transparent',
+              })}
+            >
+              <ChatGptIcon name="pin" size={16} color={c.text} />
+              <Text style={{ fontSize: 14, color: c.text }}>
+                {pinnedIds.includes((targetChat ?? chat.data)!.id)
+                  ? 'Unpin conversation'
+                  : 'Pin conversation'}
+              </Text>
+            </Pressable>
+          )}
 
           <Pressable
             accessibilityRole="button"
