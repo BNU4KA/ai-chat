@@ -209,7 +209,7 @@ export function buildServer(): FastifyInstance {
     return {
       data: {
         tools: {
-          web: process.env.TAVILY_API_KEY ? 'available' : 'unconfigured',
+          web: 'available',
           files: storageConfigured() ? 'available' : 'unconfigured',
           gmail:
             google.capabilities.gmail && google.status === 'connected'
@@ -636,8 +636,7 @@ function limitOf(value: string | undefined): number {
 }
 
 function defaultTools(): ('web' | 'files')[] {
-  const tools: ('web' | 'files')[] = [];
-  if (process.env.TAVILY_API_KEY) tools.push('web');
+  const tools: ('web' | 'files')[] = ['web'];
   if (storageConfigured()) tools.push('files');
   return tools;
 }

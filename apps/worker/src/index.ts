@@ -33,6 +33,8 @@ import {
   generateOpenRouterImage,
   readPublicPage,
   searchWeb,
+  searchWebOpenRouter,
+  TavilyError,
   removeStoredObjects,
 } from '@ai-chat/integrations';
 import { PgBoss } from 'pg-boss';
@@ -149,21 +151,43 @@ await boss.work('run.execute', async (jobs) => {
             };
           }
         },
-        searchWeb: process.env.TAVILY_API_KEY
-          ? async (query, max) => {
-              const hits = await searchWeb(process.env.TAVILY_API_KEY ?? '', query, max);
-              return {
-                ok: true,
-                data: hits,
-                sources: hits.map((hit) => ({
-                  kind: 'web',
-                  title: hit.title,
-                  url: hit.url,
-                  excerpt: hit.excerpt,
-                })),
-              };
+        searchWeb: async (query, max) => {
+          const tavilyKey = process.env.TAVILY_API_KEY?.trim();
+          let hits;
+          if (tavilyKey) {
+            try {
+              hits = await searchWeb(tavilyKey, query, max);
+            } catch (error) {
+              if (error instanceof TavilyError && !error.fallbackable) throw error;
+              console.log({
+                service: 'worker',
+                status: 'tavily_fallback_to_openrouter',
+                http_status: error instanceof TavilyError ? error.status : null,
+              });
             }
-          : undefined,
+          }
+          if (!hits) {
+            const key = await readOwnerKey(String(run.owner_id));
+            if (!key) throw new Error('OpenRouter key is missing for web search');
+            hits = await searchWebOpenRouter({
+              apiKey: key.apiKey,
+              query,
+              maxResults: max,
+            });
+          }
+          return {
+            ok: true,
+            data: hits,
+            sources: hits
+              .filter((hit) => hit.url)
+              .map((hit) => ({
+                kind: 'web',
+                title: hit.title,
+                url: hit.url,
+                excerpt: hit.excerpt,
+              })),
+          };
+        },
         readPage: async (url) => {
           const page = await readPublicPage(url);
           return {

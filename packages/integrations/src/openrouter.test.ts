@@ -116,3 +116,54 @@ it('extracts image output modality and decodes generated images', async () => {
   expect(generated.costUsd).toBe('0.02');
   expect(generated.bytes.byteLength).toBeGreaterThan(20);
 });
+
+it('falls back cleanly via OpenRouter web plugin and marks Tavily quota errors fallbackable', async () => {
+  const { searchWebOpenRouter } = await import('./openrouter.ts');
+  const { searchWeb, TavilyError } = await import('./tavily.ts');
+
+  let tavilyErr: unknown;
+  try {
+    await searchWeb('bad-key', 'weather tomorrow', 3, async () =>
+      new Response('quota exceeded', { status: 429 }),
+    );
+  } catch (e) {
+    tavilyErr = e;
+  }
+  expect(tavilyErr).toBeInstanceOf(TavilyError);
+  expect((tavilyErr as InstanceType<typeof TavilyError>).fallbackable).toBe(true);
+
+  let sentBody: Record<string, unknown> | undefined;
+  const hits = await searchWebOpenRouter(
+    { apiKey: 'synthetic', query: 'Gomel Bryansk road', maxResults: 3 },
+    async (_url, init) => {
+      sentBody = JSON.parse(String(init?.body ?? '{}'));
+      return Response.json({
+        choices: [
+          {
+            message: {
+              content: 'Route M10 is open.',
+              annotations: [
+                {
+                  type: 'url_citation',
+                  url_citation: {
+                    url: 'https://example.com/road',
+                    title: 'Road status',
+                    content: 'Normal traffic on M10.',
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      });
+    },
+  );
+  expect(sentBody?.plugins).toEqual([{ id: 'web', max_results: 3 }]);
+  expect(hits).toEqual([
+    {
+      title: 'Road status',
+      url: 'https://example.com/road',
+      excerpt: 'Normal traffic on M10.',
+    },
+  ]);
+});

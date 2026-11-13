@@ -824,6 +824,26 @@ Checks on Node 26.13.0 / pnpm 12.18.0: `pnpm exec vitest run --config vitest.con
 52 tests), `pnpm typecheck`, `pnpm lint`, `pnpm build`, `git diff --check` passed; `pnpm test:e2e
 --reporter=list` passed 42 scenarios (`desktop` + `mobile-web`, synthetic fixtures), 2 skipped.
 
+## T08 — Tavily primary + OpenRouter web-search fallback — 2026-11-13 (local, uncommitted)
+
+- Added `searchWebOpenRouter` (`packages/integrations/src/openrouter.ts`) using OpenRouter's
+  `plugins: [{ id: 'web', max_results }]` and `url_citation` annotations.
+- Updated `searchWeb` (`packages/integrations/src/tavily.ts`) to surface `TavilyError` with
+  `fallbackable` status on `401/402/403/429/432/433/434/5xx`, enable `include_published_date`,
+  and preserve up to 1,200 chars of excerpt per hit per Tavily's `/search` OpenAPI spec.
+- Updated worker `searchWeb` port (`apps/worker/src/index.ts`) to use `TAVILY_API_KEY` when
+  configured and automatically fall back to `searchWebOpenRouter` when Tavily is missing, invalid,
+  rate-limited, or out of credits.
+- Updated API `/v1/capabilities` and `defaultTools()` (`apps/api/src/server.ts`) so `web` is
+  always available and enabled by default for new chats.
+- Added owner-supplied `TAVILY_API_KEY` only to gitignored local `.env` (not tracked in Git).
+
+Checks on Node 26.13.0 / pnpm 12.18.0: live smoke call to `https://api.tavily.com/search` via
+`searchWeb` returned 2 results with URLs and excerpts; `vitest` (15 files, 53 tests), `pnpm typecheck`,
+`pnpm lint`, `pnpm build`, `pnpm test:e2e --reporter=list` (42 passed, 2 skipped), and
+`git diff --check` passed. (OpenRouter fallback tested with synthetic fixtures; no live OpenRouter
+web-search request performed.)
+
 Checks on Node 26.13.0 / pnpm 12.18.0 (synthetic fixtures; no live provider, native build,
 commit, or push):
 
