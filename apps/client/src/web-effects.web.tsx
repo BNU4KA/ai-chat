@@ -45,6 +45,18 @@ const css = `
   from { opacity: 0.35; }
   to { opacity: 1; }
 }
+@keyframes kawasaki-go {
+  0% { transform: scale(1) rotate(0deg); color: #39ff14; text-shadow: 0 0 10px #39ff14; }
+  18% { transform: scale(1.18) rotate(-8deg) skewX(-12deg); color: #39ff14; text-shadow: 0 0 18px #39ff14; }
+  42% { transform: scale(1.24) rotate(368deg) skewX(8deg); color: #00f5d4; text-shadow: 0 0 22px #00f5d4; }
+  65% { transform: scale(1.12) translateX(8px) rotate(356deg); color: #fee440; text-shadow: 0 0 16px #fee440; }
+  82% { transform: scale(1.06) translateX(-4px) rotate(362deg); color: #39ff14; }
+  100% { transform: scale(1) rotate(360deg); }
+}
+@keyframes kawasaki-particle {
+  0% { opacity: 1; transform: translate(0, 0) scale(0.7) rotate(0deg); }
+  100% { opacity: 0; transform: translate(var(--kx, 36px), var(--ky, -34px)) scale(1.35) rotate(220deg); }
+}
 
 * {
   scrollbar-width: thin;
@@ -125,6 +137,12 @@ button:not(:disabled):active, [role="button"]:not([aria-disabled="true"]):active
 }
 [data-testid="streaming-tail"] {
   animation: chatgpt-tail-in 180ms ease-out;
+}
+[data-testid="kawasaki-party"] {
+  animation: kawasaki-go 950ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+[data-testid="kawasaki-particle"] {
+  animation: kawasaki-particle 850ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 [data-testid="sidebar-chat-row"] [data-testid="sidebar-row-more"] {

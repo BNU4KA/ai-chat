@@ -808,7 +808,10 @@ test('workspace persists project memory, document versions and scheduled task pa
   });
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/');
-  await page.getByRole('button', { name: 'Projects & tasks', exact: true }).click();
+  if (testInfo.project.name === 'mobile-web') {
+    await page.getByRole('button', { name: 'Open conversation history' }).click();
+  }
+  await page.getByRole('button', { name: 'Projects', exact: true }).last().click();
   await page.getByLabel('Project name', { exact: true }).fill('Synthetic career project');
   await page
     .getByLabel('Project memory', { exact: true })
@@ -921,6 +924,7 @@ test('research citations reveal saved evidence and meeting suggestions prepare a
     page.getByText('This is the stored evidence passage.', { exact: true }),
   ).toBeVisible();
   await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+  await page.getByRole('button', { name: 'Conversation menu', exact: true }).click();
   await page.getByRole('button', { name: 'Work tools', exact: true }).click();
   await page.getByRole('button', { name: 'Cost & limits', exact: true }).click();
   await page.getByRole('button', { name: 'Estimate current draft', exact: true }).click();
@@ -1045,7 +1049,10 @@ for (const scheme of ['light', 'dark'] as const) {
       path: `/tmp/ai-chat-style-settings-${scheme}-${info.project.name}.png`,
     });
     await page.getByRole('button', { name: 'Close dialog', exact: true }).last().click();
-    await page.getByRole('button', { name: 'Projects & tasks', exact: true }).click();
+    if (info.project.name === 'mobile-web') {
+      await page.getByRole('button', { name: 'Open conversation history' }).click();
+    }
+    await page.getByRole('button', { name: 'Projects', exact: true }).last().click();
     await page.getByLabel('Project name', { exact: true }).fill('Synthetic shared project');
     await page
       .getByLabel('Project memory', { exact: true })
@@ -1194,7 +1201,10 @@ test('Russian workspace keeps localized navigation and shared selection styling'
   await workspaceFixture(page);
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Проекты и задачи', exact: true }).click();
+  if (info.project.name === 'mobile-web') {
+    await page.getByRole('button', { name: 'Открыть историю', exact: true }).click();
+  }
+  await page.getByRole('button', { name: 'Проекты', exact: true }).last().click();
   await expect(page.getByText('Рабочее пространство', { exact: true })).toBeVisible();
   const scheduleTab = page.getByRole('button', { name: 'Задачи по расписанию', exact: true });
   await scheduleTab.click();
@@ -1392,8 +1402,17 @@ test('sidebar row menu opens beside the list, tools dialog uses clean rows, and 
   await expect(
     page.getByTestId('chat-header').getByRole('button', { name: 'Settings', exact: true }),
   ).toHaveCount(0);
+  await expect(
+    page.getByTestId('chat-header').getByRole('button', { name: 'Work tools', exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByTestId('chat-header').getByRole('button', { name: 'Projects & tasks', exact: true }),
+  ).toHaveCount(0);
 
   if (info.project.name === 'desktop') {
+    await page.getByRole('button', { name: "it's kawasaki, bitches", exact: true }).click();
+    await expect(page.getByTestId('kawasaki-party')).toBeVisible();
+
     await expect(page.getByRole('button', { name: 'Library', exact: true })).toBeDisabled();
     await expect(page.getByRole('button', { name: 'Scheduled', exact: true })).toBeDisabled();
     await expect(page.getByRole('button', { name: 'Notifications', exact: true })).toBeDisabled();
@@ -1528,4 +1547,76 @@ test('model picker shows Popular section first with Google, OpenAI, and Anthropi
   expect(geminiY).toBeGreaterThan(haikuY);
   expect(allY).toBeGreaterThan(geminiY);
   expect(llamaY).toBeGreaterThan(allY);
+});
+
+test('switching chats keeps sidebar mounted and shows chat skeleton while loading', async ({
+  context,
+  page,
+}, info) => {
+  await seed(context);
+  await fixture(page);
+  const slowChatId = '20000000-0000-4000-8000-000000000077';
+  let releaseChat!: () => void;
+  const chatPending = new Promise<void>((resolve) => {
+    releaseChat = resolve;
+  });
+  await page.route('http://localhost:3001/v1/conversations**', async (route) => {
+    const req = route.request();
+    const u = new URL(req.url());
+    if (req.method() === 'GET' && u.pathname === '/v1/conversations') {
+      return route.fulfill({
+        json: {
+          data: [
+            {
+              id: slowChatId,
+              title: 'Delayed chat',
+              model_id: 'anthropic/claude-haiku-5.5',
+              enabled_tools: ['web', 'files'],
+              version: 1,
+              created_at: time,
+              updated_at: time,
+            },
+          ],
+          next_cursor: null,
+        },
+        headers: { 'access-control-allow-origin': 'http://localhost:8092' },
+      });
+    }
+    if (req.method() === 'GET' && u.pathname === `/v1/conversations/${slowChatId}`) {
+      await chatPending;
+      return route.fulfill({
+        json: {
+          data: {
+            id: slowChatId,
+            title: 'Delayed chat',
+            model_id: 'anthropic/claude-haiku-5.5',
+            enabled_tools: ['web', 'files'],
+            version: 1,
+            created_at: time,
+            updated_at: time,
+          },
+        },
+        headers: { 'access-control-allow-origin': 'http://localhost:8092' },
+      });
+    }
+    return route.fallback();
+  });
+  await page.route(`http://localhost:3001/v1/conversations/${slowChatId}/**`, (route) =>
+    route.fulfill({
+      json: { data: [], next_cursor: null },
+      headers: { 'access-control-allow-origin': 'http://localhost:8092' },
+    }),
+  );
+
+  await page.goto('/');
+  if (info.project.name === 'mobile-web') {
+    await page.getByRole('button', { name: 'Open conversation history' }).click();
+  }
+  await page.getByRole('button', { name: 'Delayed chat', exact: true }).click();
+  if (info.project.name === 'desktop') {
+    await expect(page.getByTestId('conversation-sidebar')).toBeVisible();
+  }
+  await expect(page.getByTestId('chat-thread-skeleton')).toBeVisible();
+  releaseChat();
+  await expect(page.getByTestId('chat-thread-skeleton')).toHaveCount(0);
 });

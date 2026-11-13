@@ -118,16 +118,24 @@ function SidebarNavRow({
             : !disabled && !comingSoon && (pressed || hovered)
               ? c.hover
               : 'transparent',
-          opacity: comingSoon ? 0.45 : disabled ? 0.45 : 1,
+          opacity: comingSoon ? 0.38 : disabled ? 0.45 : 1,
+          ...(Platform.OS === 'web' && comingSoon
+            ? ({ cursor: 'not-allowed' } as Record<string, unknown>)
+            : {}),
         })}
       >
         <View style={{ width: 20, alignItems: 'center', justifyContent: 'center' }}>
-          <ChatGptIcon name={icon} size={17} color={comingSoon ? c.muted : c.text} />
+          <ChatGptIcon name={icon} size={17} color={comingSoon ? c.subtle : c.text} />
         </View>
         {expanded && (
           <Text
             numberOfLines={1}
-            style={{ flex: 1, fontSize: 14, color: comingSoon ? c.muted : c.text, fontWeight: '400' }}
+            style={{
+              flex: 1,
+              fontSize: 14,
+              color: comingSoon ? c.subtle : c.text,
+              fontWeight: '400',
+            }}
           >
             {label}
           </Text>
@@ -165,7 +173,7 @@ function SidebarNavRow({
             backgroundColor: isDark ? '#3a3a3a' : '#0d0d0d',
             borderWidth: StyleSheet.hairlineWidth,
             borderColor: c.border,
-            zIndex: 50,
+            zIndex: 999,
           }}
         >
           <Text style={{ fontSize: 11, fontWeight: '500', color: '#ffffff' }}>Coming soon</Text>
@@ -186,6 +194,20 @@ export function ConversationSidebar(props: SidebarProps) {
     top: number;
   } | null>(null);
   const [profileMenu, setProfileMenu] = useState(false);
+  const [kawasakiParty, setKawasakiParty] = useState(0);
+  const [partyActive, setPartyActive] = useState(false);
+
+  useEffect(() => {
+    if (!partyActive) return;
+    const t = setTimeout(() => setPartyActive(false), 950);
+    return () => clearTimeout(t);
+  }, [partyActive, kawasakiParty]);
+
+  function triggerKawasaki() {
+    setKawasakiParty((n) => n + 1);
+    setPartyActive(true);
+    props.onNew();
+  }
 
   useEffect(() => {
     if (!menuTarget || Platform.OS !== 'web') return;
@@ -284,27 +306,60 @@ export function ConversationSidebar(props: SidebarProps) {
         ]}
       >
         {props.expanded && (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={BRAND_NAME}
-            onPress={props.onNew}
-            style={({ hovered }) => ({
-              flex: 1,
-              height: 36,
-              paddingHorizontal: 8,
-              borderRadius: 8,
-              justifyContent: 'center',
-              backgroundColor: hovered ? c.hover : 'transparent',
-            })}
-          >
-            <Text
-              translate={false}
-              numberOfLines={1}
-              style={{ fontSize: 14, fontWeight: '600', color: c.text }}
+          <View style={{ flex: 1, position: 'relative' }}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={BRAND_NAME}
+              onPress={triggerKawasaki}
+              style={({ hovered }) => ({
+                height: 36,
+                paddingHorizontal: 8,
+                borderRadius: 8,
+                justifyContent: 'center',
+                backgroundColor: hovered ? c.hover : 'transparent',
+              })}
             >
-              {BRAND_NAME}
-            </Text>
-          </Pressable>
+              <Text
+                key={kawasakiParty}
+                testID={partyActive ? 'kawasaki-party' : undefined}
+                translate={false}
+                numberOfLines={1}
+                style={{ fontSize: 14, fontWeight: '600', color: c.text }}
+              >
+                {BRAND_NAME}
+              </Text>
+            </Pressable>
+            {partyActive && Platform.OS === 'web' && (
+              <View
+                pointerEvents="none"
+                style={{ position: 'absolute', left: 28, top: 8, zIndex: 100 }}
+              >
+                {[
+                  { emoji: '🏍️', kx: '48px', ky: '-26px' },
+                  { emoji: '💨', kx: '-24px', ky: '-22px' },
+                  { emoji: '⚡', kx: '82px', ky: '-18px' },
+                  { emoji: '🔥', kx: '18px', ky: '28px' },
+                  { emoji: '💚', kx: '112px', ky: '18px' },
+                ].map((p, idx) => (
+                  <View
+                    key={`${kawasakiParty}-${idx}`}
+                    testID="kawasaki-particle"
+                    style={
+                      {
+                        position: 'absolute',
+                        '--kx': p.kx,
+                        '--ky': p.ky,
+                      } as Record<string, unknown>
+                    }
+                  >
+                    <Text translate={false} style={{ fontSize: 16 }}>
+                      {p.emoji}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
         )}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
           {props.expanded && (
