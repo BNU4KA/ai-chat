@@ -1252,3 +1252,171 @@ test('a document citation opens its owned document editor', async ({ context, pa
     'Synthetic source document',
   );
 });
+
+test('sidebar row menu opens beside the list, tools dialog uses clean rows, and thinking skeleton + transient tool pills behave properly', async ({
+  context,
+  page,
+}, info) => {
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await seed(context);
+  await fixture(page);
+  const chatTwoId = '20000000-0000-4000-8000-000000000099';
+  let streamDelayResolve!: () => void;
+  const streamPending = new Promise<void>((resolve) => {
+    streamDelayResolve = resolve;
+  });
+  let toolCompleted = false;
+  const conversations = [
+    {
+      id: chatId,
+      title: 'First synthetic chat',
+      model_id: 'synthetic/model',
+      enabled_tools: ['web', 'files'],
+      version: 1,
+      created_at: time,
+      updated_at: new Date().toISOString(),
+    },
+    {
+      id: chatTwoId,
+      title: 'Second synthetic chat',
+      model_id: 'synthetic/model',
+      enabled_tools: ['files'],
+      version: 1,
+      created_at: time,
+      updated_at: new Date().toISOString(),
+    },
+  ];
+  await page.route('http://localhost:3001/v1/conversations**', async (route) => {
+    const req = route.request();
+    const u = new URL(req.url());
+    if (req.method() === 'GET' && u.pathname === '/v1/conversations') {
+      return route.fulfill({
+        json: { data: conversations, next_cursor: null },
+        headers: { 'access-control-allow-origin': 'http://localhost:8092' },
+      });
+    }
+    if (req.method() === 'GET' && u.pathname === `/v1/conversations/${chatId}`) {
+      return route.fulfill({
+        json: { data: conversations[0] },
+        headers: { 'access-control-allow-origin': 'http://localhost:8092' },
+      });
+    }
+    return route.fallback();
+  });
+  await page.route(`http://localhost:3001/v1/runs/${runId}/events**`, async (route) => {
+    await streamPending;
+    toolCompleted = true;
+    await route.fallback();
+  });
+  await page.route(`http://localhost:3001/v1/runs/${runId}`, async (route) => {
+    if (!toolCompleted) {
+      return route.fulfill({
+        json: {
+          data: {
+            run: {
+              id: runId,
+              conversation_id: chatId,
+              user_message_id: userId,
+              assistant_message_id: assistantId,
+              status: 'running',
+              model_id: 'synthetic/model',
+              attempt: 1,
+              version: 1,
+              last_event_seq: '1',
+              error_code: null,
+              usage: { input_tokens: null, output_tokens: null, cost_usd: null, cost_status: 'unknown' },
+              cancel_requested_at: null,
+              created_at: time,
+              finished_at: null,
+            },
+            assistant_message: {
+              id: assistantId,
+              conversation_id: chatId,
+              run_id: runId,
+              seq: '2',
+              role: 'assistant',
+              content: '',
+              status: 'pending',
+              file_ids: [],
+              created_at: time,
+            },
+            tool_calls: [{ id: 'tc-1', name: 'read_file', status: 'executing', arguments: {} }],
+            approvals: [],
+            sources: [],
+          },
+        },
+      });
+    }
+    return route.fulfill({
+      json: {
+        data: {
+          run: {
+            id: runId,
+            conversation_id: chatId,
+            user_message_id: userId,
+            assistant_message_id: assistantId,
+            status: 'completed',
+            model_id: 'synthetic/model',
+            attempt: 1,
+            version: 2,
+            last_event_seq: '3',
+            error_code: null,
+            usage: { input_tokens: 10, output_tokens: 12, cost_usd: '0.001', cost_status: 'estimated' },
+            cancel_requested_at: null,
+            created_at: time,
+            finished_at: time,
+          },
+          assistant_message: {
+            id: assistantId,
+            conversation_id: chatId,
+            run_id: runId,
+            seq: '2',
+            role: 'assistant',
+            content: 'Synthetic answer with **Markdown** and a safe result.',
+            status: 'complete',
+            file_ids: [],
+            created_at: time,
+          },
+          tool_calls: [{ id: 'tc-1', name: 'read_file', status: 'succeeded', arguments: {} }],
+          approvals: [],
+          sources: [],
+        },
+      },
+    });
+  });
+
+  await page.goto('/');
+  if (info.project.name === 'desktop') {
+    const secondRow = page.getByRole('button', { name: 'Second synthetic chat', exact: true });
+    const yBefore = (await secondRow.boundingBox())!.y;
+    await page.getByRole('button', { name: 'Actions for First synthetic chat', exact: true }).click();
+    const pop = page.getByTestId('popover-menu');
+    await expect(pop).toBeVisible();
+    const yAfter = (await secondRow.boundingBox())!.y;
+    expect(yAfter).toBe(yBefore);
+    await page.screenshot({
+      path: `/tmp/ai-chat-sidebar-sidemenu-${info.project.name}.png`,
+      animations: 'disabled',
+    });
+    await page.keyboard.press('Escape');
+  }
+
+  await page.getByLabel('Message', { exact: true }).fill('Read my file');
+  await page.getByRole('button', { name: 'Send ↑', exact: true }).click();
+  await expect(page.getByTestId('thinking-skeleton-line')).toHaveCount(3);
+  await expect(page.getByTestId('tool-activity-pill')).toBeVisible();
+  await page.screenshot({
+    path: `/tmp/ai-chat-thinking-skeleton-${info.project.name}.png`,
+    animations: 'disabled',
+  });
+  streamDelayResolve();
+  await expect(page.getByText(/Synthetic answer with/)).toBeVisible();
+  await expect(page.getByTestId('tool-activity-pill')).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Choose tools', exact: true }).click();
+  await expect(page.getByText('Tools & conversation', { exact: true })).toBeVisible();
+  await page.screenshot({
+    path: `/tmp/ai-chat-tools-dialog-${info.project.name}.png`,
+    animations: 'disabled',
+  });
+});

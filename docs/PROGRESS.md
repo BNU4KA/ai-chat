@@ -738,3 +738,29 @@ generation, no native device test, no deployment, no push):
 
 - `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build`, and `pnpm test:e2e --reporter=list`
   (re-run after merge).
+
+## T13 — UI/UX polish pass (sidebar popover, tools dialog, smooth streaming, skeleton, transient tool pills) — 2026-11-13 (local, uncommitted)
+
+- Sidebar `···` menu (`sidebar.tsx`): renders inside a floating `Modal` anchored beside the
+  row (`measureInWindow` with viewport clamping) instead of inline, so opening it never shifts
+  conversations downward.
+- Tools & conversation dialog (`chat.tsx`, `ui.tsx`): replaced invisible/stretched buttons with
+  grouped ChatGPT rows, animated pill toggle switches for `Web research` / `Photos & files` /
+  `Gmail` / `Google Calendar`, and clean left-aligned `Conversation files`, `Rename conversation`,
+  and `Delete conversation` rows.
+- Tool activity pills (`chat.tsx`): rendered as compact inline pills only while the run is active
+  (or if a tool ends `unknown`/`failed`) and hidden cleanly once the run finishes with succeeded
+  tools.
+- Smooth streaming (`chat.tsx`, `smooth-text.ts`): wrapped pending assistant Markdown in
+  `StreamingMarkdown` using `revealStep` at 60 fps (`requestAnimationFrame` on web) for fluid
+  token-by-token reveal while respecting `prefers-reduced-motion`.
+- Thinking skeleton (`fool-spinner.tsx`, `web-effects.web.tsx`): added 3 animated shimmer
+  response-line skeleton bars (`ThinkingSkeleton`) beneath `Thinking…`.
+
+Checks on Node 26.13.0 / pnpm 12.18.0 (synthetic fixtures; no live provider, native build,
+commit, or push):
+
+- `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build`, `git diff --check`: passed.
+- `pnpm test:e2e --reporter=list`: 38 passed (`desktop` + `mobile-web`), 2 skipped (live health);
+  verified side-positioned popover, tools dialog, thinking skeleton + transient tool pill, and
+  updated screenshots visually inspected.

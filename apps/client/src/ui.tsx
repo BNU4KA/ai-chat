@@ -38,6 +38,8 @@ export function Button({
         justifyContent: 'center',
         flexDirection: 'row',
         gap: 6,
+        borderWidth: secondary && !quiet ? 1 : 0,
+        borderColor: c.border,
         backgroundColor: quiet
           ? hovered
             ? c.hover
