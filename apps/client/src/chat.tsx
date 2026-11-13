@@ -36,10 +36,46 @@ import { ApprovalCard } from './approval';
 import { Attachment } from './attachment';
 import { MessageActions } from './message-actions';
 import { ComposerFrame } from './composer-frame';
-import { FoolSpinner, ThinkingDot } from './fool-spinner';
-import { ChatGptIcon } from './chatgpt-icons';
+import { FoolSpinner, ThinkingSkeleton } from './fool-spinner';
+import { ChatGptIcon, type ChatGptIconName } from './chatgpt-icons';
+import { useMotionPaused } from './motion';
+import { revealStep } from './smooth-text';
 import { pickAndUpload } from './upload';
 import type { Conversation, Message, Run, FileRecord, Snapshot } from './types';
+
+function StreamingMarkdown({
+  text,
+  streaming,
+  onCitation,
+}: {
+  text: string;
+  streaming: boolean;
+  onCitation?: (id: string) => void;
+}) {
+  const reduced = useMotionPaused();
+  const [shown, setShown] = useState(streaming && !reduced ? 0 : text.length);
+
+  useEffect(() => {
+    if (!streaming || reduced) {
+      setShown(text.length);
+      return;
+    }
+    if (shown >= text.length) return;
+    if (Platform.OS === 'web') {
+      const frame = requestAnimationFrame(() => {
+        setShown((cur) => revealStep(cur, text.length));
+      });
+      return () => cancelAnimationFrame(frame);
+    }
+    const timer = setTimeout(() => {
+      setShown((cur) => revealStep(cur, text.length));
+    }, 16);
+    return () => clearTimeout(timer);
+  }, [text, streaming, reduced, shown]);
+
+  const visible = !streaming || reduced ? text : text.slice(0, shown);
+  return <Markdown text={visible} onCitation={onCitation} />;
+}
 
 type Group = 'web' | 'files' | 'gmail' | 'calendar';
 const groupLabels: Record<Group, string> = {
@@ -1143,8 +1179,9 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                       >
                         {message.content ? (
                           <View style={{ gap: 6 }}>
-                            <Markdown
+                            <StreamingMarkdown
                               text={message.content}
+                              streaming={!isUser && message.status === 'pending'}
                               onCitation={
                                 message.run_id
                                   ? (cid) => setEvidence({ run: message.run_id!, citation: cid })
@@ -1164,22 +1201,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                             )}
                           </View>
                         ) : message.status === 'pending' ? (
-                          <View
-                            style={{
-                              flexDirection: 'row',
-                              alignItems: 'center',
-                              gap: 10,
-                              paddingVertical: 6,
-                            }}
-                          >
-                            <ThinkingDot />
-                            <Text
-                              testID="chatgpt-thinking-text"
-                              style={{ fontSize: 14, color: c.muted }}
-                            >
-                              Thinking…
-                            </Text>
-                          </View>
+                          <ThinkingSkeleton />
                         ) : null}
                         {message.file_ids.map((fileId) => (
                           <Attachment
@@ -1256,16 +1278,62 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                 );
               })}
 
-              {snapshot.data?.tool_calls.map((tool) => (
-                <Panel key={tool.id} style={{ padding: 12 }}>
-                  <Copy small muted>
-                    {tool.name.replaceAll('_', ' ')} · {tool.status}
-                  </Copy>
-                  {tool.status === 'unknown' && (
-                    <Copy small>Outcome unconfirmed. Check the provider before trying again.</Copy>
-                  )}
-                </Panel>
-              ))}
+              {(snapshot.data?.tool_calls ?? [])
+                .filter((tool) => running || tool.status === 'unknown' || tool.status === 'failed')
+                .map((tool) => {
+                  const active = tool.status === 'executing' || tool.status === 'pending';
+                  const failed = tool.status === 'failed' || tool.status === 'unknown';
+                  return (
+                    <View
+                      key={tool.id}
+                      testID="tool-activity-pill"
+                      style={{
+                        alignSelf: 'flex-start',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 8,
+                        paddingHorizontal: 12,
+                        paddingVertical: 6,
+                        borderRadius: 9999,
+                        backgroundColor: c.raised,
+                        borderWidth: 1,
+                        borderColor: failed ? c.danger : c.borderSubtle,
+                      }}
+                    >
+                      {active ? (
+                        <View
+                          testID="chatgpt-thinking-dot"
+                          style={{
+                            width: 7,
+                            height: 7,
+                            borderRadius: 4,
+                            backgroundColor: c.info,
+                          }}
+                        />
+                      ) : (
+                        <ChatGptIcon
+                          name={failed ? 'close' : 'check'}
+                          size={12}
+                          color={failed ? c.danger : c.muted}
+                        />
+                      )}
+                      <Text
+                        style={{
+                          fontSize: 12.5,
+                          color: failed ? c.danger : c.muted,
+                          fontWeight: '500',
+                        }}
+                      >
+                        {tool.name.replaceAll('_', ' ')} · {tool.status}
+                      </Text>
+                      {tool.status === 'unknown' && (
+                        <Text style={{ fontSize: 12, color: c.danger }}>
+                          Outcome unconfirmed. Check the provider before trying again.
+                        </Text>
+                      )}
+                    </View>
+                  );
+                })}
               {snapshot.data?.approvals.map((approval) => (
                 <ApprovalCard key={approval.id} approval={approval} />
               ))}
@@ -1368,47 +1436,166 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
         visible={dialog === 'tools'}
         close={() => setDialog(null)}
       >
-        <Button secondary onPress={() => setDialog('files')}>
-          Conversation files
-        </Button>
-        <Copy small muted>
+        <Text style={{ fontSize: 13, color: c.muted, lineHeight: 19, marginBottom: 4 }}>
           Changes apply to the next run. Connect Google services in Settings.
-        </Copy>
-        {(Object.keys(groupLabels) as Group[]).map((group) => {
-          const enabled = chat.data?.enabled_tools.includes(group);
-          const available = capabilities.data?.tools[group] === 'available';
-          return (
-            <Button
-              key={group}
-              secondary
-              disabled={!available && !enabled}
-              onPress={() =>
-                void patch({
-                  enabled_tools: enabled
-                    ? chat.data!.enabled_tools.filter((g) => g !== group)
-                    : [...chat.data!.enabled_tools, group],
-                })
-              }
-            >
-              {enabled ? '✓ ' : ''}
-              {groupLabels[group]}
-              {!available ? ' · not connected' : ''}
-            </Button>
-          );
-        })}
-        <Button
-          secondary
-          onPress={() => {
-            const current = targetChat ?? chat.data;
-            setTitle(current?.title ?? '');
-            setDialog('rename');
+        </Text>
+
+        <View
+          style={{
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: c.borderSubtle,
+            overflow: 'hidden',
           }}
         >
-          Rename conversation
-        </Button>
-        <Button danger onPress={() => setDialog('delete')}>
-          Delete conversation
-        </Button>
+          {(Object.keys(groupLabels) as Group[]).map((group, idx) => {
+            const enabled = !!chat.data?.enabled_tools.includes(group);
+            const available = capabilities.data?.tools[group] === 'available';
+            const disabled = !available && !enabled;
+            const iconName: ChatGptIconName =
+              group === 'web'
+                ? 'globe'
+                : group === 'files'
+                  ? 'paperclip'
+                  : group === 'gmail'
+                    ? 'edit'
+                    : 'scheduled';
+            return (
+              <Pressable
+                key={group}
+                accessibilityRole="button"
+                accessibilityState={{ checked: enabled, disabled }}
+                disabled={disabled}
+                onPress={() =>
+                  void patch({
+                    enabled_tools: enabled
+                      ? chat.data!.enabled_tools.filter((g) => g !== group)
+                      : [...chat.data!.enabled_tools, group],
+                  })
+                }
+                style={({ hovered, pressed }) => ({
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  paddingHorizontal: 14,
+                  paddingVertical: 11,
+                  borderTopWidth: idx > 0 ? StyleSheet.hairlineWidth : 0,
+                  borderTopColor: c.borderSubtle,
+                  backgroundColor: !disabled && (hovered || pressed) ? c.hover : 'transparent',
+                  opacity: disabled ? 0.5 : 1,
+                })}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                  <ChatGptIcon name={iconName} size={16} color={c.text} />
+                  <View style={{ flex: 1, gap: 1 }}>
+                    <Text style={{ fontSize: 14, fontWeight: '500', color: c.text }}>
+                      {groupLabels[group]}
+                    </Text>
+                    {!available && (
+                      <Text style={{ fontSize: 12, color: c.subtle }}>Not connected</Text>
+                    )}
+                  </View>
+                </View>
+                <View
+                  style={{
+                    width: 38,
+                    height: 22,
+                    borderRadius: 11,
+                    padding: 2,
+                    justifyContent: 'center',
+                    alignItems: enabled ? 'flex-end' : 'flex-start',
+                    backgroundColor: enabled
+                      ? c.success
+                      : isDark
+                        ? 'rgba(255,255,255,0.18)'
+                        : '#d4d4d4',
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: 9,
+                      backgroundColor: '#ffffff',
+                    }}
+                  />
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <View
+          style={{
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: c.borderSubtle,
+            overflow: 'hidden',
+            marginTop: 4,
+          }}
+        >
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setDialog('files')}
+            style={({ hovered, pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+              backgroundColor: hovered || pressed ? c.hover : 'transparent',
+            })}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <ChatGptIcon name="library" size={16} color={c.text} />
+              <Text style={{ fontSize: 14, color: c.text }}>Conversation files</Text>
+            </View>
+            <ChatGptIcon name="chevronRight" size={15} color={c.muted} />
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => {
+              const current = targetChat ?? chat.data;
+              setTitle(current?.title ?? '');
+              setDialog('rename');
+            }}
+            style={({ hovered, pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 10,
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+              borderTopWidth: StyleSheet.hairlineWidth,
+              borderTopColor: c.borderSubtle,
+              backgroundColor: hovered || pressed ? c.hover : 'transparent',
+            })}
+          >
+            <ChatGptIcon name="edit" size={16} color={c.text} />
+            <Text style={{ fontSize: 14, color: c.text }}>Rename conversation</Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setDialog('delete')}
+            style={({ hovered, pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 10,
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+              borderTopWidth: StyleSheet.hairlineWidth,
+              borderTopColor: c.borderSubtle,
+              backgroundColor: hovered || pressed ? c.hover : 'transparent',
+            })}
+          >
+            <ChatGptIcon name="trash" size={16} color={c.danger} />
+            <Text style={{ fontSize: 14, color: c.danger, fontWeight: '500' }}>
+              Delete conversation
+            </Text>
+          </Pressable>
+        </View>
       </Dialog>
 
       <Dialog

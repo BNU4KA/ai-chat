@@ -37,6 +37,10 @@ const css = `
   from { opacity: 0; transform: translateY(2px); }
   to { opacity: 1; transform: translateY(0); }
 }
+@keyframes chatgpt-skeleton-sweep {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
 
 * {
   scrollbar-width: thin;
@@ -110,6 +114,10 @@ button:not(:disabled):active, [role="button"]:not([aria-disabled="true"]):active
 }
 [data-testid="chatgpt-spinner-ring"] {
   animation: chatgpt-spin 0.8s linear infinite;
+}
+[data-testid="thinking-skeleton-line"] {
+  background-size: 200% 100%;
+  animation: chatgpt-skeleton-sweep 1.6s ease-in-out infinite;
 }
 
 [data-testid="sidebar-chat-row"] [data-testid="sidebar-row-more"] {

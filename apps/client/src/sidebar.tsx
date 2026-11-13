@@ -142,9 +142,48 @@ function SidebarNavRow({
 export function ConversationSidebar(props: SidebarProps) {
   const { colors: c, isDark } = useTheme();
   const inset = useSafeAreaInsets();
+  const { width: winWidth, height: winHeight } = useWindowDimensions();
   const transition = useSidebarTransition();
-  const [menuChatId, setMenuChatId] = useState<string | null>(null);
+  const [menuTarget, setMenuTarget] = useState<{
+    item: Conversation;
+    left: number;
+    top: number;
+  } | null>(null);
   const [profileMenu, setProfileMenu] = useState(false);
+
+  useEffect(() => {
+    if (!menuTarget || Platform.OS !== 'web') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setMenuTarget(null);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [menuTarget]);
+
+  function openRowMenu(
+    item: Conversation,
+    target: { measureInWindow?: (cb: (x: number, y: number, w: number, h: number) => void) => void } | null,
+  ) {
+    if (menuTarget?.item.id === item.id) {
+      setMenuTarget(null);
+      return;
+    }
+    const menuWidth = 160;
+    const menuHeight = 86;
+    if (target && typeof target.measureInWindow === 'function') {
+      target.measureInWindow((x, y, w, h) => {
+        const fitsRight = x + w + 8 + menuWidth <= winWidth - 8;
+        const left = fitsRight ? x + w + 8 : Math.max(8, x + w - menuWidth);
+        const top = Math.max(8, Math.min(fitsRight ? y - 4 : y + h + 4, winHeight - menuHeight - 8));
+        setMenuTarget({ item, left, top });
+      });
+    } else {
+      setMenuTarget({ item, left: props.mobile ? 132 : 264, top: 180 });
+    }
+  }
 
   const name = props.displayName?.trim() || 'Workspace';
   const initials = name
@@ -335,136 +374,78 @@ export function ConversationSidebar(props: SidebarProps) {
               </Text>
               {group.items.map((item) => {
                 const selected = props.selectedId === item.id;
-                const menuOpen = menuChatId === item.id;
+                const menuOpen = menuTarget?.item.id === item.id;
                 return (
-                  <View key={item.id} style={{ position: 'relative' }}>
-                    <View
-                      // @ts-expect-error web data attribute for hover CSS
-                      dataSet={{ active: selected ? 'true' : 'false' }}
-                      testID="sidebar-chat-row"
-                      style={{
-                        height: 36,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        borderRadius: 8,
-                        backgroundColor: selected ? c.selected : 'transparent',
+                  <View
+                    key={item.id}
+                    // @ts-expect-error web data attribute for hover CSS
+                    dataSet={{ active: selected || menuOpen ? 'true' : 'false' }}
+                    testID="sidebar-chat-row"
+                    style={{
+                      height: 36,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      borderRadius: 8,
+                      backgroundColor: selected || menuOpen ? c.selected : 'transparent',
+                    }}
+                  >
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={item.title}
+                      accessibilityState={{ selected }}
+                      onPress={() => {
+                        setMenuTarget(null);
+                        props.onSelect(item.id);
                       }}
+                      style={({ pressed, hovered }) => ({
+                        flex: 1,
+                        height: 36,
+                        justifyContent: 'center',
+                        paddingHorizontal: 10,
+                        borderRadius: 8,
+                        backgroundColor:
+                          !selected && !menuOpen && (pressed || hovered) ? c.hover : 'transparent',
+                      })}
                     >
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={item.title}
-                        accessibilityState={{ selected }}
-                        onPress={() => {
-                          setMenuChatId(null);
-                          props.onSelect(item.id);
+                      <Text
+                        translate={false}
+                        numberOfLines={1}
+                        style={{
+                          fontSize: 14,
+                          color: c.text,
+                          fontWeight: selected ? '500' : '400',
                         }}
-                        style={({ pressed, hovered }) => ({
-                          flex: 1,
-                          height: 36,
+                      >
+                        {item.title}
+                      </Text>
+                    </Pressable>
+                    {(props.onRename || props.onDelete) && (
+                      <Pressable
+                        testID="sidebar-row-more"
+                        accessibilityRole="button"
+                        accessibilityLabel={`Actions for ${item.title}`}
+                        onPress={(event) =>
+                          openRowMenu(
+                            item,
+                            event.currentTarget as unknown as {
+                              measureInWindow?: (
+                                cb: (x: number, y: number, w: number, h: number) => void,
+                              ) => void;
+                            },
+                          )
+                        }
+                        style={({ hovered }) => ({
+                          width: 28,
+                          height: 28,
+                          marginRight: 4,
+                          borderRadius: 6,
+                          alignItems: 'center',
                           justifyContent: 'center',
-                          paddingHorizontal: 10,
-                          borderRadius: 8,
-                          backgroundColor:
-                            !selected && (pressed || hovered) ? c.hover : 'transparent',
+                          backgroundColor: hovered || menuOpen ? c.hover : 'transparent',
                         })}
                       >
-                        <Text
-                          translate={false}
-                          numberOfLines={1}
-                          style={{
-                            fontSize: 14,
-                            color: c.text,
-                            fontWeight: selected ? '500' : '400',
-                          }}
-                        >
-                          {item.title}
-                        </Text>
+                        <ChatGptIcon name="dots" size={14} color={c.muted} />
                       </Pressable>
-                      {(props.onRename || props.onDelete) && (
-                        <Pressable
-                          testID="sidebar-row-more"
-                          accessibilityRole="button"
-                          accessibilityLabel={`Actions for ${item.title}`}
-                          onPress={() => setMenuChatId(menuOpen ? null : item.id)}
-                          style={({ hovered }) => ({
-                            width: 28,
-                            height: 28,
-                            marginRight: 4,
-                            borderRadius: 6,
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            backgroundColor: hovered ? c.hover : 'transparent',
-                          })}
-                        >
-                          <ChatGptIcon name="dots" size={14} color={c.muted} />
-                        </Pressable>
-                      )}
-                    </View>
-                    {menuOpen && (
-                      <View
-                        testID="popover-menu"
-                        style={{
-                          marginHorizontal: 6,
-                          marginTop: 2,
-                          marginBottom: 4,
-                          padding: 4,
-                          borderRadius: 12,
-                          backgroundColor: isDark ? '#2f2f2f' : '#ffffff',
-                          borderWidth: 1,
-                          borderColor: c.border,
-                          gap: 2,
-                          ...(Platform.OS === 'web'
-                            ? {
-                                boxShadow: isDark
-                                  ? '0 8px 24px rgba(0,0,0,0.45)'
-                                  : '0 6px 20px rgba(0,0,0,0.12)',
-                              }
-                            : {}),
-                        }}
-                      >
-                        {props.onRename && (
-                          <Pressable
-                            accessibilityRole="menuitem"
-                            onPress={() => {
-                              setMenuChatId(null);
-                              props.onRename!(item);
-                            }}
-                            style={({ hovered }) => ({
-                              flexDirection: 'row',
-                              alignItems: 'center',
-                              gap: 8,
-                              paddingHorizontal: 10,
-                              paddingVertical: 8,
-                              borderRadius: 8,
-                              backgroundColor: hovered ? c.hover : 'transparent',
-                            })}
-                          >
-                            <ChatGptIcon name="edit" size={14} color={c.text} />
-                            <Text style={{ fontSize: 13, color: c.text }}>Rename</Text>
-                          </Pressable>
-                        )}
-                        {props.onDelete && (
-                          <Pressable
-                            accessibilityRole="menuitem"
-                            onPress={() => {
-                              setMenuChatId(null);
-                              props.onDelete!(item);
-                            }}
-                            style={({ hovered }) => ({
-                              flexDirection: 'row',
-                              alignItems: 'center',
-                              gap: 8,
-                              paddingHorizontal: 10,
-                              paddingVertical: 8,
-                              borderRadius: 8,
-                              backgroundColor: hovered ? c.hover : 'transparent',
-                            })}
-                          >
-                            <ChatGptIcon name="trash" size={14} color={c.danger} />
-                            <Text style={{ fontSize: 13, color: c.danger }}>Delete</Text>
-                          </Pressable>
-                        )}
-                      </View>
                     )}
                   </View>
                 );
@@ -670,6 +651,91 @@ export function ConversationSidebar(props: SidebarProps) {
           )}
         </View>
       </View>
+
+      {/* Floating side menu for chat row actions (never shifts chat list) */}
+      <Modal
+        visible={!!menuTarget}
+        transparent
+        animationType="none"
+        onRequestClose={() => setMenuTarget(null)}
+      >
+        <View style={{ flex: 1 }}>
+          <Pressable
+            accessibilityLabel="Close menu"
+            onPress={() => setMenuTarget(null)}
+            style={StyleSheet.absoluteFill}
+          />
+          {menuTarget && (
+            <View
+              testID="popover-menu"
+              style={{
+                position: 'absolute',
+                left: menuTarget.left,
+                top: menuTarget.top,
+                width: 160,
+                padding: 5,
+                borderRadius: 12,
+                backgroundColor: isDark ? '#2f2f2f' : '#ffffff',
+                borderWidth: 1,
+                borderColor: c.border,
+                gap: 2,
+                ...(Platform.OS === 'web'
+                  ? {
+                      boxShadow: isDark
+                        ? '0 10px 30px rgba(0,0,0,0.55)'
+                        : '0 8px 24px rgba(0,0,0,0.14)',
+                    }
+                  : {}),
+              }}
+            >
+              {props.onRename && (
+                <Pressable
+                  accessibilityRole="menuitem"
+                  onPress={() => {
+                    const target = menuTarget.item;
+                    setMenuTarget(null);
+                    props.onRename!(target);
+                  }}
+                  style={({ hovered }) => ({
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 8,
+                    paddingHorizontal: 10,
+                    paddingVertical: 8,
+                    borderRadius: 8,
+                    backgroundColor: hovered ? c.hover : 'transparent',
+                  })}
+                >
+                  <ChatGptIcon name="edit" size={14} color={c.text} />
+                  <Text style={{ fontSize: 13, color: c.text }}>Rename</Text>
+                </Pressable>
+              )}
+              {props.onDelete && (
+                <Pressable
+                  accessibilityRole="menuitem"
+                  onPress={() => {
+                    const target = menuTarget.item;
+                    setMenuTarget(null);
+                    props.onDelete!(target);
+                  }}
+                  style={({ hovered }) => ({
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 8,
+                    paddingHorizontal: 10,
+                    paddingVertical: 8,
+                    borderRadius: 8,
+                    backgroundColor: hovered ? c.hover : 'transparent',
+                  })}
+                >
+                  <ChatGptIcon name="trash" size={14} color={c.danger} />
+                  <Text style={{ fontSize: 13, color: c.danger }}>Delete</Text>
+                </Pressable>
+              )}
+            </View>
+          )}
+        </View>
+      </Modal>
     </View>
   );
 }
