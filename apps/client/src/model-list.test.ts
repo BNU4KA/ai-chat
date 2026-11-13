@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { pickPopularModels } from './model-list';
+import { pickPopularModels } from './popular-models';
 import type { Model } from './types';
 
 const base: Omit<Model, 'id' | 'name'> = {
@@ -15,18 +15,16 @@ const base: Omit<Model, 'id' | 'name'> = {
   catalog_stale: false,
 };
 
-it('picks one optimal Google, OpenAI, and Anthropic Haiku model', () => {
+it('picks the 3 configured popular models (Anthropic Haiku 5.5, Google Gemini 3.8 Flash, OpenAI GPT-5.4 Mini)', () => {
   const catalog: Model[] = [
     { ...base, id: 'meta/llama-3', name: 'Llama 3' },
-    { ...base, id: 'anthropic/claude-opus-4.5', name: 'Claude Opus 4.5' },
-    { ...base, id: 'anthropic/claude-haiku-4.5', name: 'Anthropic: Claude Haiku 4.5' },
-    { ...base, id: 'openai/gpt-4.1-mini', name: 'OpenAI: GPT-4.1 Mini' },
-    { ...base, id: 'openai/gpt-5-mini', name: 'OpenAI: GPT-5 Mini' },
-    { ...base, id: 'google/gemini-2.5-flash', name: 'Google: Gemini 2.5 Flash' },
+    { ...base, id: 'openai/gpt-5.4-mini', name: 'OpenAI: GPT-5.4 Mini' },
+    { ...base, id: 'google/gemini-3.8-flash', name: 'Google: Gemini 3.8 Flash' },
+    { ...base, id: 'anthropic/claude-haiku-5.5', name: 'Anthropic: Claude Haiku 5.5' },
   ];
   expect(pickPopularModels(catalog).map((m) => m.id)).toEqual([
-    'google/gemini-2.5-flash',
-    'openai/gpt-5-mini',
-    'anthropic/claude-haiku-4.5',
+    'anthropic/claude-haiku-5.5',
+    'google/gemini-3.8-flash',
+    'openai/gpt-5.4-mini',
   ]);
 });

@@ -777,25 +777,26 @@ generation, no native device test, no deployment, no push):
 
 - Updated `SYSTEM` prompt (`packages/agent-runtime/src/execute.ts`) for concise, concrete,
   zero-fluff default replies (expanding only on complex tasks or explicit detail requests).
-- Added `Popular` (`Самые популярные`) section at the top of `ModelList` (`apps/client/src/model-list.tsx`)
-  picking one optimal price/quality model each from Google (`Gemini 2.5 Flash` / `Gemini 3.8 Flash`),
-  OpenAI (`GPT-5 Mini` / `GPT-4.1 Mini` / `GPT-4o Mini`), and Anthropic (`Claude Haiku 4.5` /
-  `Claude 3.5 Haiku`) from the live catalog.
+- Set default conversation model to `anthropic/claude-haiku-5.5` (`packages/contracts/src/schemas.ts`,
+  `apps/client/src/chat.tsx`).
+- Added `Popular` (`Самые популярные`) section at the top of `ModelList` (`apps/client/src/model-list.tsx`,
+  `apps/client/src/popular-models.ts`) showing the 3 configured preferred models:
+  `anthropic/claude-haiku-5.5`, `google/gemini-3.8-flash`, and `openai/gpt-5.4-mini`.
 - Added built-in `switch_model` and `generate_image` tools (`packages/contracts`,
   `packages/integrations`, `packages/services`, `packages/agent-runtime`, `apps/worker`):
   - `switch_model`: matches OpenRouter catalog entries by name/ID and updates `conversations.model_id`
     when explicitly requested in chat; client refreshes active conversation metadata on completion.
-  - `generate_image`: picks an image-output OpenRouter model (`supports_image_output`), calls
-    OpenRouter `modalities: ['image', 'text']`, stores the generated image in private Supabase
-    Storage linked to the assistant message via `files` + `message_files`, and renders a large
-    preview in `Attachment` (`apps/client/src/attachment.tsx`).
+  - `generate_image`: defaults to `google/gemini-nano-banana-2.1` (with Flash/Mini fallbacks) among
+    image-output OpenRouter models (`supports_image_output`), calls OpenRouter `modalities: ['image', 'text']`,
+    stores the generated image in private Supabase Storage linked to the assistant message via
+    `files` + `message_files`, and renders a large preview in `Attachment` (`apps/client/src/attachment.tsx`).
 - Also passed `supportsTools` through `tool_snapshot` (`repo.ts`, `server.ts`, `models.ts`) so
   text-only models never receive tool definitions.
 
 Checks on Node 26.13.0 / pnpm 12.18.0 (synthetic OpenRouter/storage fixtures; no live paid image
 generation or live model switch run performed; no commit or push):
 
-- `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build`, `git diff --check`: passed.
+- `pnpm typecheck`, `pnpm lint`, `pnpm test` (15 files, 52 tests), `pnpm build`, `git diff --check`: passed.
 - `pnpm test:e2e --reporter=list`: 40 passed (`desktop` + `mobile-web`), 2 skipped (live health).
 
 Checks on Node 26.13.0 / pnpm 12.18.0 (synthetic fixtures; no live provider, native build,

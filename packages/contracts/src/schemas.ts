@@ -79,7 +79,7 @@ export const conversationSchema = z.object({
 
 export const createConversationSchema = z
   .object({
-    model_id: z.string().min(1).max(200).default('google/gemini-3.8-flash'),
+    model_id: z.string().min(1).max(200).default('anthropic/claude-haiku-5.5'),
     enabled_tools: z.array(toolGroup).optional(),
   })
   .strict();
