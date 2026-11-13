@@ -799,6 +799,31 @@ generation or live model switch run performed; no commit or push):
 - `pnpm typecheck`, `pnpm lint`, `pnpm test` (15 files, 52 tests), `pnpm build`, `git diff --check`: passed.
 - `pnpm test:e2e --reporter=list`: 40 passed (`desktop` + `mobile-web`), 2 skipped (live health).
 
+## T13 — Persistent sidebar switching, chat skeleton, modal layering, and brand animation — 2026-11-13 (local, uncommitted)
+
+- Persistent chat switching (`chat.tsx`): tracked `activeId` + `window.history.replaceState` +
+  `popstate` on web so switching between chats or starting a new chat updates only the thread area
+  without remounting the sidebar or reloading the page.
+- Chat loading skeleton (`fool-spinner.tsx`, `chat.tsx`): replaced full-screen `<Loading />` during
+  `chat.isPending` / initial `messages.isPending` with inline `ChatThreadSkeleton` inside the thread
+  area while keeping the sidebar and header mounted.
+- Opaque message popover (`message-actions.tsx`): moved `More message actions` (`···`) menu into
+  a viewport-clamped `Modal` (`measureInWindow`) so `RunUsage` and adjacent elements never bleed
+  through it.
+- Disabled sidebar items (`sidebar.tsx`): strengthened disabled styling (`opacity: 0.38`,
+  `cursor: not-allowed`) on `Library`, `Scheduled`, and `Notifications` with `zIndex: 999`
+  `"Coming soon"` hover tooltip.
+- Top-right header cleanup (`chat.tsx`): removed duplicate `Work tools` and `Projects & tasks`
+  header buttons; `Work tools` is accessible inside `Conversation menu` (`···`) and `Projects` stays
+  in the sidebar.
+- Brand click Easter egg (`sidebar.tsx`, `web-effects.web.tsx`): clicking `"it's kawasaki, bitches"`
+  triggers a 950 ms barrel-roll + neon glow (`kawasaki-party`) and emoji burst (`kawasaki-particle`),
+  honoring `prefers-reduced-motion`.
+
+Checks on Node 26.13.0 / pnpm 12.18.0: `pnpm exec vitest run --config vitest.config.ts` (15 files,
+52 tests), `pnpm typecheck`, `pnpm lint`, `pnpm build`, `git diff --check` passed; `pnpm test:e2e
+--reporter=list` passed 42 scenarios (`desktop` + `mobile-web`, synthetic fixtures), 2 skipped.
+
 Checks on Node 26.13.0 / pnpm 12.18.0 (synthetic fixtures; no live provider, native build,
 commit, or push):
 

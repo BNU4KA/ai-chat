@@ -183,3 +183,60 @@ export function ThinkingSkeleton() {
     </View>
   );
 }
+
+export function ChatThreadSkeleton() {
+  const { isDark } = useTheme();
+  const bg = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(13,13,13,0.07)';
+  const webGradient = isDark
+    ? 'linear-gradient(90deg, rgba(255,255,255,0.06) 25%, rgba(255,255,255,0.14) 50%, rgba(255,255,255,0.06) 75%)'
+    : 'linear-gradient(90deg, rgba(13,13,13,0.06) 25%, rgba(13,13,13,0.12) 50%, rgba(13,13,13,0.06) 75%)';
+  const lineStyle = (width: DimensionValue, height = 13, radius = 6) => ({
+    height,
+    width,
+    borderRadius: radius,
+    backgroundColor: bg,
+    ...(Platform.OS === 'web' ? ({ backgroundImage: webGradient } as Record<string, unknown>) : {}),
+  });
+
+  return (
+    <View testID="chat-thread-skeleton" style={{ gap: 26, paddingTop: 12 }}>
+      <View
+        testID="thinking-skeleton-line"
+        style={{
+          alignSelf: 'flex-end',
+          width: '46%',
+          maxWidth: 320,
+          height: 44,
+          borderRadius: 22,
+          backgroundColor: bg,
+          ...(Platform.OS === 'web'
+            ? ({ backgroundImage: webGradient } as Record<string, unknown>)
+            : {}),
+        }}
+      />
+      <View style={{ gap: 10, maxWidth: 620 }}>
+        <View testID="thinking-skeleton-line" style={lineStyle('92%')} />
+        <View testID="thinking-skeleton-line" style={lineStyle('96%')} />
+        <View testID="thinking-skeleton-line" style={lineStyle('74%')} />
+      </View>
+      <View
+        testID="thinking-skeleton-line"
+        style={{
+          alignSelf: 'flex-end',
+          width: '34%',
+          maxWidth: 240,
+          height: 42,
+          borderRadius: 22,
+          backgroundColor: bg,
+          ...(Platform.OS === 'web'
+            ? ({ backgroundImage: webGradient } as Record<string, unknown>)
+            : {}),
+        }}
+      />
+      <View style={{ gap: 10, maxWidth: 560 }}>
+        <View testID="thinking-skeleton-line" style={lineStyle('85%')} />
+        <View testID="thinking-skeleton-line" style={lineStyle('58%')} />
+      </View>
+    </View>
+  );
+}

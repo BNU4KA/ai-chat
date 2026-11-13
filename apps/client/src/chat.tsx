@@ -21,7 +21,7 @@ import { useAuth } from './auth';
 import { useTheme } from './theme';
 import { useCredential, useCapabilities, useModels, useProfile } from './queries';
 import { useRun, activeStatus } from './use-run';
-import { Button, Copy, ErrorNotice, Field, Loading, Panel } from './ui';
+import { Button, Copy, ErrorNotice, Field, Panel } from './ui';
 import { Dialog } from './dialog';
 import {
   BRAND_NAME,
@@ -36,7 +36,7 @@ import { ApprovalCard } from './approval';
 import { Attachment } from './attachment';
 import { MessageActions } from './message-actions';
 import { ComposerFrame } from './composer-frame';
-import { FoolSpinner, ThinkingSkeleton } from './fool-spinner';
+import { ChatThreadSkeleton, FoolSpinner, ThinkingSkeleton } from './fool-spinner';
 import { ChatGptIcon, type ChatGptIconName } from './chatgpt-icons';
 import { useMotionPaused } from './motion';
 import { usePinnedChats } from './pinned-chats';
@@ -107,8 +107,22 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     enabled: !!evidence,
   });
   const [createdChat, setCreatedChat] = useState<Conversation | null>(null);
+  const [activeId, setActiveId] = useState<string | undefined>(routeId);
   const [homeModel, setHomeModel] = useState('anthropic/claude-haiku-5.5');
-  const id = routeId ?? createdChat?.id;
+  useEffect(() => {
+    setActiveId(routeId);
+  }, [routeId]);
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const onPop = () => {
+      const match = window.location.pathname.match(/^\/chat\/([^/]+)$/);
+      setActiveId(match ? decodeURIComponent(match[1]!) : undefined);
+      setCreatedChat(null);
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+  const id = activeId ?? createdChat?.id;
   const router = useRouter();
   const cache = useQueryClient();
   const { colors: c, isDark, setChoice } = useTheme();
@@ -163,7 +177,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     if (profile.data) setChoice(profile.data.theme);
   }, [profile.data, setChoice]);
   useEffect(() => {
-    setDraft(profile.data?.id ? (consumeDraft(profile.data.id, routeId ?? 'home') ?? '') : '');
+    setDraft(profile.data?.id ? (consumeDraft(profile.data.id, activeId ?? 'home') ?? '') : '');
     setSelectedFiles([]);
     setOptimisticUser(null);
     setError(null);
@@ -171,7 +185,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     setEditingMessageId(null);
     setPassageOpenId(null);
     setAtBottom(true);
-  }, [routeId, profile.data?.id]);
+  }, [activeId, profile.data?.id]);
 
   // Global Cmd/Ctrl+K search shortcut & Escape to dismiss model popover
   useEffect(() => {
@@ -277,7 +291,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     visibleMessages.sort((a, b) => (BigInt(a.seq) < BigInt(b.seq) ? -1 : 1));
   }
 
-  const isHome = !routeId && !visibleMessages.length && optimisticUser === null;
+  const isHome = !id && !visibleMessages.length && optimisticUser === null;
 
   useLayoutEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -342,14 +356,30 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
   async function createChat() {
     creating.current = null;
     setCreatedChat(null);
+    setActiveId(undefined);
     setOptimisticUser(null);
     setDraft('');
     setSelectedFiles([]);
     setError(null);
     setDrawer(false);
-    if (routeId) router.replace('/');
-    else if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
       window.history.replaceState(null, '', '/');
+    } else {
+      router.replace('/');
+    }
+  }
+
+  function openChat(conversationId: string) {
+    creating.current = null;
+    setCreatedChat(null);
+    setOptimisticUser(null);
+    setError(null);
+    setDrawer(false);
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      setActiveId(conversationId);
+      window.history.replaceState(null, '', `/chat/${conversationId}`);
+    } else {
+      router.replace(`/chat/${conversationId}`);
     }
   }
 
@@ -431,7 +461,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
       ]);
       await cache.invalidateQueries({ queryKey: ['messages', targetId] });
       setOptimisticUser(null);
-      if (!routeId) {
+      if (!activeId) {
         if (Platform.OS === 'web' && typeof window !== 'undefined') {
           window.history.replaceState(null, '', `/chat/${targetId}`);
         } else {
@@ -508,7 +538,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
       setDialog(null);
       setTargetChat(null);
       await cache.invalidateQueries({ queryKey: ['conversations'] });
-      if (target.id === id) router.replace('/');
+      if (target.id === id) void createChat();
     } catch (e) {
       setError(e);
     }
@@ -808,10 +838,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
         setDrawer(false);
         setSearchModalOpen(true);
       }}
-      onSelect={(conversationId) => {
-        router.replace(`/chat/${conversationId}`);
-        setDrawer(false);
-      }}
+      onSelect={(conversationId) => openChat(conversationId)}
       onTogglePin={(item) => togglePin(item.id)}
       onRename={(item) => {
         setTargetChat(item);
@@ -849,15 +876,8 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     />
   );
 
-  if (id && chat.isPending) return <Loading />;
-  if (id && chat.isError)
-    return (
-      <View style={{ flex: 1, backgroundColor: c.background, padding: 24, gap: 20 }}>
-        <Copy>Conversation not found or temporarily unavailable.</Copy>
-        <ErrorNotice error={chat.error} />
-        <Button onPress={() => router.replace('/')}>Back to conversations</Button>
-      </View>
-    );
+  const loadingThread =
+    !!id && (chat.isPending || (messages.isPending && !visibleMessages.length)) && optimisticUser === null;
 
   const modelLabel = (currentModel?.name ?? 'Claude Haiku 5.5').replace(
     /^(Google|OpenAI|Anthropic): /,
@@ -962,40 +982,6 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
           </View>
 
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Work tools"
-              onPress={() => setWorkToolsOpen((v) => !v)}
-              style={({ hovered, pressed }) => ({
-                width: 34,
-                height: 34,
-                borderRadius: 8,
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: workToolsOpen
-                  ? c.selected
-                  : hovered || pressed
-                    ? c.hover
-                    : 'transparent',
-              })}
-            >
-              <ChatGptIcon name="sliders" size={16} color={c.muted} />
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Projects & tasks"
-              onPress={() => router.push('/workspace' as Href)}
-              style={({ hovered, pressed }) => ({
-                width: 34,
-                height: 34,
-                borderRadius: 8,
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: hovered || pressed ? c.hover : 'transparent',
-              })}
-            >
-              <ChatGptIcon name="projects" size={16} color={c.muted} />
-            </Pressable>
             {!!id && (
               <Pressable
                 accessibilityRole="button"
@@ -1161,7 +1147,15 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                     Load earlier messages
                   </Button>
                 )}
-                {!visibleMessages.length && optimisticUser === null && (
+                {id && chat.isError && (
+                  <View style={{ padding: 16, gap: 14 }}>
+                    <Copy>Conversation not found or temporarily unavailable.</Copy>
+                    <ErrorNotice error={chat.error} />
+                    <Button onPress={() => void createChat()}>Back to conversations</Button>
+                  </View>
+                )}
+                {loadingThread && <ChatThreadSkeleton />}
+                {!loadingThread && !chat.isError && !visibleMessages.length && optimisticUser === null && (
                   <View style={{ paddingVertical: wide ? 80 : 40, alignItems: 'center', gap: 14 }}>
                     <Text
                       style={{
@@ -1510,7 +1504,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
         visible={searchModalOpen}
         close={() => setSearchModalOpen(false)}
         conversations={conversations}
-        onSelectChat={(cid) => router.replace(`/chat/${cid}`)}
+        onSelectChat={(cid) => openChat(cid)}
         onSelectMessage={(cid, mid) =>
           router.push({ pathname: '/chat/[id]', params: { id: cid, message: mid } } as Href)
         }
@@ -1665,6 +1659,30 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <ChatGptIcon name="library" size={16} color={c.text} />
               <Text style={{ fontSize: 14, color: c.text }}>Conversation files</Text>
+            </View>
+            <ChatGptIcon name="chevronRight" size={15} color={c.muted} />
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => {
+              setDialog(null);
+              setWorkToolsOpen((v) => !v);
+            }}
+            style={({ hovered, pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+              borderTopWidth: StyleSheet.hairlineWidth,
+              borderTopColor: c.borderSubtle,
+              backgroundColor: hovered || pressed ? c.hover : 'transparent',
+            })}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <ChatGptIcon name="sliders" size={16} color={c.text} />
+              <Text style={{ fontSize: 14, color: c.text }}>Work tools</Text>
             </View>
             <ChatGptIcon name="chevronRight" size={15} color={c.muted} />
           </Pressable>
