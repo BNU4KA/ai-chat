@@ -866,7 +866,7 @@ the personal key when it exists, otherwise the assigned server key. Runs record 
 `managedKeyId`. Ordinary clients never receive the server secret or its `last_four`.
 
 Checks on Node 26.13.0, local Postgres container `ai-chat-pg` at `127.0.0.1:54329` (synthetic
-keys only; no live OpenRouter call, no commit, no push):
+keys only; no live OpenRouter call):
 
 - `pnpm typecheck`: passed.
 - `pnpm lint`: passed.
@@ -874,5 +874,11 @@ keys only; no live OpenRouter call, no commit, no push):
 - `DATABASE_URL=postgres://postgres@127.0.0.1:54329/ai_chat pnpm test:integration`: 42 passed
   across 7 files, including admin access, key priority, RLS denial for `app_api`, and
   `account.purge` outbox insertion.
-- Browser pass of `/admin` was not run: the screen requires a signed-in admin session.
-- Hosted Supabase still needs `pnpm migrate` before this schema exists there.
+- Signed-in browser pass of `/admin` was not run: the screen requires an admin session.
+- Hosted migrations `0004`–`0006` are applied.
+- Commit `d6d974b` is on `codex/workspace-expansion`. Production release `20261113T211213Z`
+  is the current API, worker, and web. The first install was OOM-killed during `pnpm install`
+  on the 894 MB VPS; a 2 GB swap file was added, and the retry passed. Readiness returned
+  `database` and `queue` ok. Unauthenticated `GET /v1/admin/users` returned 401. The public
+  admin bundle returned 200. `ADMIN_EMAILS` is set in the server environment and visible to
+  the API process. The owner account is the only admin.
