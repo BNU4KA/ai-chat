@@ -824,7 +824,7 @@ Checks on Node 26.13.0 / pnpm 12.18.0: `pnpm exec vitest run --config vitest.con
 52 tests), `pnpm typecheck`, `pnpm lint`, `pnpm build`, `git diff --check` passed; `pnpm test:e2e
 --reporter=list` passed 42 scenarios (`desktop` + `mobile-web`, synthetic fixtures), 2 skipped.
 
-## T08 — Tavily primary + OpenRouter web-search fallback — 2026-11-13 (local, uncommitted)
+## T08 — Tavily primary + OpenRouter web-search fallback — 2026-11-13
 
 - Added `searchWebOpenRouter` (`packages/integrations/src/openrouter.ts`) using OpenRouter's
   `plugins: [{ id: 'web', max_results }]` and `url_citation` annotations.
@@ -843,6 +843,12 @@ Checks on Node 26.13.0 / pnpm 12.18.0: live smoke call to `https://api.tavily.co
 `pnpm lint`, `pnpm build`, `pnpm test:e2e --reporter=list` (42 passed, 2 skipped), and
 `git diff --check` passed. (OpenRouter fallback tested with synthetic fixtures; no live OpenRouter
 web-search request performed.)
+
+Committed as `139403c` on `codex/workspace-expansion` and pushed. Production runtime
+`20261113T200404Z` is the previous runtime with the search changes applied: Tavily first, OpenRouter
+web-plugin fallback, and `web` available for new chats. `TAVILY_API_KEY` is in `/etc/ai-chat/server.env`.
+API and worker were restarted; public readiness returned database and queue ok. The static web release
+was left unchanged. Previous runtime `20261111T111852Z` remains on disk for rollback.
 
 Checks on Node 26.13.0 / pnpm 12.18.0 (synthetic fixtures; no live provider, native build,
 commit, or push):
