@@ -777,10 +777,10 @@ generation, no native device test, no deployment, no push):
 
 - Updated `SYSTEM` prompt (`packages/agent-runtime/src/execute.ts`) for concise, concrete,
   zero-fluff default replies (expanding only on complex tasks or explicit detail requests).
-- Added `Popular` (`Самые популярные`) section at the top of `ModelList` (`apps/client/src/model-list.tsx`)
-  picking one optimal price/quality model each from Google (`Gemini 2.5 Flash` / `Gemini 3.8 Flash`),
-  OpenAI (`GPT-5 Mini` / `GPT-4.1 Mini` / `GPT-4o Mini`), and Anthropic (`Claude Haiku 4.5` /
-  `Claude 3.5 Haiku`) from the live catalog.
+- Added `Popular` (`Самые популярные`) section at the top of `ModelList` (`apps/client/src/model-list.tsx`,
+  `apps/client/src/popular-models.ts`) picking one optimal price/quality model each from Google
+  (`Gemini 2.5 Flash` / `Gemini 3.8 Flash`), OpenAI (`GPT-5 Mini` / `GPT-4.1 Mini` / `GPT-4o Mini`),
+  and Anthropic (`Claude Haiku 4.5` / `Claude 3.5 Haiku`) from the live catalog.
 - Added built-in `switch_model` and `generate_image` tools (`packages/contracts`,
   `packages/integrations`, `packages/services`, `packages/agent-runtime`, `apps/worker`):
   - `switch_model`: matches OpenRouter catalog entries by name/ID and updates `conversations.model_id`
@@ -795,7 +795,7 @@ generation, no native device test, no deployment, no push):
 Checks on Node 26.13.0 / pnpm 12.18.0 (synthetic OpenRouter/storage fixtures; no live paid image
 generation or live model switch run performed; no commit or push):
 
-- `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build`, `git diff --check`: passed.
+- `pnpm typecheck`, `pnpm lint`, `pnpm test` (15 files, 52 tests), `pnpm build`, `git diff --check`: passed.
 - `pnpm test:e2e --reporter=list`: 40 passed (`desktop` + `mobile-web`), 2 skipped (live health).
 
 Checks on Node 26.13.0 / pnpm 12.18.0 (synthetic fixtures; no live provider, native build,

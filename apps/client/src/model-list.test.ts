@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { pickPopularModels } from './model-list';
+import { pickPopularModels } from './popular-models';
 import type { Model } from './types';
 
 const base: Omit<Model, 'id' | 'name'> = {
