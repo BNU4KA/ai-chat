@@ -107,7 +107,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     enabled: !!evidence,
   });
   const [createdChat, setCreatedChat] = useState<Conversation | null>(null);
-  const [homeModel, setHomeModel] = useState('google/gemini-3.8-flash');
+  const [homeModel, setHomeModel] = useState('anthropic/claude-haiku-5.5');
   const id = routeId ?? createdChat?.id;
   const router = useRouter();
   const cache = useQueryClient();
@@ -859,7 +859,10 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
       </View>
     );
 
-  const modelLabel = (currentModel?.name ?? 'Gemini 3.8 Flash').replace('Google: ', '');
+  const modelLabel = (currentModel?.name ?? 'Claude Haiku 5.5').replace(
+    /^(Google|OpenAI|Anthropic): /,
+    '',
+  );
 
   return (
     <View style={{ flex: 1, flexDirection: 'row', backgroundColor: c.background }}>

@@ -1471,40 +1471,40 @@ test('model picker shows Popular section first with Google, OpenAI, and Anthropi
             catalog_stale: false,
           },
           {
-            id: 'google/gemini-2.5-flash',
-            name: 'Google: Gemini 2.5 Flash',
+            id: 'google/gemini-3.8-flash',
+            name: 'Google: Gemini 3.8 Flash',
             supports_tools: true,
             supports_images: true,
             supports_image_output: false,
-            context_length: 1000000,
-            input_price_per_million_usd: '0.15',
-            output_price_per_million_usd: '0.6',
+            context_length: 1048576,
+            input_price_per_million_usd: '0.825',
+            output_price_per_million_usd: '4.125',
             supported_parameters: ['tools'],
             catalog_fetched_at: time,
             catalog_stale: false,
           },
           {
-            id: 'openai/gpt-5-mini',
-            name: 'OpenAI: GPT-5 Mini',
+            id: 'openai/gpt-5.4-mini',
+            name: 'OpenAI: GPT-5.4 Mini',
             supports_tools: true,
             supports_images: true,
             supports_image_output: false,
             context_length: 400000,
-            input_price_per_million_usd: '0.25',
-            output_price_per_million_usd: '2',
+            input_price_per_million_usd: '0.75',
+            output_price_per_million_usd: '4.5',
             supported_parameters: ['tools'],
             catalog_fetched_at: time,
             catalog_stale: false,
           },
           {
-            id: 'anthropic/claude-haiku-4.5',
-            name: 'Anthropic: Claude Haiku 4.5',
+            id: 'anthropic/claude-haiku-5.5',
+            name: 'Anthropic: Claude Haiku 5.5',
             supports_tools: true,
             supports_images: true,
             supports_image_output: false,
-            context_length: 200000,
-            input_price_per_million_usd: '1',
-            output_price_per_million_usd: '5',
+            context_length: 1000000,
+            input_price_per_million_usd: '0.1',
+            output_price_per_million_usd: '0.5',
             supported_parameters: ['tools'],
             catalog_fetched_at: time,
             catalog_stale: false,
@@ -1518,11 +1518,14 @@ test('model picker shows Popular section first with Google, OpenAI, and Anthropi
   await expect(page.getByText('Popular', { exact: true })).toBeVisible();
   await expect(page.getByText('All models', { exact: true })).toBeVisible();
   const popularY = (await page.getByText('Popular', { exact: true }).boundingBox())!.y;
-  const geminiY = (await page.getByText('Google: Gemini 2.5 Flash', { exact: true }).boundingBox())!
+  const haikuY = (await page.getByText('Anthropic: Claude Haiku 5.5', { exact: true }).boundingBox())!
+    .y;
+  const geminiY = (await page.getByText('Google: Gemini 3.8 Flash', { exact: true }).boundingBox())!
     .y;
   const allY = (await page.getByText('All models', { exact: true }).boundingBox())!.y;
   const llamaY = (await page.getByText('Llama 3', { exact: true }).boundingBox())!.y;
-  expect(geminiY).toBeGreaterThan(popularY);
+  expect(haikuY).toBeGreaterThan(popularY);
+  expect(geminiY).toBeGreaterThan(haikuY);
   expect(allY).toBeGreaterThan(geminiY);
   expect(llamaY).toBeGreaterThan(allY);
 });

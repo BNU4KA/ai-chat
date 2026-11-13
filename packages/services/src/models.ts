@@ -118,12 +118,12 @@ export async function validateChatModel(
 }
 
 const IMAGE_MODEL_PREFERENCES = [
+  'google/gemini-nano-banana-2.1',
+  'google/gemini-3.1-flash-lite-image',
+  'google/gemini-3.1-flash-image',
   'google/gemini-2.5-flash-image',
-  'google/gemini-2.5-flash-image-preview',
   'openai/gpt-5-image-mini',
   'openai/gpt-5-image',
-  'black-forest-labs/flux.2-pro',
-  'black-forest-labs/flux.1-schnell',
 ];
 
 function matchModels(models: Model[], query: string): Model[] {
