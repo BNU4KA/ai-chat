@@ -4,6 +4,7 @@ import { Children, type ReactNode, type Ref, type ComponentRef } from 'react';
 import { ScrollView, View, type TextInputProps, type ViewStyle } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from './theme';
+
 export function Button({
   children,
   onPress,
@@ -29,12 +30,14 @@ export function Button({
       disabled={disabled}
       onPress={onPress}
       style={({ pressed, hovered }) => ({
-        minHeight: quiet ? 36 : 44,
+        minHeight: quiet ? 34 : 40,
         paddingHorizontal: quiet ? 10 : 16,
-        paddingVertical: quiet ? 8 : 11,
-        borderRadius: 24,
+        paddingVertical: quiet ? 6 : 10,
+        borderRadius: 9999,
         alignItems: 'center',
         justifyContent: 'center',
+        flexDirection: 'row',
+        gap: 6,
         backgroundColor: quiet
           ? hovered
             ? c.hover
@@ -46,7 +49,7 @@ export function Button({
             : danger
               ? c.danger
               : c.accent,
-        opacity: disabled ? 0.45 : pressed ? 0.75 : 1,
+        opacity: disabled ? 0.45 : pressed ? 0.78 : 1,
       })}
     >
       {Children.toArray(children).every(
@@ -75,28 +78,31 @@ export function Button({
     </Pressable>
   );
 }
+
 export function Field(props: TextInputProps & { ref?: Ref<ComponentRef<typeof TextInput>> }) {
   const { colors: c } = useTheme();
   return (
     <TextInput
       {...props}
-      placeholderTextColor={c.muted}
+      placeholderTextColor={c.subtle}
       style={[
         {
-          minHeight: 46,
+          minHeight: 42,
           borderWidth: 1,
           borderColor: c.border,
-          borderRadius: 24,
-          padding: 12,
+          borderRadius: 12,
+          paddingHorizontal: 14,
+          paddingVertical: 10,
           color: c.text,
           backgroundColor: c.surface,
-          fontSize: 16,
+          fontSize: 15,
         },
         props.style,
       ]}
     />
   );
 }
+
 export function Copy({
   children,
   muted = false,
@@ -114,22 +120,24 @@ export function Copy({
       translate={translate}
       style={{
         color: muted ? c.muted : c.text,
-        fontSize: small ? 13 : 16,
-        lineHeight: small ? 20 : 25,
+        fontSize: small ? 13 : 15,
+        lineHeight: small ? 19 : 23,
       }}
     >
       {children}
     </Text>
   );
 }
+
 export function ErrorNotice({ error }: { error: unknown }) {
   const { colors: c } = useTheme();
   return error ? (
-    <Text accessibilityRole="alert" style={{ color: c.danger, lineHeight: 22 }}>
+    <Text accessibilityRole="alert" style={{ color: c.danger, fontSize: 13, lineHeight: 20 }}>
       {error instanceof Error ? error.message : String(error)}
     </Text>
   ) : null;
 }
+
 export function Loading() {
   const { colors: c } = useTheme();
   return (
@@ -142,10 +150,11 @@ export function Loading() {
         padding: 32,
       }}
     >
-      <FoolSpinner size={56} />
+      <FoolSpinner size={32} />
     </View>
   );
 }
+
 export function Panel({
   children,
   style,
@@ -161,12 +170,12 @@ export function Panel({
       testID={testID}
       style={[
         {
-          padding: 20,
-          gap: 14,
+          padding: 18,
+          gap: 12,
           borderWidth: 1,
           borderColor: c.border,
-          borderRadius: 24,
-          backgroundColor: c.surface,
+          borderRadius: 16,
+          backgroundColor: c.raised,
         },
         style,
       ]}
@@ -175,6 +184,7 @@ export function Panel({
     </View>
   );
 }
+
 export function Page({ title, children }: { title: string; children: ReactNode }) {
   const { colors: c } = useTheme();
   const router = useRouter();
@@ -183,25 +193,24 @@ export function Page({ title, children }: { title: string; children: ReactNode }
       style={{ flex: 1, backgroundColor: c.background }}
       contentContainerStyle={{
         width: '100%',
-        maxWidth: 760,
+        maxWidth: 740,
         alignSelf: 'center',
         padding: 24,
-        gap: 20,
+        gap: 18,
         paddingBottom: 60,
       }}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
         <Button secondary label="Back to conversations" onPress={() => router.replace('/')}>
           ← Back
         </Button>
-        <Text style={{ fontSize: 25, fontWeight: '700', color: c.text }}>{title}</Text>
+        <Text style={{ fontSize: 22, fontWeight: '600', color: c.text }}>{title}</Text>
       </View>
       {children}
     </ScrollView>
   );
 }
 
-/** The same outlined selection treatment used in Settings. */
 export function Choice({
   children,
   selected,
@@ -225,20 +234,23 @@ export function Choice({
       disabled={disabled}
       onPress={onPress}
       style={({ hovered, pressed }) => ({
-        minHeight: 44,
-        paddingHorizontal: 16,
-        paddingVertical: 11,
-        borderRadius: 22,
+        minHeight: 40,
+        paddingHorizontal: 14,
+        paddingVertical: 9,
+        borderRadius: 9999,
         borderWidth: 1,
-        borderColor: selected ? c.accent : c.border,
+        borderColor: selected ? c.text : c.border,
         backgroundColor: selected ? c.selected : hovered ? c.hover : 'transparent',
-        opacity: disabled ? 0.45 : pressed ? 0.75 : 1,
+        opacity: disabled ? 0.45 : pressed ? 0.78 : 1,
       })}
     >
-      <Text style={{ fontSize: 14, color: c.text, fontWeight: '500' }}>{children}</Text>
+      <Text style={{ fontSize: 14, color: c.text, fontWeight: selected ? '600' : '500' }}>
+        {children}
+      </Text>
     </Pressable>
   );
 }
+
 export function TabBar({
   items,
   value,

@@ -1,14 +1,15 @@
 import { useEffect, useState, useRef } from 'react';
 import { BackHandler, Platform, ScrollView, View, useWindowDimensions } from 'react-native';
-import { useRouter, type Href } from 'expo-router';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { workflowPrompts } from '@ai-chat/contracts';
+import { Text } from './locale-ui';
 import { useTheme } from './theme';
 import { useCredential } from './queries';
 import { api, json } from './api';
 import { Button, Copy, Field, Panel, ErrorNotice, Choice, TabBar } from './ui';
 import { DocumentEditor, useProjects, useDocuments, type Document } from './workspace';
 import type { Conversation, Message, Run } from './types';
+
 export function ChatExtras({
   chat,
   messages,
@@ -17,6 +18,7 @@ export function ChatExtras({
   onDraft,
   running,
   documentSeed,
+  open: controlledOpen,
   onOpenChange,
 }: {
   chat?: Conversation;
@@ -26,17 +28,22 @@ export function ChatExtras({
   onDraft: (s: string) => void;
   running: boolean;
   documentSeed?: { text: string; key: string };
+  open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }) {
   const dimensions = useWindowDimensions(),
     wide = dimensions.width >= 1024,
     { colors: c } = useTheme();
-  const router = useRouter(),
-    cache = useQueryClient(),
+  const cache = useQueryClient(),
     projects = useProjects(),
     docs = useDocuments();
-  const [open, setOpen] = useState(false),
-    [tab, setTab] = useState('context'),
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  function setOpen(next: boolean) {
+    setInternalOpen(next);
+    onOpenChange?.(next);
+  }
+  const [tab, setTab] = useState('context'),
     [error, setError] = useState<unknown>(),
     [busy, setBusy] = useState(false),
     [note, setNote] = useState(''),
@@ -68,9 +75,6 @@ export function ChatExtras({
       setBusy(false);
     }
   }
-  useEffect(() => {
-    onOpenChange?.(open);
-  }, [open, onOpenChange]);
   useEffect(() => {
     if (!open) return;
     if (Platform.OS === 'web') {
@@ -120,17 +124,13 @@ export function ChatExtras({
       }),
     )
       .then((d) => {
-        {
-          setDoc(d);
-          setTab('documents');
-          setOpen(true);
-          void cache.invalidateQueries({ queryKey: ['documents'] });
-        }
+        setDoc(d);
+        setTab('documents');
+        setOpen(true);
+        void cache.invalidateQueries({ queryKey: ['documents'] });
       })
       .catch(setError)
       .finally(() => setBusy(false));
-
-    // A new save request must create exactly one document, independent of chat refetches.
   }, [documentSeed?.key]);
   async function patch(body: unknown) {
     if (!chat) return;
@@ -141,17 +141,24 @@ export function ChatExtras({
     cache.setQueryData(['conversation', chat.id], value);
     await cache.invalidateQueries({ queryKey: ['conversations'] });
   }
+  const longContext =
+    !open &&
+    !!contextAdvice.data?.context_length &&
+    contextAdvice.data.input_tokens_estimated > contextAdvice.data.context_length * 0.7;
+
+  if (!open && !longContext) return null;
+
   return (
     <View
       style={{
         paddingHorizontal: 16,
-        paddingTop: open ? 12 : 0,
+        paddingTop: open ? 12 : 4,
         paddingBottom: 6,
         gap: 8,
         ...(open
           ? {
               position: 'absolute',
-              top: 72,
+              top: 52,
               bottom: 0,
               right: 0,
               ...(wide ? { width: 420 } : { left: 0 }),
@@ -163,28 +170,13 @@ export function ChatExtras({
           : {}),
       }}
     >
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-        <Button secondary onPress={() => setOpen(!open)}>
-          {open ? 'Close work tools' : 'Work tools'}
-        </Button>
-        <Button secondary onPress={() => router.push('/workspace' as Href)}>
-          Projects & tasks
-        </Button>
-        {chat?.project_id && (
+      {longContext && (
+        <Panel style={{ maxWidth: 768, width: '100%', alignSelf: 'center', padding: 14 }}>
           <Copy small>
-            {projects.data?.find((p) => p.id === chat.project_id)?.name ?? 'Project'}
+            This conversation is getting long. Review a context note to keep room for the next
+            answer.
           </Copy>
-        )}
-        {chat?.context_note && <Copy small>Reviewed context note is active</Copy>}
-      </View>
-      {!open &&
-        contextAdvice.data?.context_length &&
-        contextAdvice.data.input_tokens_estimated > contextAdvice.data.context_length * 0.7 && (
-          <Panel>
-            <Copy small>
-              This conversation is getting long. Review a context note to keep room for the next
-              answer.
-            </Copy>
+          <View style={{ flexDirection: 'row' }}>
             <Button
               secondary
               onPress={() => {
@@ -194,10 +186,24 @@ export function ChatExtras({
             >
               Review context
             </Button>
-          </Panel>
-        )}
+          </View>
+        </Panel>
+      )}
       {open && (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ gap: 10, paddingBottom: 8 }}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ gap: 10, paddingBottom: 16 }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+            }}
+          >
+            <Copy>Work tools</Copy>
+            <Button quiet secondary onPress={() => setOpen(false)}>
+              Close work tools
+            </Button>
+          </View>
           <TabBar
             label="Work tools sections"
             value={tab}
@@ -493,72 +499,69 @@ export function ChatExtras({
     </View>
   );
 }
+
 export function PassageActions({
   text,
+  open,
+  onClose,
   onDraft,
-  onSave,
 }: {
   text: string;
+  open: boolean;
+  onClose: () => void;
   onDraft: (s: string) => void;
-  onSave: () => void;
 }) {
-  const [open, setOpen] = useState(false),
-    [passage, setPassage] = useState('');
-  function choose() {
-    if (Platform.OS === 'web') {
-      const selected = window.getSelection()?.toString();
-      if (selected && text.includes(selected)) setPassage(selected);
-    }
-    setOpen(!open);
-  }
+  const [passage, setPassage] = useState('');
+  useEffect(() => {
+    if (!open || Platform.OS !== 'web') return;
+    const selected = window.getSelection()?.toString();
+    if (selected && text.includes(selected)) setPassage(selected);
+  }, [open, text]);
+
+  if (!open) return null;
   return (
-    <View style={{ gap: 6 }}>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-        <Button secondary quiet onPress={choose}>
-          Work with response
-        </Button>
-        <Button secondary quiet onPress={onSave}>
-          Save as document
+    <View style={{ gap: 8, marginTop: 4 }}>
+      <Field
+        accessibilityLabel="Selected response passage"
+        placeholder="Select or paste the passage to work with"
+        multiline
+        value={passage}
+        onChangeText={setPassage}
+      />
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+        {['Explain', 'Shorten', 'Check'].map((action) => (
+          <Button
+            key={action}
+            secondary
+            onPress={() => {
+              onDraft(
+                `${action} the following passage${action === 'Check' ? ' using sources; distinguish supported claims, contradictions and uncertainty' : ''}:\n\n${passage.trim() || text}`,
+              );
+              onClose();
+            }}
+          >
+            {action}
+          </Button>
+        ))}
+        <Button secondary quiet onPress={onClose}>
+          Close
         </Button>
       </View>
-      {open && (
-        <>
-          <Field
-            accessibilityLabel="Selected response passage"
-            placeholder="Select or paste the passage to work with"
-            multiline
-            value={passage}
-            onChangeText={setPassage}
-          />
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-            {['Explain', 'Shorten', 'Check'].map((action) => (
-              <Button
-                key={action}
-                secondary
-                onPress={() =>
-                  onDraft(
-                    `${action} the following passage${action === 'Check' ? ' using sources; distinguish supported claims, contradictions and uncertainty' : ''}:\n\n${passage.trim() || text}`,
-                  )
-                }
-              >
-                {action}
-              </Button>
-            ))}
-          </View>
-          <Copy small muted>
-            Creates a draft. Review before sending.
-          </Copy>
-        </>
-      )}
+      <Copy small muted>
+        Creates a draft. Review before sending.
+      </Copy>
     </View>
   );
 }
+
 export function RunUsage({ run }: { run?: Run }) {
-  return run ? (
-    <Copy small muted>
+  const { colors: c } = useTheme();
+  if (!run || (run.usage.input_tokens == null && run.usage.output_tokens == null)) return null;
+  return (
+    <Text style={{ fontSize: 11, color: c.subtle }}>
       Input {run.usage.input_tokens ?? '?'} · output {run.usage.output_tokens ?? '?'} tokens ·{' '}
       {run.usage.cost_status} cost{' '}
       {run.usage.cost_usd == null ? 'unknown' : `$${run.usage.cost_usd}`}
-    </Copy>
-  ) : null;
+    </Text>
+  );
 }

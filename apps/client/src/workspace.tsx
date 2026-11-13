@@ -1,10 +1,10 @@
 import { transferDraft } from './draft-transfer';
 import { useEffect, useState } from 'react';
-import { Platform, Share, View } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { Platform, ScrollView, Share, View, useWindowDimensions } from 'react-native';
+import { useRouter, useLocalSearchParams, type Href } from 'expo-router';
 import { Dialog } from './dialog';
 import { ModelList } from './model-list';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   workflowPrompts,
   type z,
@@ -12,11 +12,19 @@ import {
   type documentSchema,
   type scheduleSchema,
 } from '@ai-chat/contracts';
-import { api, authorizedFetch, json } from './api';
-import { Button, Copy, ErrorNotice, Field, Page, Panel, Choice, TabBar } from './ui';
+import { api, apiEnvelope, authorizedFetch, json } from './api';
+import { useAuth } from './auth';
+import { useTheme } from './theme';
+import { Button, Copy, ErrorNotice, Field, Panel, Choice, TabBar } from './ui';
+import { Pressable, Text } from './locale-ui';
 import { Markdown } from './markdown';
 import { useModels, useCredential, useProfile, useCapabilities } from './queries';
 import { useLocale } from './locale';
+import { ConversationSidebar, ConversationDrawer, useSidebarTransition } from './sidebar';
+import { ChatGptIcon } from './chatgpt-icons';
+import { SearchModal } from './search-modal';
+import { SettingsModal } from './settings-modal';
+import type { Conversation } from './types';
 export type Project = z.infer<typeof projectSchema>;
 export type Document = z.infer<typeof documentSchema>;
 export type Schedule = z.infer<typeof scheduleSchema>;
@@ -193,13 +201,41 @@ export function DocumentEditor({
   );
 }
 export default function WorkspacePage() {
-  const params = useLocalSearchParams<{ document?: string }>();
+  const params = useLocalSearchParams<{ document?: string; tab?: string }>();
   const router = useRouter(),
     cache = useQueryClient(),
+    auth = useAuth(),
+    { colors: c, isDark } = useTheme(),
     { language } = useLocale();
-  const [tab, setTab] = useState('projects'),
+  const wide = useWindowDimensions().width >= 1024;
+  const sidebarTransition = useSidebarTransition();
+  const [sidebarExpanded, setSidebarExpanded] = useState(true);
+  const [drawer, setDrawer] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState<'general' | 'connections' | null>(null);
+  const normalizeTab = (val?: string) => (val === 'notices' ? 'notifications' : val || 'projects');
+  const [tab, setTab] = useState(normalizeTab(params.tab)),
     [error, setError] = useState<unknown>(),
     [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (
+      params.tab &&
+      ['projects', 'documents', 'search', 'schedules', 'notifications', 'notices'].includes(
+        params.tab,
+      )
+    ) {
+      setTab(normalizeTab(params.tab));
+    }
+  }, [params.tab]);
+  const history = useInfiniteQuery({
+    queryKey: ['conversations', ''],
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }) =>
+      apiEnvelope<Conversation[]>(
+        `/v1/conversations?limit=30${pageParam ? '&cursor=' + encodeURIComponent(pageParam) : ''}`,
+      ),
+    getNextPageParam: (page) => page.next_cursor ?? undefined,
+  });
   const projects = useProjects(),
     documents = useDocuments(),
     credential = useCredential(),
@@ -306,20 +342,156 @@ export default function WorkspacePage() {
       setBusy(false);
     }
   }
+  const conversations = history.data?.pages.flatMap((page) => page.data) ?? [];
+  const unreadNotices = (notices.data ?? []).filter((n) => !n.read_at).length;
+  const sidebarSection: 'projects' | 'documents' | 'schedules' | 'notices' | 'search' | undefined =
+    tab === 'notifications'
+      ? 'notices'
+      : (tab as 'projects' | 'documents' | 'schedules' | 'search');
+  const sidebar = (mobile = false) => (
+    <ConversationSidebar
+      mobile={mobile}
+      expanded={mobile || sidebarExpanded}
+      activeSection={sidebarSection}
+      conversations={conversations}
+      onToggle={() => {
+        if (mobile) setDrawer(false);
+        else setSidebarExpanded((v) => !v);
+      }}
+      onNew={() => {
+        setDrawer(false);
+        router.replace('/');
+      }}
+      onOpenSearch={() => {
+        setDrawer(false);
+        setSearchOpen(true);
+      }}
+      onSelect={(cid) => {
+        setDrawer(false);
+        router.replace(`/chat/${cid}`);
+      }}
+      onWorkspace={(next) => {
+        setDrawer(false);
+        setTab(normalizeTab(next));
+      }}
+      onConnections={() => {
+        setDrawer(false);
+        setSettingsOpen('connections');
+      }}
+      onSettings={() => {
+        setDrawer(false);
+        setSettingsOpen('general');
+      }}
+      onSignOut={() => {
+        setDrawer(false);
+        void auth.signOut();
+      }}
+      displayName={profile.data?.display_name}
+      unreadNotices={unreadNotices}
+      busy={busy}
+      loading={history.isPending}
+      loadingMore={history.isFetchingNextPage}
+      error={history.error}
+      hasMore={!!history.hasNextPage}
+      onMore={() => void history.fetchNextPage()}
+    />
+  );
+
   return (
-    <Page title={language === 'ru' ? 'Рабочее пространство' : 'Workspace'}>
-      <TabBar
-        label="Workspace sections"
-        value={tab}
-        onChange={setTab}
-        items={[
-          { value: 'projects', label: 'Projects' },
-          { value: 'documents', label: 'Documents' },
-          { value: 'search', label: 'Search messages' },
-          { value: 'schedules', label: 'Scheduled tasks' },
-          { value: 'notifications', label: 'Notifications' },
-        ]}
-      />
+    <View style={{ flex: 1, flexDirection: 'row', backgroundColor: c.background }}>
+      {wide && (
+        <View
+          style={[
+            { width: sidebarExpanded ? 260 : 52, flexShrink: 0, zIndex: 20 },
+            sidebarTransition,
+          ]}
+        >
+          <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0 }}>
+            {sidebar()}
+          </View>
+        </View>
+      )}
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <View
+          style={{
+            height: 52,
+            paddingHorizontal: wide ? 20 : 12,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            backgroundColor: c.background,
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            {!wide && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Open conversation history"
+                onPress={() => setDrawer(true)}
+                style={({ hovered }) => ({
+                  width: 36,
+                  height: 36,
+                  borderRadius: 8,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: hovered ? c.hover : 'transparent',
+                })}
+              >
+                <ChatGptIcon name="sidebarHidden" size={18} color={c.muted} />
+              </Pressable>
+            )}
+            <Text style={{ fontSize: 17, fontWeight: '600', color: c.text }}>
+              {language === 'ru' ? 'Рабочее пространство' : 'Workspace'}
+            </Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Button secondary quiet label="Back to conversations" onPress={() => router.replace('/')}>
+              ← Back
+            </Button>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Settings"
+              onPress={() => setSettingsOpen('general')}
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 16,
+                backgroundColor: isDark ? '#7c3aed' : '#0d0d0d',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text translate={false} style={{ color: '#ffffff', fontWeight: '600', fontSize: 13 }}>
+                {(profile.data?.display_name ?? 'A').slice(0, 1).toUpperCase()}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{
+            width: '100%',
+            maxWidth: 780,
+            alignSelf: 'center',
+            paddingHorizontal: wide ? 24 : 16,
+            paddingTop: 8,
+            paddingBottom: 60,
+            gap: 18,
+          }}
+        >
+          <TabBar
+            label="Workspace sections"
+            value={tab}
+            onChange={setTab}
+            items={[
+              { value: 'projects', label: 'Projects' },
+              { value: 'documents', label: 'Documents' },
+              { value: 'search', label: 'Search messages' },
+              { value: 'schedules', label: 'Scheduled tasks' },
+              { value: 'notifications', label: 'Notifications' },
+            ]}
+          />
       <ErrorNotice error={error ?? projects.error ?? documents.error ?? sourceDocument.error} />
       {tab === 'projects' && (
         <>
@@ -844,6 +1016,27 @@ export default function WorkspacePage() {
           ))}
         </>
       )}
-    </Page>
+        </ScrollView>
+      </View>
+
+      <ConversationDrawer visible={drawer && !wide} close={() => setDrawer(false)}>
+        {sidebar(true)}
+      </ConversationDrawer>
+      <SearchModal
+        visible={searchOpen}
+        close={() => setSearchOpen(false)}
+        conversations={conversations}
+        onSelectChat={(cid) => router.replace(`/chat/${cid}`)}
+        onSelectMessage={(cid, mid) =>
+          router.push({ pathname: '/chat/[id]', params: { id: cid, message: mid } } as Href)
+        }
+        onNewChat={() => router.replace('/')}
+      />
+      <SettingsModal
+        visible={!!settingsOpen}
+        close={() => setSettingsOpen(null)}
+        initialTab={settingsOpen ?? 'general'}
+      />
+    </View>
   );
 }

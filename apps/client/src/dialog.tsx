@@ -1,8 +1,9 @@
 import { Pressable, Text } from './locale-ui';
 import type { ReactNode } from 'react';
-import { Modal, ScrollView, View } from 'react-native';
-import { Button, Panel } from './ui';
+import { Modal, Platform, ScrollView, View } from 'react-native';
+import { ChatGptIcon } from './chatgpt-icons';
 import { useTheme } from './theme';
+
 export function Dialog({
   title,
   visible,
@@ -14,7 +15,7 @@ export function Dialog({
   close: () => void;
   children: ReactNode;
 }) {
-  const { colors: c } = useTheme();
+  const { colors: c, isDark } = useTheme();
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={close}>
       <View
@@ -23,7 +24,7 @@ export function Dialog({
           justifyContent: 'center',
           alignItems: 'center',
           padding: 20,
-          backgroundColor: '#00000070',
+          backgroundColor: isDark ? 'rgba(0, 0, 0, 0.65)' : 'rgba(0, 0, 0, 0.45)',
         }}
       >
         <Pressable
@@ -31,29 +32,62 @@ export function Dialog({
           onPress={close}
           style={{ position: 'absolute', inset: 0 }}
         />
-        <Panel testID="dialog-panel" style={{ width: '100%', maxWidth: 640, maxHeight: '85%' }}>
+        <View
+          testID="dialog-panel"
+          style={{
+            width: '100%',
+            maxWidth: 520,
+            maxHeight: '85%',
+            backgroundColor: isDark ? '#2f2f2f' : '#ffffff',
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: c.border,
+            padding: 20,
+            gap: 14,
+            ...(Platform.OS === 'web'
+              ? {
+                  boxShadow: isDark
+                    ? '0 16px 48px rgba(0, 0, 0, 0.55)'
+                    : '0 12px 40px rgba(0, 0, 0, 0.14)',
+                }
+              : {}),
+          }}
+        >
           <View
             style={{
               flexDirection: 'row',
               alignItems: 'center',
               justifyContent: 'space-between',
-              gap: 16,
+              gap: 12,
+              paddingBottom: 4,
             }}
           >
             <Text
               accessibilityRole="header"
-              style={{ fontSize: 21, fontWeight: '700', color: c.text, flex: 1 }}
+              style={{ fontSize: 18, fontWeight: '600', color: c.text, flex: 1 }}
             >
               {title}
             </Text>
-            <Button secondary onPress={close} label="Close dialog">
-              ×
-            </Button>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close dialog"
+              onPress={close}
+              style={({ hovered, pressed }) => ({
+                width: 32,
+                height: 32,
+                borderRadius: 16,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: hovered || pressed ? c.hover : 'transparent',
+              })}
+            >
+              <ChatGptIcon name="close" size={16} color={c.muted} />
+            </Pressable>
           </View>
-          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 12 }}>
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 10 }}>
             {children}
           </ScrollView>
-        </Panel>
+        </View>
       </View>
     </Modal>
   );

@@ -1,11 +1,14 @@
 import { Pressable, Text } from './locale-ui';
 import { FoolSpinner } from './fool-spinner';
-import { useEffect, useRef, useState, type ComponentRef, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Modal, Platform, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ChatGptIcon, type ChatGptIconName } from './chatgpt-icons';
 import { useTheme } from './theme';
-import { ErrorNotice, Field } from './ui';
+import { ErrorNotice } from './ui';
 import type { Conversation } from './types';
+
+export const BRAND_NAME = "it's kawasaki, bitches";
 
 export function useSidebarTransition() {
   const [reduced, setReduced] = useState(true);
@@ -20,27 +23,43 @@ export function useSidebarTransition() {
   return Platform.OS === 'web'
     ? {
         transitionProperty: 'width' as const,
-        transitionDuration: reduced ? '0ms' : '240ms',
+        transitionDuration: reduced ? '0ms' : '220ms',
         transitionTimingFunction: 'cubic-bezier(0.2, 0, 0, 1)' as const,
       }
     : {};
 }
 
+function dateBucket(iso: string): string {
+  const date = new Date(iso);
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const ts = date.getTime();
+  const dayMs = 86400000;
+  if (ts >= startOfToday) return 'Today';
+  if (ts >= startOfToday - dayMs) return 'Yesterday';
+  if (ts >= startOfToday - 7 * dayMs) return 'Previous 7 Days';
+  if (ts >= startOfToday - 30 * dayMs) return 'Previous 30 Days';
+  return 'Older';
+}
+
 type SidebarProps = {
   expanded: boolean;
-  pinned?: boolean;
-  onSearchFocus?: () => void;
-  onSearchBlur?: () => void;
   mobile?: boolean;
   selectedId?: string;
+  activeSection?: 'projects' | 'documents' | 'schedules' | 'notices' | 'search';
   conversations: Conversation[];
-  search: string;
-  onSearch: (value: string) => void;
   onToggle: () => void;
   onNew: () => void;
+  onOpenSearch: () => void;
   onSelect: (id: string) => void;
+  onRename?: (conversation: Conversation) => void;
+  onDelete?: (conversation: Conversation) => void;
+  onWorkspace?: (tab: 'projects' | 'documents' | 'schedules' | 'notices' | 'search') => void;
+  onConnections?: () => void;
   onSettings: () => void;
+  onSignOut?: () => void;
   displayName?: string | null;
+  unreadNotices?: number;
   busy: boolean;
   loading: boolean;
   loadingMore: boolean;
@@ -49,93 +68,106 @@ type SidebarProps = {
   onMore: () => void;
 };
 
-function NavIcon({ kind }: { kind: 'menu' | 'new' | 'search' | 'chat' | 'settings' }) {
+function SidebarNavRow({
+  icon,
+  label,
+  expanded,
+  onPress,
+  disabled = false,
+  accessibilityLabel,
+  badge,
+  active = false,
+}: {
+  icon: ChatGptIconName;
+  label: string;
+  expanded: boolean;
+  onPress: () => void;
+  disabled?: boolean;
+  accessibilityLabel?: string;
+  badge?: number;
+  active?: boolean;
+}) {
   const { colors: c } = useTheme();
-  if (kind === 'menu')
-    return (
-      <View testID="nav-icon" style={[styles.icon, { transform: [{ scale: 0.88 }] }]}>
-        {[0, 1, 2].map((line) => (
-          <View
-            key={line}
-            style={{
-              width: 18,
-              height: 1.5,
-              backgroundColor: c.muted,
-              borderRadius: 1,
-              marginVertical: 2,
-            }}
-          />
-        ))}
-      </View>
-    );
-  if (kind === 'search')
-    return (
-      <View testID="nav-icon" style={[styles.icon, { transform: [{ scale: 0.88 }] }]}>
-        <View
-          style={{
-            width: 13,
-            height: 13,
-            borderWidth: 1.7,
-            borderColor: c.muted,
-            borderRadius: 7,
-            marginTop: -3,
-            marginLeft: -3,
-          }}
-        />
-        <View
-          style={{
-            position: 'absolute',
-            width: 7,
-            height: 1.7,
-            backgroundColor: c.muted,
-            transform: [{ rotate: '45deg' }],
-            left: 15,
-            top: 17,
-          }}
-        />
-      </View>
-    );
-  if (kind === 'chat')
-    return (
-      <View testID="nav-icon" style={[styles.icon, { transform: [{ scale: 0.88 }] }]}>
-        <View
-          style={{ width: 17, height: 14, borderWidth: 1.4, borderColor: c.muted, borderRadius: 4 }}
-        />
-      </View>
-    );
   return (
-    <View testID="nav-icon" style={[styles.icon, { transform: [{ scale: 0.88 }] }]}>
-      <Text
-        style={{
-          fontSize: kind === 'new' ? 28 : 22,
-          lineHeight: 30,
-          color: c.muted,
-          fontWeight: '400',
-          textAlign: 'center',
-        }}
-      >
-        {kind === 'new' ? '＋' : '⚙'}
-      </Text>
-    </View>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed, hovered }) => ({
+        height: 36,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: expanded ? 'flex-start' : 'center',
+        paddingHorizontal: expanded ? 10 : 0,
+        gap: 10,
+        borderRadius: 8,
+        backgroundColor: active
+          ? c.selected
+          : pressed || hovered
+            ? c.hover
+            : 'transparent',
+        opacity: disabled ? 0.45 : 1,
+      })}
+    >
+      <View style={{ width: 20, alignItems: 'center', justifyContent: 'center' }}>
+        <ChatGptIcon name={icon} size={17} color={c.text} />
+      </View>
+      {expanded && (
+        <Text numberOfLines={1} style={{ flex: 1, fontSize: 14, color: c.text, fontWeight: '400' }}>
+          {label}
+        </Text>
+      )}
+      {expanded && !!badge && badge > 0 && (
+        <View
+          style={{
+            minWidth: 18,
+            height: 18,
+            borderRadius: 9,
+            paddingHorizontal: 5,
+            backgroundColor: c.info,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Text translate={false} style={{ color: '#ffffff', fontSize: 11, fontWeight: '600' }}>
+            {badge > 99 ? '99+' : badge}
+          </Text>
+        </View>
+      )}
+    </Pressable>
   );
 }
 
 export function ConversationSidebar(props: SidebarProps) {
-  const { colors: c } = useTheme();
+  const { colors: c, isDark } = useTheme();
   const inset = useSafeAreaInsets();
-  const input = useRef<ComponentRef<typeof Field>>(null);
   const transition = useSidebarTransition();
-  const name = props.displayName?.trim() || 'Your workspace';
+  const [menuChatId, setMenuChatId] = useState<string | null>(null);
+  const [profileMenu, setProfileMenu] = useState(false);
+
+  const name = props.displayName?.trim() || 'Workspace';
   const initials = name
     .split(/\s+/)
     .slice(0, 2)
     .map((part) => part[0])
     .join('')
     .toUpperCase();
-  function startSearch() {
-    if (!props.expanded) props.onToggle();
-    setTimeout(() => input.current?.focus(), 0);
-  }
+
+  const grouped = useMemo(() => {
+    const order = ['Today', 'Yesterday', 'Previous 7 Days', 'Previous 30 Days', 'Older'];
+    const map = new Map<string, Conversation[]>();
+    for (const item of props.conversations) {
+      const bucket = dateBucket(item.updated_at || item.created_at);
+      const arr = map.get(bucket);
+      if (arr) arr.push(item);
+      else map.set(bucket, [item]);
+    }
+    return order
+      .filter((key) => map.has(key))
+      .map((key) => ({ label: key, items: map.get(key)! }));
+  }, [props.conversations]);
+
   return (
     <View
       testID={props.mobile ? 'conversation-drawer' : 'conversation-sidebar'}
@@ -143,212 +175,500 @@ export function ConversationSidebar(props: SidebarProps) {
         styles.sidebar,
         !props.mobile && transition,
         {
-          width: props.mobile ? '100%' : props.expanded ? 280 : 72,
+          width: props.mobile ? '100%' : props.expanded ? 260 : 52,
           backgroundColor: c.sidebar,
+          borderRightWidth: props.mobile ? 0 : StyleSheet.hairlineWidth,
+          borderRightColor: c.borderSubtle,
           overflow: 'hidden',
-          paddingTop: props.mobile ? Math.max(inset.top, 12) : 12,
-          paddingBottom: props.mobile ? Math.max(inset.bottom, 12) : 12,
+          paddingTop: props.mobile ? Math.max(inset.top, 8) : 8,
+          paddingBottom: props.mobile ? Math.max(inset.bottom, 8) : 8,
+          paddingHorizontal: props.expanded ? 8 : 6,
         },
       ]}
     >
-      <View style={[styles.topRow, props.expanded && !props.mobile && { width: 256 }]}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={
-            props.mobile
-              ? 'Close conversation history'
-              : props.pinned
-                ? 'Collapse conversation sidebar'
-                : 'Expand conversation sidebar'
-          }
-          accessibilityState={{ expanded: props.expanded }}
-          onPress={props.onToggle}
-          style={({ pressed, hovered }) => [
-            styles.iconButton,
-            { backgroundColor: pressed || hovered ? c.hover : 'transparent' },
-          ]}
-        >
-          <NavIcon kind="menu" />
-        </Pressable>
+      {/* Top header row */}
+      <View
+        style={[
+          styles.topRow,
+          {
+            justifyContent: props.expanded ? 'space-between' : 'center',
+            paddingHorizontal: props.expanded ? 4 : 0,
+          },
+        ]}
+      >
         {props.expanded && (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Search conversation history"
-            onPress={startSearch}
+            accessibilityLabel={BRAND_NAME}
+            onPress={props.onNew}
+            style={({ hovered }) => ({
+              flex: 1,
+              height: 36,
+              paddingHorizontal: 8,
+              borderRadius: 8,
+              justifyContent: 'center',
+              backgroundColor: hovered ? c.hover : 'transparent',
+            })}
+          >
+            <Text
+              translate={false}
+              numberOfLines={1}
+              style={{ fontSize: 14, fontWeight: '600', color: c.text }}
+            >
+              {BRAND_NAME}
+            </Text>
+          </Pressable>
+        )}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+          {props.expanded && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Search conversation history"
+              onPress={props.onOpenSearch}
+              style={({ pressed, hovered }) => [
+                styles.iconButton,
+                { backgroundColor: pressed || hovered ? c.hover : 'transparent' },
+              ]}
+            >
+              <ChatGptIcon name="search" size={16} color={c.muted} />
+            </Pressable>
+          )}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={
+              props.mobile
+                ? 'Close conversation history'
+                : props.expanded
+                  ? 'Collapse conversation sidebar'
+                  : 'Expand conversation sidebar'
+            }
+            accessibilityState={{ expanded: props.expanded }}
+            onPress={props.onToggle}
             style={({ pressed, hovered }) => [
               styles.iconButton,
               { backgroundColor: pressed || hovered ? c.hover : 'transparent' },
             ]}
           >
-            <NavIcon kind="search" />
+            <ChatGptIcon
+              name={props.expanded ? 'sidebar' : 'sidebarHidden'}
+              size={16}
+              color={c.muted}
+            />
           </Pressable>
+        </View>
+      </View>
+
+      {/* Primary actions */}
+      <View style={{ gap: 2, marginBottom: 8 }}>
+        <SidebarNavRow
+          icon="newChat"
+          label="New chat"
+          accessibilityLabel="New conversation"
+          expanded={props.expanded}
+          disabled={props.busy}
+          onPress={props.onNew}
+        />
+        {!props.expanded && (
+          <SidebarNavRow
+            icon="search"
+            label="Search chats"
+            accessibilityLabel="Search conversation history"
+            expanded={false}
+            onPress={props.onOpenSearch}
+          />
+        )}
+        {props.onWorkspace && (
+          <>
+            <SidebarNavRow
+              icon="projects"
+              label="Projects"
+              expanded={props.expanded}
+              active={props.activeSection === 'projects'}
+              onPress={() => props.onWorkspace!('projects')}
+            />
+            <SidebarNavRow
+              icon="library"
+              label="Library"
+              expanded={props.expanded}
+              active={props.activeSection === 'documents'}
+              onPress={() => props.onWorkspace!('documents')}
+            />
+            <SidebarNavRow
+              icon="scheduled"
+              label="Scheduled"
+              expanded={props.expanded}
+              active={props.activeSection === 'schedules'}
+              onPress={() => props.onWorkspace!('schedules')}
+            />
+            <SidebarNavRow
+              icon="bell"
+              label="Notifications"
+              expanded={props.expanded}
+              active={props.activeSection === 'notices'}
+              badge={props.unreadNotices}
+              onPress={() => props.onWorkspace!('notices')}
+            />
+          </>
         )}
       </View>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="New conversation"
-        disabled={props.busy}
-        onPress={props.onNew}
-        style={({ pressed, hovered }) => [
-          styles.newChat,
-          {
-            alignSelf: props.expanded ? 'flex-start' : 'center',
-            paddingHorizontal: props.expanded ? 14 : 10,
-            backgroundColor: pressed || hovered ? c.hover : c.control,
-            opacity: props.busy ? 0.5 : 1,
-          },
-        ]}
-      >
-        <NavIcon kind="new" />
-        {props.expanded && (
-          <Text style={{ color: c.text, fontSize: 14, fontWeight: '500' }}>New chat</Text>
-        )}
-      </Pressable>
+
+      {/* Date-grouped conversation list */}
       {props.expanded ? (
-        <View style={[styles.history, !props.mobile && { width: 256 }]}>
-          <Field
-            ref={input}
-            onFocus={props.onSearchFocus}
-            onBlur={props.onSearchBlur}
-            accessibilityLabel="Search conversations"
-            placeholder="Search chats"
-            value={props.search}
-            onChangeText={props.onSearch}
-            style={{
-              backgroundColor: 'transparent',
-              borderColor: c.border,
-              borderRadius: 24,
-              minHeight: 40,
-              fontSize: 13,
-              paddingVertical: 8,
-            }}
-          />
-          <Text
-            accessibilityRole="header"
-            style={{
-              color: c.muted,
-              fontSize: 12,
-              fontWeight: '600',
-              paddingHorizontal: 12,
-              marginTop: 12,
-              marginBottom: 2,
-            }}
-          >
-            {props.search ? 'Search results' : 'Recent'}
-          </Text>
-          <ScrollView
-            style={{ flex: 1 }}
-            contentContainerStyle={{ gap: 3, paddingBottom: 12 }}
-            keyboardShouldPersistTaps="handled"
-          >
-            {props.conversations.map((item) => (
-              <Pressable
-                key={item.id}
-                accessibilityRole="button"
-                accessibilityLabel={item.title}
-                accessibilityState={{ selected: props.selectedId === item.id }}
-                onPress={() => props.onSelect(item.id)}
-                style={({ pressed, hovered }) => [
-                  styles.chatRow,
-                  {
-                    backgroundColor:
-                      props.selectedId === item.id
-                        ? c.selected
-                        : pressed || hovered
-                          ? c.hover
-                          : 'transparent',
-                  },
-                ]}
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ gap: 14, paddingBottom: 12, paddingTop: 4 }}
+          keyboardShouldPersistTaps="handled"
+        >
+          {grouped.map((group) => (
+            <View key={group.label} style={{ gap: 2 }}>
+              <Text
+                accessibilityRole="header"
+                style={{
+                  color: c.subtle,
+                  fontSize: 12,
+                  fontWeight: '500',
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                }}
               >
-                <NavIcon kind="chat" />
-                <Text
-                  numberOfLines={1}
-                  style={{
-                    flex: 1,
-                    fontSize: 14,
-                    color: c.text,
-                    fontWeight: props.selectedId === item.id ? '600' : '400',
-                  }}
-                >
-                  {item.title}
-                </Text>
-              </Pressable>
-            ))}
-            {props.loading && (
-              <FoolSpinner size={28} label="Loading conversations" style={{ marginTop: 12 }} />
-            )}
-            <ErrorNotice error={props.error} />
-            {!props.loading && !props.error && !props.conversations.length && (
-              <Text style={{ color: c.muted, fontSize: 13, lineHeight: 21, padding: 12 }}>
-                {props.search ? 'No matching chats.' : 'Your conversations will appear here.'}
+                {group.label}
               </Text>
-            )}
-            {props.hasMore && (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="More conversations"
-                disabled={props.loadingMore}
-                onPress={props.onMore}
-                style={styles.chatRow}
-              >
-                <Text style={{ color: c.muted, fontSize: 13 }}>
-                  {props.loadingMore ? 'Loading…' : 'Show more'}
-                </Text>
-              </Pressable>
-            )}
-          </ScrollView>
-        </View>
+              {group.items.map((item) => {
+                const selected = props.selectedId === item.id;
+                const menuOpen = menuChatId === item.id;
+                return (
+                  <View key={item.id} style={{ position: 'relative' }}>
+                    <View
+                      // @ts-expect-error web data attribute for hover CSS
+                      dataSet={{ active: selected ? 'true' : 'false' }}
+                      testID="sidebar-chat-row"
+                      style={{
+                        height: 36,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        borderRadius: 8,
+                        backgroundColor: selected ? c.selected : 'transparent',
+                      }}
+                    >
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={item.title}
+                        accessibilityState={{ selected }}
+                        onPress={() => {
+                          setMenuChatId(null);
+                          props.onSelect(item.id);
+                        }}
+                        style={({ pressed, hovered }) => ({
+                          flex: 1,
+                          height: 36,
+                          justifyContent: 'center',
+                          paddingHorizontal: 10,
+                          borderRadius: 8,
+                          backgroundColor:
+                            !selected && (pressed || hovered) ? c.hover : 'transparent',
+                        })}
+                      >
+                        <Text
+                          translate={false}
+                          numberOfLines={1}
+                          style={{
+                            fontSize: 14,
+                            color: c.text,
+                            fontWeight: selected ? '500' : '400',
+                          }}
+                        >
+                          {item.title}
+                        </Text>
+                      </Pressable>
+                      {(props.onRename || props.onDelete) && (
+                        <Pressable
+                          testID="sidebar-row-more"
+                          accessibilityRole="button"
+                          accessibilityLabel={`Actions for ${item.title}`}
+                          onPress={() => setMenuChatId(menuOpen ? null : item.id)}
+                          style={({ hovered }) => ({
+                            width: 28,
+                            height: 28,
+                            marginRight: 4,
+                            borderRadius: 6,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            backgroundColor: hovered ? c.hover : 'transparent',
+                          })}
+                        >
+                          <ChatGptIcon name="dots" size={14} color={c.muted} />
+                        </Pressable>
+                      )}
+                    </View>
+                    {menuOpen && (
+                      <View
+                        testID="popover-menu"
+                        style={{
+                          marginHorizontal: 6,
+                          marginTop: 2,
+                          marginBottom: 4,
+                          padding: 4,
+                          borderRadius: 12,
+                          backgroundColor: isDark ? '#2f2f2f' : '#ffffff',
+                          borderWidth: 1,
+                          borderColor: c.border,
+                          gap: 2,
+                          ...(Platform.OS === 'web'
+                            ? {
+                                boxShadow: isDark
+                                  ? '0 8px 24px rgba(0,0,0,0.45)'
+                                  : '0 6px 20px rgba(0,0,0,0.12)',
+                              }
+                            : {}),
+                        }}
+                      >
+                        {props.onRename && (
+                          <Pressable
+                            accessibilityRole="menuitem"
+                            onPress={() => {
+                              setMenuChatId(null);
+                              props.onRename!(item);
+                            }}
+                            style={({ hovered }) => ({
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 8,
+                              paddingHorizontal: 10,
+                              paddingVertical: 8,
+                              borderRadius: 8,
+                              backgroundColor: hovered ? c.hover : 'transparent',
+                            })}
+                          >
+                            <ChatGptIcon name="edit" size={14} color={c.text} />
+                            <Text style={{ fontSize: 13, color: c.text }}>Rename</Text>
+                          </Pressable>
+                        )}
+                        {props.onDelete && (
+                          <Pressable
+                            accessibilityRole="menuitem"
+                            onPress={() => {
+                              setMenuChatId(null);
+                              props.onDelete!(item);
+                            }}
+                            style={({ hovered }) => ({
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 8,
+                              paddingHorizontal: 10,
+                              paddingVertical: 8,
+                              borderRadius: 8,
+                              backgroundColor: hovered ? c.hover : 'transparent',
+                            })}
+                          >
+                            <ChatGptIcon name="trash" size={14} color={c.danger} />
+                            <Text style={{ fontSize: 13, color: c.danger }}>Delete</Text>
+                          </Pressable>
+                        )}
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+          ))}
+          {props.loading && (
+            <FoolSpinner
+              size={24}
+              label="Loading conversations"
+              style={{ alignSelf: 'center', marginTop: 12 }}
+            />
+          )}
+          <ErrorNotice error={props.error} />
+          {!props.loading && !props.error && !props.conversations.length && (
+            <Text style={{ color: c.subtle, fontSize: 13, lineHeight: 20, paddingHorizontal: 10 }}>
+              Your conversations will appear here.
+            </Text>
+          )}
+          {props.hasMore && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="More conversations"
+              disabled={props.loadingMore}
+              onPress={props.onMore}
+              style={({ hovered }) => ({
+                height: 36,
+                justifyContent: 'center',
+                paddingHorizontal: 10,
+                borderRadius: 8,
+                backgroundColor: hovered ? c.hover : 'transparent',
+              })}
+            >
+              <Text style={{ color: c.muted, fontSize: 13 }}>
+                {props.loadingMore ? 'Loading…' : 'Show more'}
+              </Text>
+            </Pressable>
+          )}
+        </ScrollView>
       ) : (
         <View style={{ flex: 1 }} />
       )}
-      <View
-        style={[
-          styles.footer,
-          {
-            borderTopColor: c.border,
-            borderTopWidth: props.expanded ? StyleSheet.hairlineWidth : 0,
-          },
-        ]}
-      >
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Settings"
-          onPress={props.onSettings}
-          style={({ pressed, hovered }) => [
-            styles.footerRow,
-            { backgroundColor: pressed || hovered ? c.hover : 'transparent' },
-          ]}
-        >
-          <NavIcon kind="settings" />
-          {props.expanded && <Text style={{ fontSize: 14, color: c.text }}>Settings</Text>}
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Account settings for ${name}`}
-          onPress={props.onSettings}
-          style={({ pressed, hovered }) => [
-            styles.footerRow,
-            { backgroundColor: pressed || hovered ? c.hover : 'transparent' },
-          ]}
-        >
+
+      {/* Bottom sticky User Footer + Profile Popover */}
+      <View style={{ position: 'relative' }}>
+        {props.expanded && profileMenu && (
           <View
+            testID="popover-menu"
             style={{
-              width: 30,
-              height: 30,
-              borderRadius: 15,
-              backgroundColor: c.accent,
-              alignItems: 'center',
-              justifyContent: 'center',
+              marginBottom: 6,
+              padding: 6,
+              borderRadius: 14,
+              backgroundColor: isDark ? '#2f2f2f' : '#ffffff',
+              borderWidth: 1,
+              borderColor: c.border,
+              gap: 2,
+              ...(Platform.OS === 'web'
+                ? {
+                    boxShadow: isDark
+                      ? '0 10px 30px rgba(0,0,0,0.5)'
+                      : '0 8px 24px rgba(0,0,0,0.12)',
+                  }
+                : {}),
             }}
           >
-            <Text style={{ fontSize: 11, fontWeight: '700', color: c.accentText }}>{initials}</Text>
+            <Pressable
+              accessibilityRole="menuitem"
+              onPress={() => {
+                setProfileMenu(false);
+                props.onOpenSearch();
+              }}
+              style={({ hovered }) => [
+                styles.menuItem,
+                { backgroundColor: hovered ? c.hover : 'transparent' },
+              ]}
+            >
+              <ChatGptIcon name="search" size={15} color={c.text} />
+              <Text style={{ fontSize: 14, color: c.text }}>Search messages</Text>
+            </Pressable>
+            {props.onConnections && (
+              <Pressable
+                accessibilityRole="menuitem"
+                onPress={() => {
+                  setProfileMenu(false);
+                  props.onConnections!();
+                }}
+                style={({ hovered }) => [
+                  styles.menuItem,
+                  { backgroundColor: hovered ? c.hover : 'transparent' },
+                ]}
+              >
+                <ChatGptIcon name="globe" size={15} color={c.text} />
+                <Text style={{ fontSize: 14, color: c.text }}>Connections</Text>
+              </Pressable>
+            )}
+            <Pressable
+              accessibilityRole="menuitem"
+              onPress={() => {
+                setProfileMenu(false);
+                props.onSettings();
+              }}
+              style={({ hovered }) => [
+                styles.menuItem,
+                { backgroundColor: hovered ? c.hover : 'transparent' },
+              ]}
+            >
+              <ChatGptIcon name="settings" size={15} color={c.text} />
+              <Text style={{ fontSize: 14, color: c.text }}>Settings</Text>
+            </Pressable>
+            {props.onSignOut && (
+              <>
+                <View
+                  style={{ height: 1, backgroundColor: c.borderSubtle, marginVertical: 4 }}
+                />
+                <Pressable
+                  accessibilityRole="menuitem"
+                  onPress={() => {
+                    setProfileMenu(false);
+                    props.onSignOut!();
+                  }}
+                  style={({ hovered }) => [
+                    styles.menuItem,
+                    { backgroundColor: hovered ? c.hover : 'transparent' },
+                  ]}
+                >
+                  <Text style={{ fontSize: 14, color: c.text }}>Sign out</Text>
+                </Pressable>
+              </>
+            )}
           </View>
+        )}
+        <View
+          style={{
+            borderTopColor: c.borderSubtle,
+            borderTopWidth: props.expanded ? StyleSheet.hairlineWidth : 0,
+            paddingTop: 6,
+            gap: 2,
+          }}
+        >
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={props.expanded ? `Account menu for ${name}` : 'Settings'}
+            onPress={() => {
+              if (props.expanded) setProfileMenu((v) => !v);
+              else props.onSettings();
+            }}
+            style={({ pressed, hovered }) => [
+              styles.footerRow,
+              {
+                justifyContent: props.expanded ? 'flex-start' : 'center',
+                paddingHorizontal: props.expanded ? 8 : 0,
+                backgroundColor: pressed || hovered ? c.hover : 'transparent',
+              },
+            ]}
+          >
+            <View
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 14,
+                backgroundColor: isDark ? '#7c3aed' : '#0d0d0d',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text translate={false} style={{ fontSize: 11, fontWeight: '600', color: '#ffffff' }}>
+                {initials}
+              </Text>
+            </View>
+            {props.expanded && (
+              <View style={{ flex: 1, gap: 1 }}>
+                <Text
+                  translate={false}
+                  numberOfLines={1}
+                  style={{ fontSize: 13, fontWeight: '500', color: c.text }}
+                >
+                  {name}
+                </Text>
+                <Text style={{ fontSize: 11, color: c.subtle }}>OpenRouter</Text>
+              </View>
+            )}
+          </Pressable>
           {props.expanded && (
-            <Text numberOfLines={1} style={{ flex: 1, fontSize: 13, color: c.text }}>
-              {name}
-            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Settings"
+              onPress={props.onSettings}
+              style={({ pressed, hovered }) => ({
+                height: 34,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 10,
+                paddingHorizontal: 8,
+                borderRadius: 8,
+                backgroundColor: pressed || hovered ? c.hover : 'transparent',
+              })}
+            >
+              <View style={{ width: 28, alignItems: 'center' }}>
+                <ChatGptIcon name="settings" size={16} color={c.muted} />
+              </View>
+              <Text style={{ fontSize: 13, color: c.muted }}>Settings</Text>
+            </Pressable>
           )}
-        </Pressable>
+        </View>
       </View>
     </View>
   );
@@ -382,19 +702,21 @@ export function ConversationDrawer({
     >
       <View style={{ flex: 1, flexDirection: 'row' }}>
         <Pressable
+          testID="drawer-backdrop"
           accessibilityRole="button"
           accessibilityLabel="Dismiss conversation history"
           onPress={close}
-          style={[StyleSheet.absoluteFill, { backgroundColor: '#00000070' }]}
+          style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0, 0, 0, 0.55)' }]}
         />
         <View
+          testID="drawer-panel"
           accessibilityViewIsModal
           style={{
-            width: Math.min(320, width - 48),
+            width: Math.min(300, width - 48),
             height: '100%',
             shadowColor: '#000',
             shadowOffset: { width: 6, height: 0 },
-            shadowOpacity: 0.18,
+            shadowOpacity: 0.22,
             shadowRadius: 20,
             elevation: 16,
           }}
@@ -405,47 +727,35 @@ export function ConversationDrawer({
     </Modal>
   );
 }
+
 const styles = StyleSheet.create({
-  sidebar: { height: '100%', paddingHorizontal: 12 },
+  sidebar: { height: '100%' },
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     height: 44,
-    marginBottom: 24,
+    marginBottom: 8,
   },
-  icon: { width: 24, height: 28, alignItems: 'center', justifyContent: 'center' },
   iconButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 34,
+    height: 34,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  newChat: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    height: 48,
-    borderRadius: 24,
-    marginBottom: 24,
-  },
-  history: { flex: 1, gap: 10 },
-  chatRow: {
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    gap: 10,
-    borderRadius: 22,
-  },
-  footer: { gap: 4, paddingTop: 10 },
   footerRow: {
     height: 44,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 9,
-    borderRadius: 22,
+    gap: 10,
+    borderRadius: 8,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
   },
 });

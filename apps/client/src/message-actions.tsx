@@ -1,53 +1,17 @@
 import { Pressable, Text } from './locale-ui';
 import { useEffect, useState } from 'react';
 import { Platform, Share, View } from 'react-native';
-import Svg, { Path, Rect } from 'react-native-svg';
 import * as Clipboard from 'expo-clipboard';
+import { ChatGptIcon, type ChatGptIconName } from './chatgpt-icons';
 import { useTheme } from './theme';
 
-type Icon = 'retry' | 'share' | 'copy';
-function ActionIcon({ name, color }: { name: Icon; color: string }) {
-  return (
-    <Svg
-      width={18}
-      height={18}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={color}
-      strokeWidth={1.7}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden={true}
-      focusable={false}
-    >
-      {name === 'retry' && (
-        <>
-          <Path d="M20 4v6h-6" />
-          <Path d="M20 10a8 8 0 1 0 .2 5" />
-        </>
-      )}
-      {name === 'share' && (
-        <>
-          <Path d="M12 15V2m-4 4 4-4 4 4" />
-          <Path d="M6 10H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1" />
-        </>
-      )}
-      {name === 'copy' && (
-        <>
-          <Rect x={8} y={8} width={12} height={13} rx={2} />
-          <Path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h3" />
-        </>
-      )}
-    </Svg>
-  );
-}
 function IconButton({
   icon,
   label,
   onPress,
   disabled = false,
 }: {
-  icon: Icon;
+  icon: ChatGptIconName;
   label: string;
   onPress: () => void;
   disabled?: boolean;
@@ -64,16 +28,16 @@ function IconButton({
         onHoverIn={() => setHovered(true)}
         onHoverOut={() => setHovered(false)}
         style={({ pressed }) => ({
-          width: 36,
-          height: 36,
-          borderRadius: 18,
+          width: 32,
+          height: 32,
+          borderRadius: 8,
           alignItems: 'center',
           justifyContent: 'center',
           backgroundColor: hovered || pressed ? c.hover : 'transparent',
-          opacity: disabled ? 0.35 : hovered || pressed ? 1 : 0.68,
+          opacity: disabled ? 0.35 : hovered || pressed ? 1 : 0.72,
         })}
       >
-        <ActionIcon name={icon} color={hovered ? c.text : c.muted} />
+        <ChatGptIcon name={icon} size={16} color={hovered ? c.text : c.muted} />
       </Pressable>
       {hovered && Platform.OS === 'web' && (
         <View
@@ -81,13 +45,13 @@ function IconButton({
           pointerEvents="none"
           style={{
             position: 'absolute',
-            bottom: 44,
+            bottom: 38,
             left: 0,
-            paddingVertical: 5,
-            paddingHorizontal: 9,
+            paddingVertical: 4,
+            paddingHorizontal: 8,
             borderRadius: 6,
             backgroundColor: c.text,
-            minWidth: 100,
+            minWidth: 96,
             zIndex: 30,
           }}
         >
@@ -104,6 +68,9 @@ export function MessageActions({
   canRetry = false,
   busy = false,
   onRetry,
+  onEdit,
+  onWorkWithResponse,
+  onSaveDocument,
   onError,
 }: {
   text: string;
@@ -111,29 +78,42 @@ export function MessageActions({
   canRetry?: boolean;
   busy?: boolean;
   onRetry: () => void;
+  onEdit?: () => void;
+  onWorkWithResponse?: () => void;
+  onSaveDocument?: () => void;
   onError: (error: unknown) => void;
 }) {
-  const { colors: c } = useTheme();
+  const { colors: c, isDark } = useTheme();
   const [notice, setNotice] = useState('');
+  const [copied, setCopied] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+
   useEffect(() => {
-    if (!notice) return;
-    const timer = setTimeout(() => setNotice(''), 2000);
+    if (!notice && !copied) return;
+    const timer = setTimeout(() => {
+      setNotice('');
+      setCopied(false);
+    }, 1800);
     return () => clearTimeout(timer);
-  }, [notice]);
+  }, [notice, copied]);
+
   async function copy() {
     try {
       await Clipboard.setStringAsync(text);
+      setCopied(true);
       setNotice('Copied');
     } catch (error) {
       onError(error);
     }
   }
+
   async function share() {
     try {
       if (Platform.OS === 'web') {
         if (navigator.share) await navigator.share({ text });
         else {
           await Clipboard.setStringAsync(text);
+          setCopied(true);
           setNotice('Response copied to share');
         }
       } else await Share.share({ message: text });
@@ -141,10 +121,11 @@ export function MessageActions({
       if (!(error instanceof Error && error.name === 'AbortError')) onError(error);
     }
   }
+
   return (
     <View
       testID={assistant ? 'assistant-message-actions' : 'user-message-actions'}
-      style={{ alignSelf: assistant ? 'flex-start' : 'flex-end', gap: 4 }}
+      style={{ alignSelf: assistant ? 'flex-start' : 'flex-end', gap: 4, position: 'relative' }}
     >
       <View
         accessibilityLabel={assistant ? 'Response actions' : 'Message actions'}
@@ -152,9 +133,23 @@ export function MessageActions({
           flexDirection: 'row',
           alignItems: 'center',
           gap: 2,
-          marginLeft: assistant ? -8 : 0,
+          marginLeft: assistant ? -6 : 0,
         }}
       >
+        <IconButton
+          icon={copied ? 'check' : 'copy'}
+          label="Copy message"
+          disabled={!text}
+          onPress={() => void copy()}
+        />
+        {!assistant && onEdit && (
+          <IconButton
+            icon="edit"
+            label="Edit into a new branch"
+            disabled={busy}
+            onPress={onEdit}
+          />
+        )}
         {assistant && canRetry && (
           <IconButton icon="retry" label="Retry last response" disabled={busy} onPress={onRetry} />
         )}
@@ -166,8 +161,85 @@ export function MessageActions({
             onPress={() => void share()}
           />
         )}
-        <IconButton icon="copy" label="Copy message" disabled={!text} onPress={() => void copy()} />
+        {assistant && (onWorkWithResponse || onSaveDocument) && (
+          <IconButton
+            icon="dots"
+            label="More message actions"
+            disabled={!text}
+            onPress={() => setMoreOpen((v) => !v)}
+          />
+        )}
       </View>
+
+      {moreOpen && (
+        <View
+          testID="popover-menu"
+          style={{
+            position: 'absolute',
+            top: 36,
+            left: 0,
+            minWidth: 196,
+            padding: 4,
+            borderRadius: 12,
+            backgroundColor: isDark ? '#2f2f2f' : '#ffffff',
+            borderWidth: 1,
+            borderColor: c.border,
+            zIndex: 40,
+            gap: 2,
+            ...(Platform.OS === 'web'
+              ? {
+                  boxShadow: isDark
+                    ? '0 8px 24px rgba(0,0,0,0.5)'
+                    : '0 6px 20px rgba(0,0,0,0.12)',
+                }
+              : {}),
+          }}
+        >
+          {onWorkWithResponse && (
+            <Pressable
+              accessibilityRole="menuitem"
+              onPress={() => {
+                setMoreOpen(false);
+                onWorkWithResponse();
+              }}
+              style={({ hovered }) => ({
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+                paddingHorizontal: 10,
+                paddingVertical: 8,
+                borderRadius: 8,
+                backgroundColor: hovered ? c.hover : 'transparent',
+              })}
+            >
+              <ChatGptIcon name="sliders" size={14} color={c.text} />
+              <Text style={{ fontSize: 13, color: c.text }}>Work with response</Text>
+            </Pressable>
+          )}
+          {onSaveDocument && (
+            <Pressable
+              accessibilityRole="menuitem"
+              onPress={() => {
+                setMoreOpen(false);
+                onSaveDocument();
+              }}
+              style={({ hovered }) => ({
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+                paddingHorizontal: 10,
+                paddingVertical: 8,
+                borderRadius: 8,
+                backgroundColor: hovered ? c.hover : 'transparent',
+              })}
+            >
+              <ChatGptIcon name="library" size={14} color={c.text} />
+              <Text style={{ fontSize: 13, color: c.text }}>Save as document</Text>
+            </Pressable>
+          )}
+        </View>
+      )}
+
       {!!notice && (
         <Text accessibilityLiveRegion="polite" style={{ fontSize: 12, color: c.muted }}>
           {notice}

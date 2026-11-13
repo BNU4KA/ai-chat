@@ -1,77 +1,53 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Animated, Easing, Platform, StyleSheet, View } from 'react-native';
-import Svg, { Rect } from 'react-native-svg';
+import type { ReactNode } from 'react';
+import { Platform, View } from 'react-native';
 import { useTheme } from './theme';
-import { useReducedMotion } from './motion';
-const AnimatedRect = Animated.createAnimatedComponent(Rect);
-const colors = ['#8ab4f8', '#b69df8', '#e9a3c9', '#f4c789', '#a8d8b9', '#8ab4f8'];
-export function ComposerFrame({ focused, children }: { focused: boolean; children: ReactNode }) {
-  const { colors: c } = useTheme();
-  const reduced = useReducedMotion();
-  const phase = useRef(new Animated.Value(0)).current;
-  const [size, setSize] = useState({ width: 0, height: 0 });
-  useEffect(() => {
-    if (Platform.OS === 'web' || reduced) return;
-    const animation = Animated.loop(
-      Animated.timing(phase, {
-        toValue: 1,
-        duration: 6000,
-        easing: Easing.linear,
-        useNativeDriver: false,
-      }),
-    );
-    animation.start();
-    return () => {
-      animation.stop();
-      phase.setValue(0);
-    };
-  }, [focused, reduced, phase]);
-  const perimeter = 2 * (size.width + size.height) - 8 * 28 + 2 * Math.PI * 28;
+
+export function ComposerFrame({
+  focused,
+  compact = false,
+  children,
+}: {
+  focused: boolean;
+  compact?: boolean;
+  children: ReactNode;
+}) {
+  const { colors: c, isDark } = useTheme();
   return (
     <View
       testID="composer-frame"
-      onLayout={(event) => {
-        if (Platform.OS !== 'web') setSize(event.nativeEvent.layout);
-      }}
       style={{
         borderWidth: 1,
-        borderColor: c.border,
-        borderRadius: 28,
+        borderColor: isDark
+          ? focused
+            ? 'rgba(255, 255, 255, 0.2)'
+            : 'rgba(255, 255, 255, 0.08)'
+          : focused
+            ? 'rgba(13, 13, 13, 0.22)'
+            : 'rgba(13, 13, 13, 0.1)',
+        borderRadius: 26,
+        minHeight: compact ? 52 : undefined,
         backgroundColor: c.composer,
-        padding: 16,
-        gap: 12,
+        paddingHorizontal: compact ? 10 : 14,
+        paddingTop: compact ? 7 : 10,
+        paddingBottom: compact ? 7 : 10,
+        gap: compact ? 0 : 6,
+        justifyContent: 'center',
+        ...(Platform.OS === 'web'
+          ? {
+              boxShadow: isDark
+                ? 'inset 0 0 1px 0 rgba(255, 255, 255, 0.12), 0 4px 24px rgba(0, 0, 0, 0.22)'
+                : '0 0 0 1px rgba(0, 0, 0, 0.03), 0 2px 8px rgba(0, 0, 0, 0.04), 0 8px 32px rgba(0, 0, 0, 0.04)',
+            }
+          : {
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: isDark ? 0.24 : 0.06,
+              shadowRadius: 12,
+              elevation: 3,
+            }),
       }}
     >
       {children}
-      {Platform.OS !== 'web' && size.width > 0 && (
-        <Svg
-          pointerEvents="none"
-          width={size.width}
-          height={size.height}
-          style={StyleSheet.absoluteFill}
-          aria-hidden={true}
-          focusable={false}
-        >
-          {colors.map((color, index) => (
-            <AnimatedRect
-              key={index}
-              x={0.75}
-              y={0.75}
-              width={size.width - 1.5}
-              height={size.height - 1.5}
-              rx={27}
-              fill="none"
-              stroke={color}
-              strokeWidth={focused ? 1.8 : 1.3}
-              strokeDasharray={[perimeter / 6, (perimeter * 5) / 6]}
-              strokeDashoffset={phase.interpolate({
-                inputRange: [0, 1],
-                outputRange: [(-index * perimeter) / 6, (-(index + 6) * perimeter) / 6],
-              })}
-            />
-          ))}
-        </Svg>
-      )}
     </View>
   );
 }

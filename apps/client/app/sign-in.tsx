@@ -2,13 +2,16 @@ import { Text } from '../src/locale-ui';
 import { useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useAuth } from '../src/auth';
+import { BRAND_NAME } from '../src/sidebar';
 import { useTheme } from '../src/theme';
 import { Button, Copy, ErrorNotice, Panel } from '../src/ui';
+
 export default function SignInScreen() {
   const { signIn, configured } = useAuth();
   const { colors: c } = useTheme();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
+
   async function login() {
     setBusy(true);
     setError(null);
@@ -20,6 +23,7 @@ export default function SignInScreen() {
       setBusy(false);
     }
   }
+
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: c.background }}
@@ -30,13 +34,25 @@ export default function SignInScreen() {
         padding: 24,
       }}
     >
-      <View style={{ width: '100%', maxWidth: 440, gap: 24 }}>
-        <View style={{ gap: 12 }}>
-          <Text style={{ color: c.accent, fontSize: 14, fontWeight: '700', letterSpacing: 2 }}>
-            AI CHAT
+      <View style={{ width: '100%', maxWidth: 420, gap: 24 }}>
+        <View style={{ gap: 10, alignItems: 'center' }}>
+          <Text
+            translate={false}
+            style={{ color: c.muted, fontSize: 13, fontWeight: '600', letterSpacing: 0.4 }}
+          >
+            {BRAND_NAME}
           </Text>
-          <Text style={{ fontSize: 38, fontWeight: '700', lineHeight: 45, color: c.text }}>
-            A little more than a conversation.
+          <Text
+            style={{
+              fontSize: 32,
+              fontWeight: '600',
+              lineHeight: 40,
+              letterSpacing: -0.5,
+              color: c.text,
+              textAlign: 'center',
+            }}
+          >
+            Ready when you are.
           </Text>
           <Copy muted>Your models. Your tools. One place to think and get things done.</Copy>
         </View>

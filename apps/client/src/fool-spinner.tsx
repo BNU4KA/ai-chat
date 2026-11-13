@@ -1,10 +1,12 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Animated, Easing, View, type ViewStyle } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { Animated, Easing, Platform, View, type ViewStyle } from 'react-native';
+import Svg, { Circle, Path } from 'react-native-svg';
 import { useMotionPaused } from './motion';
-import { TarotCard } from './tarot-card';
+import { useTheme } from './theme';
 import { useLocale } from './locale';
+
 export function FoolSpinner({
-  size = 40,
+  size = 24,
   label = 'Loading',
   style,
 }: {
@@ -13,89 +15,113 @@ export function FoolSpinner({
   style?: ViewStyle;
 }) {
   const reduced = useMotionPaused();
+  const { colors: c } = useTheme();
   const { t } = useLocale();
-  const [card, setCard] = useState(0);
-  const phase = useRef(new Animated.Value(0)).current;
-  useLayoutEffect(() => {
-    phase.setValue(0);
-  }, [card, phase, reduced]);
+  const spin = useRef(new Animated.Value(0)).current;
+
   useEffect(() => {
-    if (reduced) return;
-    let active = true;
-    const animation = Animated.sequence([
-      Animated.delay(1600),
-      Animated.timing(phase, {
+    if (Platform.OS === 'web' || reduced) return;
+    const animation = Animated.loop(
+      Animated.timing(spin, {
         toValue: 1,
-        duration: 1400,
-        easing: Easing.inOut(Easing.sin),
+        duration: 850,
+        easing: Easing.linear,
         useNativeDriver: true,
       }),
-    ]);
-    animation.start(({ finished }) => {
-      if (finished && active) {
-        setCard((value) => (value + 1) % 22);
-      }
-    });
+    );
+    animation.start();
     return () => {
-      active = false;
       animation.stop();
+      spin.setValue(0);
     };
-  }, [card, phase, reduced]);
+  }, [reduced, spin]);
+
+  const spinnerSize = Math.min(size, 32);
+
   return (
     <View
       testID="fool-spinner"
       accessibilityRole="progressbar"
       accessibilityLabel={t(label)}
       style={[
-        { width: size + 16, height: size + 16, alignItems: 'center', justifyContent: 'center' },
+        { width: size, height: size, alignItems: 'center', justifyContent: 'center' },
         style,
       ]}
     >
-      <View
-        style={{
-          position: 'absolute',
-          width: size * 0.72,
-          height: size,
-          borderRadius: 4,
-          backgroundColor: '#bd9b55',
-          opacity: 0.22,
-          transform: [{ rotate: '-9deg' }, { translateX: -3 }],
-        }}
-      />
       <Animated.View
-        testID="tarot-current"
-        style={{
-          opacity: phase.interpolate({ inputRange: [0, 0.35, 1], outputRange: [1, 1, 0] }),
-          transform: [
-            {
-              translateX: phase.interpolate({ inputRange: [0, 1], outputRange: [0, -size * 0.18] }),
-            },
-            { rotate: phase.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-9deg'] }) },
-          ],
-        }}
+        testID="chatgpt-spinner-ring"
+        style={
+          Platform.OS === 'web'
+            ? undefined
+            : {
+                transform: [
+                  {
+                    rotate: spin.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: ['0deg', '360deg'],
+                    }),
+                  },
+                ],
+              }
+        }
       >
-        <TarotCard index={card} height={size} />
+        <Svg width={spinnerSize} height={spinnerSize} viewBox="0 0 24 24" fill="none">
+          <Circle
+            cx={12}
+            cy={12}
+            r={9}
+            stroke={c.border}
+            strokeWidth={2.2}
+          />
+          <Path
+            d="M12 3a9 9 0 0 1 9 9"
+            stroke={c.text}
+            strokeWidth={2.2}
+            strokeLinecap="round"
+          />
+        </Svg>
       </Animated.View>
-      {!reduced && (
-        <Animated.View
-          testID="tarot-next"
-          style={{
-            position: 'absolute',
-            opacity: phase.interpolate({ inputRange: [0, 0.2, 1], outputRange: [0, 0, 1] }),
-            transform: [
-              {
-                translateX: phase.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [size * 0.18, 0],
-                }),
-              },
-              { rotate: phase.interpolate({ inputRange: [0, 1], outputRange: ['9deg', '0deg'] }) },
-            ],
-          }}
-        >
-          <TarotCard index={(card + 1) % 22} height={size} />
-        </Animated.View>
-      )}
     </View>
+  );
+}
+
+export function ThinkingDot() {
+  const reduced = useMotionPaused();
+  const { colors: c } = useTheme();
+  const scale = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (Platform.OS === 'web' || reduced) return;
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(scale, {
+          toValue: 1.28,
+          duration: 600,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(scale, {
+          toValue: 1,
+          duration: 600,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [reduced, scale]);
+
+  return (
+    <Animated.View
+      testID="chatgpt-thinking-dot"
+      style={{
+        width: 12,
+        height: 12,
+        borderRadius: 6,
+        backgroundColor: c.text,
+        transform: Platform.OS === 'web' ? undefined : [{ scale }],
+      }}
+    />
   );
 }

@@ -558,3 +558,50 @@ Owner explicitly requested commit and push of the expansion and review fixes. Pu
 web deployment workflow. This branch preserves both histories without changing master or
 triggering its deployment. Merge/integration with those newer UI changes remains a separate step.
 The verification evidence above applies to this branch before integration with master.
+
+## T13 — ChatGPT Web UI/UX alignment — 2026-11-13 (local, uncommitted)
+
+Owner explicitly requested replacing the Gemini/Tarot visual language with a 1-in-1 ChatGPT web
+UI/UX (graphite dark `#212121` / `#181818` / `#303030` and light `#ffffff` / `#f9f9f9` / `#f4f4f4`
+palettes), keeping all workspace expansion features (Projects, Documents/Library, Scheduled tasks,
+Notifications, Message search, Work tools) integrated into ChatGPT-style navigation and using the
+owner-specified brand string `"it's kawasaki, bitches"`.
+
+Implemented in `apps/client`:
+
+- Replaced Tarot background, Tarot card loader, and rainbow conic-gradient composer border with
+  ChatGPT-style pulsing thinking dot, streaming cursor, circular ring spinner, single-line 52 px
+  pill composer that expands to multiline on wrap/attachments, message/menu/popover/drawer
+  entrance animations, hover action reveal, and custom scrollbars (`web-effects.web.tsx`,
+  `composer-frame.tsx`, `fool-spinner.tsx`).
+- Added crisp SVG icon set (`chatgpt-icons.tsx`) matching ChatGPT web sidebar, composer, message
+  action, and modal chrome.
+- Reworked `sidebar.tsx`: desktop starts open at 260 px and collapses smoothly (220 ms,
+  reduced-motion aware) to a 52 px rail; mobile uses a 300 px animated slide-in edge drawer; adds
+  date-grouped history (`Today`, `Yesterday`, `Previous 7 Days`, `Previous 30 Days`, `Older`),
+  hover/active per-row `···` rename/delete menu, Projects/Library/Scheduled/Notifications quick
+  navigation, and bottom profile popover menu.
+- Added centered ChatGPT Search modal (`search-modal.tsx`, `Cmd/Ctrl+K` and sidebar trigger) across
+  conversations and message text, plus a two-column ChatGPT Settings modal (`settings-modal.tsx`,
+  reused on `/settings`, `/settings/connections`, and `/settings/data`) and kept `/workspace`
+  inside the persistent sidebar shell.
+- Reworked `chat.tsx`, `chat-extras.tsx`, `message-actions.tsx`, `markdown.tsx`, `dialog.tsx`,
+  `model-list.tsx`, `attachment.tsx`, `ui.tsx`, `sign-in.tsx`, `workspace.tsx`, and
+  `translations.ts`: top-left floating model dropdown popover, clean `"Ready when you are."` home
+  screen, unlabeled right-aligned user bubbles with inline editing & Copy, unbubbled assistant
+  responses with icon-only action toolbar (`Copy`, `Retry`, `Share`, `···` menu), syntax-highlighted
+  code blocks with header bar & copy feedback, and floating scroll-to-bottom button.
+
+Checks on Node 26.13.0 / pnpm 12.18.0 (synthetic API/provider fixtures; no live OpenRouter/Google
+generation, no native device test, no deployment, no commit or push):
+
+- `pnpm typecheck`: passed across all workspace packages.
+- `pnpm lint`: passed (`eslint .`).
+- `pnpm test`: passed.
+- `pnpm build`: passed (API/worker typecheck + Expo web production export to `apps/client/dist`).
+- `pnpm test:e2e --reporter=list`: 36 passed across `desktop` and `mobile-web`, 2 optional
+  live-health checks skipped. Desktop dark/light, mobile drawer, response actions, and Markdown
+  table/code-block screenshots were visually inspected.
+
+Next task: owner visual review of the updated UI on desktop/mobile web, followed by remaining
+T19 native/live acceptance checks and owner-authorized release/merge.

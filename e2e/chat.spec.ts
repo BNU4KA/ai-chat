@@ -352,11 +352,7 @@ test('an authenticated user creates a chat, chooses a model and receives one per
   await expect(page.getByText('Copied', { exact: true })).toBeVisible();
   await page.getByLabel('Message', { exact: true }).focus();
   await expect(page.getByLabel('Message', { exact: true })).toHaveCSS('outline-style', 'none');
-  await expect
-    .poll(() =>
-      page.getByTestId('composer-frame').evaluate((el) => getComputedStyle(el, '::before').opacity),
-    )
-    .toBe('1');
+  await expect(page.getByTestId('composer-frame')).toBeVisible();
   await retryButton.click();
   await expect(page.getByText('Retry response?', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Close dialog', exact: true }).last().click();
@@ -391,9 +387,10 @@ test('settings expose separate Google consent and require typed account-deletion
     }),
   );
   await page.goto('/settings');
-  await expect(page.getByText('Synthetic Test User', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Manage Gmail & Calendar' }).click();
+  await page.getByRole('button', { name: 'Connections', exact: true }).click();
   await expect(page.getByText('Google Calendar', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Your account', exact: true }).click();
+  await expect(page.getByText('Synthetic Test User', { exact: true })).toBeVisible();
   await page.goto('/settings/data');
   const remove = page.getByRole('button', { name: 'Permanently delete account' });
   await expect(remove).toBeDisabled();
@@ -412,35 +409,22 @@ test('conversation sidebar collapses on desktop and opens as an edge drawer on m
   if (test.info().project.name === 'desktop') {
     const sidebar = page.getByTestId('conversation-sidebar');
     await expect(sidebar).toBeVisible();
-    await expect(sidebar).toHaveCSS('transition-duration', '0.24s');
+    await expect(sidebar).toHaveCSS('transition-duration', '0.22s');
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await expect(sidebar).toHaveCSS('transition-duration', '0s');
     await page.emulateMedia({ reducedMotion: 'no-preference' });
-    await expect(sidebar).toHaveCSS('transition-duration', '0.24s');
-    await expect.poll(async () => (await sidebar.boundingBox())!.width).toBe(72);
-    const content = page.getByText('What’s on your mind?', { exact: true });
-    const contentX = (await content.boundingBox())!.x;
-    await sidebar.hover();
-    await expect(sidebar.getByLabel('Search conversations', { exact: true })).toBeVisible();
-    await expect.poll(async () => (await sidebar.boundingBox())!.width).toBe(280);
-    expect((await content.boundingBox())!.x).toBe(contentX);
-    await page.mouse.move(700, 300);
-    await expect(sidebar.getByLabel('Search conversations', { exact: true })).toHaveCount(0);
-    await expect.poll(async () => (await sidebar.boundingBox())!.width).toBe(72);
-    await page.getByRole('button', { name: 'Expand conversation sidebar' }).click();
-    await page.mouse.move(700, 300);
-    await expect.poll(async () => (await sidebar.boundingBox())!.width).toBe(280);
+    await expect(sidebar).toHaveCSS('transition-duration', '0.22s');
+    await expect.poll(async () => (await sidebar.boundingBox())!.width).toBe(260);
     await page.getByRole('button', { name: 'Collapse conversation sidebar' }).click();
-    await page.mouse.move(700, 300);
-    await expect.poll(async () => (await sidebar.boundingBox())!.width).toBe(72);
-    await sidebar.hover();
+    await expect.poll(async () => (await sidebar.boundingBox())!.width).toBe(52);
+    await page.getByRole('button', { name: 'Expand conversation sidebar' }).click();
+    await expect.poll(async () => (await sidebar.boundingBox())!.width).toBe(260);
     await page.getByRole('button', { name: 'Search conversation history' }).click();
-    await expect(sidebar.getByLabel('Search conversations', { exact: true })).toBeFocused();
-    await page.mouse.move(700, 300);
-    await expect.poll(async () => (await sidebar.boundingBox())!.width).toBe(280);
-    await content.click();
-    await expect(sidebar.getByLabel('Search conversations', { exact: true })).toHaveCount(0);
-    await sidebar.hover();
+    const searchModal = page.getByTestId('search-modal');
+    await expect(searchModal).toBeVisible();
+    await expect(searchModal.getByLabel('Search chats and messages', { exact: true })).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(searchModal).toHaveCount(0);
     await page.screenshot({
       path: test.info().outputPath('sidebar-desktop.png'),
       animations: 'disabled',
@@ -455,10 +439,11 @@ test('conversation sidebar collapses on desktop and opens as an edge drawer on m
     await page.getByRole('button', { name: 'Open conversation history' }).click();
     const drawer = page.getByTestId('conversation-drawer');
     await expect(drawer).toBeVisible();
+    await expect.poll(async () => Math.round((await drawer.boundingBox())!.x)).toBe(0);
     const box = (await drawer.boundingBox())!;
     expect(box.x).toBe(0);
     expect(box.y).toBe(0);
-    expect(box.width).toBe(320);
+    expect(box.width).toBe(300);
     expect(box.height).toBe(page.viewportSize()!.height);
     await expect(page.getByText('Conversations', { exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Close conversation history' })).toHaveCount(1);
@@ -499,7 +484,7 @@ test('a user attaches a photo and a Word file from the start screen and asks abo
     }),
   );
   await page.goto('/');
-  await expect(page.getByText('Hello, Synthetic')).toBeVisible();
+  await expect(page.getByText('Ready when you are.')).toBeVisible();
   await page.getByRole('button', { name: 'Choose model' }).click();
   await page.getByRole('button', { name: /Synthetic Model Tools supported/ }).click();
   for (const input of [
@@ -536,7 +521,7 @@ test('a user attaches a photo and a Word file from the start screen and asks abo
   expect((f.submissions[0]!.body as { file_ids: string[] }).file_ids).toHaveLength(2);
 });
 
-test('tarot loading indicator and composer honor reduced motion', async ({ context, page }) => {
+test('loading indicator and composer honor reduced motion', async ({ context, page }) => {
   await seed(context);
   await fixture(page);
   let release!: () => void;
@@ -551,26 +536,20 @@ test('tarot loading indicator and composer honor reduced motion', async ({ conte
   await page.getByRole('button', { name: 'Choose model' }).click();
   const spinner = page.getByRole('progressbar', { name: 'Loading models' });
   await expect(spinner).toBeVisible();
-  await expect(spinner.getByTestId('tarot-current').locator('svg text').first()).toHaveText('0');
-  await expect(spinner.getByTestId('tarot-current').locator('svg text').first()).toHaveText('I', {
-    timeout: 7000,
-  });
   await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' });
+  expect(
+    await spinner
+      .getByTestId('chatgpt-spinner-ring')
+      .evaluate((el) => parseFloat(getComputedStyle(el).animationDuration)),
+  ).toBeLessThan(0.001);
   await page.screenshot({
-    path: test.info().outputPath('fool-loader.png'),
+    path: test.info().outputPath('chatgpt-loader.png'),
     animations: 'disabled',
   });
   release();
   await expect(spinner).toHaveCount(0);
   await page.getByRole('button', { name: 'Close dialog', exact: true }).last().click();
   await page.getByLabel('Message', { exact: true }).focus();
-  const frame = page.getByTestId('composer-frame');
-  await expect
-    .poll(() => frame.evaluate((el) => getComputedStyle(el, '::before').opacity))
-    .toBe('1');
-  expect(
-    await frame.evaluate((el) => parseFloat(getComputedStyle(el, '::before').animationDuration)),
-  ).toBeLessThan(0.001);
   await page.screenshot({
     path: test.info().outputPath('composer-focused.png'),
     animations: 'disabled',
@@ -615,12 +594,20 @@ const safe = true;
   await expect(table.getByRole('row')).toHaveCount(4);
   await expect(table.getByRole('columnheader')).toHaveCount(3);
   await expect(table.getByRole('cell')).toHaveCount(9);
+  await expect
+    .poll(async () => {
+      const f = (await table.getByRole('cell', { name: 'Data format', exact: true }).boundingBox())!;
+      const b = (await table
+        .getByRole('cell', { name: 'Binary (Protobuf)', exact: true })
+        .boundingBox())!;
+      return Math.abs(b.y - f.y);
+    })
+    .toBeLessThan(2);
   const format = await table.getByRole('cell', { name: 'Data format', exact: true }).boundingBox();
   const binary = await table
     .getByRole('cell', { name: 'Binary (Protobuf)', exact: true })
     .boundingBox();
   expect(binary!.x).toBeGreaterThan(format!.x);
-  expect(binary!.y).toBe(format!.y);
   await expect(
     table.getByRole('columnheader', { name: 'REST', exact: true }).locator('div').last(),
   ).toHaveCSS('text-align', 'right');
@@ -644,7 +631,7 @@ const safe = true;
   );
 });
 
-test('Russian auto locale and profile override persist while the homepage stays animated', async ({
+test('Russian auto locale and profile override persist on the ChatGPT home layout', async ({
   context,
   page,
 }) => {
@@ -663,30 +650,22 @@ test('Russian auto locale and profile override persist while the homepage stays 
   await seed(context);
   await fixture(page, undefined, 'auto');
   await page.goto('/');
-  await expect(page.getByText('О чём хотите поговорить?', { exact: true })).toBeVisible();
+  await expect(page.getByText('Готов к работе.', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Сообщение', { exact: true })).toHaveAttribute(
     'placeholder',
-    'Спросите AI Chat',
+    "Спросите it's kawasaki, bitches",
   );
   await expect(page.locator('html')).toHaveAttribute('lang', 'ru');
-  await expect(page.getByTestId('tarot-background')).toBeVisible();
-  // The frame is illuminated even before the textarea receives focus.
-  await expect
-    .poll(() =>
-      page
-        .getByTestId('composer-frame')
-        .evaluate((el) => Number(getComputedStyle(el, '::before').opacity)),
-    )
-    .toBeGreaterThan(0.5);
   await page.getByRole('button', { name: 'Настройки', exact: true }).last().click();
-  await expect(page.getByText('Регион', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('settings-modal')).toBeVisible();
+  await expect(page.getByText('Язык', { exact: true })).toBeVisible();
   await page.getByRole('radio', { name: 'English', exact: true }).click();
   await expect(page.getByRole('radio', { name: 'English', exact: true })).toHaveAttribute(
     'aria-checked',
     'true',
   );
-  await expect(page.getByText('Settings', { exact: true })).toBeVisible();
-  await page.reload();
+  await expect(page.getByText('Settings', { exact: true }).last()).toBeVisible();
+  await page.goto('/settings');
   await expect(page.getByRole('radio', { name: 'English', exact: true })).toHaveAttribute(
     'aria-checked',
     'true',
@@ -695,9 +674,9 @@ test('Russian auto locale and profile override persist while the homepage stays 
   await expect(page.getByText('Настройки', { exact: true })).toBeVisible();
   await page.getByRole('radio', { name: 'English', exact: true }).click();
   await page.getByRole('button', { name: 'Back to conversations', exact: true }).click();
-  await expect(page.getByText('What’s on your mind?', { exact: true })).toBeVisible();
+  await expect(page.getByText('Ready when you are.', { exact: true })).toBeVisible();
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
-  await page.screenshot({ path: test.info().outputPath('tarot-home.png'), animations: 'disabled' });
+  await page.screenshot({ path: test.info().outputPath('chatgpt-home.png'), animations: 'disabled' });
 });
 
 async function workspaceFixture(page: Page) {
@@ -885,14 +864,16 @@ test('response tools save a versioned document and prepare passage follow-ups wi
   await page.getByLabel('Message', { exact: true }).fill('Synthetic question');
   await page.getByRole('button', { name: 'Send ↑', exact: true }).click();
   await expect(page.getByText('A detailed synthetic answer.', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Work with response', exact: true }).click();
+  await page.getByRole('button', { name: 'More message actions', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Work with response', exact: true }).click();
   await page.getByLabel('Selected response passage', { exact: true }).fill('synthetic answer');
   await page.getByRole('button', { name: 'Explain', exact: true }).click();
   await expect(page.getByLabel('Message', { exact: true })).toHaveValue(
     'Explain the following passage:\n\nsynthetic answer',
   );
   expect(base.submissions).toHaveLength(1);
-  await page.getByRole('button', { name: 'Save as document', exact: true }).click();
+  await page.getByRole('button', { name: 'More message actions', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Save as document', exact: true }).click();
   await expect(page.getByTestId('document-editor')).toBeVisible();
   expect(f.documents).toHaveLength(1);
   expect(f.documents[0]?.content).toBe('A detailed synthetic answer.');
@@ -1051,15 +1032,16 @@ for (const scheme of ['light', 'dark'] as const) {
       .getByTestId('chat-header')
       .getByRole('button', { name: 'Settings', exact: true })
       .click();
-    await expect(page.getByText('Settings', { exact: true })).toHaveCSS(
+    await expect(page.getByTestId('settings-modal')).toBeVisible();
+    await expect(page.getByText('Settings', { exact: true }).last()).toHaveCSS(
       'color',
-      scheme === 'dark' ? 'rgb(227, 227, 227)' : 'rgb(31, 31, 31)',
+      scheme === 'dark' ? 'rgb(236, 236, 236)' : 'rgb(13, 13, 13)',
     );
     await page.screenshot({
       animations: 'disabled',
       path: `/tmp/ai-chat-style-settings-${scheme}-${info.project.name}.png`,
     });
-    await page.getByRole('button', { name: 'Back to conversations', exact: true }).click();
+    await page.getByRole('button', { name: 'Close dialog', exact: true }).last().click();
     await page.getByRole('button', { name: 'Projects & tasks', exact: true }).click();
     await page.getByLabel('Project name', { exact: true }).fill('Synthetic shared project');
     await page
@@ -1070,7 +1052,7 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(project).toHaveAttribute('aria-pressed', 'true');
     await expect(project).toHaveCSS(
       'background-color',
-      scheme === 'dark' ? 'rgb(0, 74, 119)' : 'rgb(211, 227, 253)',
+      scheme === 'dark' ? 'rgb(47, 47, 47)' : 'rgb(229, 229, 229)',
     );
     await page.screenshot({
       animations: 'disabled',
@@ -1086,11 +1068,11 @@ for (const scheme of ['light', 'dark'] as const) {
     const editor = page.getByTestId('document-editor');
     await expect(editor).toHaveCSS(
       'background-color',
-      scheme === 'dark' ? 'rgb(30, 31, 32)' : 'rgb(248, 250, 253)',
+      scheme === 'dark' ? 'rgb(47, 47, 47)' : 'rgb(249, 249, 249)',
     );
     await expect(page.getByRole('button', { name: 'Save version', exact: true })).toHaveCSS(
       'border-radius',
-      '24px',
+      '9999px',
     );
     await page.screenshot({
       animations: 'disabled',
@@ -1214,7 +1196,7 @@ test('Russian workspace keeps localized navigation and shared selection styling'
   const scheduleTab = page.getByRole('button', { name: 'Задачи по расписанию', exact: true });
   await scheduleTab.click();
   await expect(scheduleTab).toHaveAttribute('aria-pressed', 'true');
-  await expect(scheduleTab).toHaveCSS('background-color', 'rgb(0, 74, 119)');
+  await expect(scheduleTab).toHaveCSS('background-color', 'rgb(47, 47, 47)');
   await expect(page.getByRole('button', { name: 'Ежедневно', exact: true })).toHaveAttribute(
     'aria-pressed',
     'true',
