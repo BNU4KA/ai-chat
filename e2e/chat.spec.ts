@@ -5,6 +5,7 @@ const chatId = '20000000-0000-4000-8000-000000000002';
 const userId = '30000000-0000-4000-8000-000000000003';
 const assistantId = '40000000-0000-4000-8000-000000000004';
 const runId = '50000000-0000-4000-8000-000000000005';
+const generatedFileId = '60000000-0000-4000-8000-000000000006';
 const time = '2026-11-10T12:00:00Z';
 function session() {
   const exp = Math.floor(Date.now() / 1000) + 3600;
@@ -248,7 +249,19 @@ async function fixture(
         content: answer,
         status: 'complete',
       };
-      run = { ...run, status: 'completed', last_event_seq: '3' };
+      run = { ...run, status: 'completed', last_event_seq: '5' };
+      messages[1] = { ...messages[1], file_ids: [generatedFileId] };
+      attachments.push({
+        id: generatedFileId,
+        conversation_id: chatId,
+        filename: 'Synthetic-report.docx',
+        byte_size: 4096,
+        detected_mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        status: 'ready',
+        error_code: null,
+        version: 1,
+        created_at: time,
+      });
       const events = [
         {
           seq: '1',
@@ -265,6 +278,20 @@ async function fixture(
         },
         {
           seq: '3',
+          type: 'tool.started',
+          payload: { tool_call_id: 'tool-1', name: 'create_document' },
+        },
+        {
+          seq: '4',
+          type: 'tool.completed',
+          payload: {
+            tool_call_id: 'tool-1',
+            status: 'succeeded',
+            safe_result: { ok: true, data: { file_id: generatedFileId } },
+          },
+        },
+        {
+          seq: '5',
           type: 'run.completed',
           payload: { assistant_message_id: assistantId, final_content: messages[1].content, usage },
         },
@@ -336,6 +363,7 @@ test('an authenticated user creates a chat, chooses a model and receives one per
   await page.getByLabel('Message', { exact: true }).fill('Synthetic question');
   await page.getByRole('button', { name: 'Send ↑', exact: true }).click();
   await expect(page.getByText(/Synthetic answer with/)).toBeVisible();
+  await expect(page.getByText('Synthetic-report.docx', { exact: true })).toBeVisible();
   expect(f.submissions).toHaveLength(1);
   expect(f.submissions[0]?.key).toMatch(/^[0-9a-f-]{36}$/);
   await expect(page.getByRole('button', { name: 'Retry last response' })).toBeVisible();
