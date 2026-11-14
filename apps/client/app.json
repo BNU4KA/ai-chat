@@ -7,7 +7,7 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "bundleIdentifier": "app.aichat",
+      "bundleIdentifier": "app.bnu4ka.chat",
       "supportsTablet": true,
       "infoPlist": {
         "CFBundleLocalizations": [
@@ -17,7 +17,7 @@
       }
     },
     "android": {
-      "package": "app.aichat"
+      "package": "app.bnu4ka.chat"
     },
     "web": {
       "bundler": "metro"
