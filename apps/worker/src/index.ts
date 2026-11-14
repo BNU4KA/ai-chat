@@ -14,6 +14,9 @@ import {
   pickImageModel,
   switchConversationModel,
   saveGeneratedImage,
+  createDocumentFile,
+  editDocumentFile,
+  editImageFile,
 } from '@ai-chat/services';
 import { executeRun } from '@ai-chat/agent-runtime';
 import {
@@ -118,6 +121,17 @@ await boss.work('run.execute', async (jobs) => {
         ...googlePorts(String(run.owner_id), runId),
         switchModel: async ({ ownerId, conversationId, query }) =>
           switchConversationModel(ownerId, conversationId, query),
+        createDocument: (input) => createDocumentFile(input),
+        editDocument: async (input) =>
+          editDocumentFile({
+            ...input,
+            apiKey: (await readRunKey(input.ownerId, run))?.apiKey ?? null,
+          }),
+        editImage: async (input) =>
+          editImageFile({
+            ...input,
+            apiKey: (await readRunKey(input.ownerId, run))?.apiKey ?? null,
+          }),
         generateImage: async ({
           ownerId,
           conversationId,

@@ -181,19 +181,47 @@ export function filePorts(owner: string, chat: string): ToolPorts {
   };
 }
 
-export async function saveGeneratedImage(input: {
+export async function readConversationFile(
+  ownerId: string,
+  conversationId: string,
+  fileId: string,
+): Promise<Record<string, unknown>> {
+  const file = await withWorker(
+    async (tx) =>
+      (
+        await tx.query(
+          'select f.* from files f join conversations c on c.id=f.conversation_id where f.id=$1 and f.owner_id=$2 and f.conversation_id=$3 and f.deleted_at is null and c.deleted_at is null',
+          [fileId, ownerId, conversationId],
+        )
+      ).rows[0],
+  );
+  if (!file) throw new AppError(404, 'NOT_FOUND', 'File not found in this conversation.');
+  if (file.status !== 'ready') throw new AppError(422, 'FILE_NOT_READY', 'File is not ready.');
+  return file;
+}
+
+export function assistantFileName(base: string, extension: string): string {
+  const stem = base.replace(new RegExp(`\\.${extension}$`, 'i'), '');
+  const safe = stem.replace(/[^\p{L}\p{N}._-]/gu, '_').replace(/^_+|_+$/g, '').slice(0, 100);
+  return `${safe || 'document'}.${extension}`;
+}
+
+export async function saveAssistantFile(input: {
   ownerId: string;
   conversationId: string;
   assistantMessageId: string;
   bytes: Uint8Array;
   mime: string;
   filename: string;
+  fallbackName: string;
+  derivedFromFileId?: string;
+  textChunks?: string[];
 }): Promise<{ file_id: string; filename: string; mime: string }> {
   if (!storageConfigured()) {
     throw new AppError(503, 'TOOL_NOT_CONFIGURED', 'File storage is not available.');
   }
   const safeName =
-    input.filename.replace(/[^\p{L}\p{N}._-]/gu, '_').slice(0, 120) || 'generated.png';
+    input.filename.replace(/[^\p{L}\p{N}._-]/gu, '_').slice(0, 120) || input.fallbackName;
   const fileId = randomUUID();
   const objectKey = `${input.ownerId}/${input.conversationId}/${fileId}-${safeName}`;
   await withWorker(async (tx) => {
@@ -221,8 +249,8 @@ export async function saveGeneratedImage(input: {
   const sha = createHash('sha256').update(input.bytes).digest('hex');
   await withWorker(async (tx) => {
     await tx.query(
-      `insert into files (id, owner_id, conversation_id, object_key, original_name, detected_mime, byte_size, status, sha256)
-       values ($1, $2, $3, $4, $5, $6, $7, 'ready', $8)`,
+      `insert into files (id, owner_id, conversation_id, object_key, original_name, detected_mime, byte_size, status, sha256, derived_from_file_id)
+       values ($1, $2, $3, $4, $5, $6, $7, 'ready', $8, $9)`,
       [
         fileId,
         input.ownerId,
@@ -232,8 +260,16 @@ export async function saveGeneratedImage(input: {
         input.mime,
         input.bytes.length,
         sha,
+        input.derivedFromFileId ?? null,
       ],
     );
+    const chunks = input.textChunks ?? [];
+    for (let i = 0; i < chunks.length; i++) {
+      await tx.query(
+        'insert into document_chunks(owner_id,file_id,ordinal,text) values($1,$2,$3,$4)',
+        [input.ownerId, fileId, i, chunks[i]],
+      );
+    }
     await tx.query(
       `insert into message_files (message_id, file_id, owner_id) values ($1, $2, $3)
        on conflict do nothing`,
@@ -241,4 +277,15 @@ export async function saveGeneratedImage(input: {
     );
   });
   return { file_id: fileId, filename: safeName, mime: input.mime };
+}
+
+export async function saveGeneratedImage(input: {
+  ownerId: string;
+  conversationId: string;
+  assistantMessageId: string;
+  bytes: Uint8Array;
+  mime: string;
+  filename: string;
+}): Promise<{ file_id: string; filename: string; mime: string }> {
+  return saveAssistantFile({ ...input, fallbackName: 'generated.png' });
 }

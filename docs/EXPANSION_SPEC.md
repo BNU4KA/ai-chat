@@ -46,6 +46,12 @@ Existing provider/native acceptance gaps remain separate from automated feature 
   for Send. Meeting slots use primary-calendar busy intervals, duration, buffer, local working
   hours and timezone; unknown/invalid busy data fails closed. No attendee availability is guessed.
 
+## Owner note — 2026-11-15: chat documents and photo edit
+
+Chat Word/PDF creation, Word/PDF edits and photo edits are in scope as chat attachments (see
+specs/002-chat-docs-photo-edit). They do not overwrite sources and do not write Projects &
+tasks document versions; workspace save remains deferred.
+
 ## Dependency order and acceptance
 
 T15: schema/contracts, projects/memory, search/branches and context controls.

@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { LIMITS, type ToolName } from '@ai-chat/contracts';
+import {
+  DOCUMENT_FORMATS,
+  LIMITS,
+  documentContentSchema,
+  type ToolName,
+} from '@ai-chat/contracts';
 
 const email = z
   .object({
@@ -108,6 +113,29 @@ export const toolSchemas = {
       model_query: z.string().min(1).max(200).optional(),
     })
     .strict(),
+  create_document: z
+    .object({
+      format: z.enum(DOCUMENT_FORMATS),
+      title: z.string().min(1).max(200),
+      content: documentContentSchema,
+      filename: z.string().min(1).max(120).optional(),
+    })
+    .strict(),
+  edit_document: z
+    .object({
+      source_file_id: z.uuid(),
+      instructions: z.string().min(1).max(4000),
+      format: z.enum(DOCUMENT_FORMATS).optional(),
+      filename: z.string().min(1).max(120).optional(),
+    })
+    .strict(),
+  edit_image: z
+    .object({
+      source_file_id: z.uuid(),
+      prompt: z.string().min(1).max(2000),
+      model_query: z.string().min(1).max(200).optional(),
+    })
+    .strict(),
 } satisfies Record<ToolName, z.ZodType>;
 
 export const toolDescriptions: Record<ToolName, string> = {
@@ -132,6 +160,12 @@ export const toolDescriptions: Record<ToolName, string> = {
     'Switch the model used by this conversation when the user explicitly asks to use or change to a specific model.',
   generate_image:
     'Generate a photo or image immediately using an image-generation model when the user explicitly asks to create/draw/generate a photo or picture.',
+  create_document:
+    'Create a new downloadable Word (docx) or PDF file for the user from structured content: headings, paragraphs, lists and tables. Use it when the user asks for a document file, not just text. Put the full text in blocks; do not invent facts the user did not supply.',
+  edit_document:
+    'Create a new revised copy of a Word or PDF file that belongs to this conversation, applying the instructions. The original file is never changed. Use the source_file_id from the file list. Tell the user when fidelity is best_effort.',
+  edit_image:
+    'Create a new edited image from a photo that belongs to this conversation, applying the visual change in prompt. The original photo is kept. Use the source_file_id of the photo.',
 };
 
 export function parametersFor(name: ToolName): Record<string, unknown> {

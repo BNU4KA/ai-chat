@@ -95,6 +95,34 @@ export type ToolPorts = {
     modelQuery?: string;
     signal?: AbortSignal;
   }): Promise<ToolOutcome>;
+  createDocument?(input: {
+    ownerId: string;
+    conversationId: string;
+    assistantMessageId: string;
+    format: 'docx' | 'pdf';
+    title: string;
+    content: { blocks: unknown[] };
+    filename?: string;
+  }): Promise<ToolOutcome>;
+  editDocument?(input: {
+    ownerId: string;
+    conversationId: string;
+    assistantMessageId: string;
+    sourceFileId: string;
+    instructions: string;
+    format?: 'docx' | 'pdf';
+    filename?: string;
+    signal?: AbortSignal;
+  }): Promise<ToolOutcome>;
+  editImage?(input: {
+    ownerId: string;
+    conversationId: string;
+    assistantMessageId: string;
+    sourceFileId: string;
+    prompt: string;
+    modelQuery?: string;
+    signal?: AbortSignal;
+  }): Promise<ToolOutcome>;
 };
 
 export type Checkpoint = {

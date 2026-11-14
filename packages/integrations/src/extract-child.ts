@@ -3,6 +3,7 @@ import { extractText, getDocumentProxy } from 'unpdf';
 import sharp from 'sharp';
 import WordExtractor from 'word-extractor';
 import { LIMITS } from '@ai-chat/contracts';
+import { readDocxStructureBytes } from './documents/docx-structure.ts';
 export type Extracted = {
   image?: { data: Uint8Array; mime: string; width: number; height: number };
   mime: string;
@@ -122,9 +123,15 @@ export async function extractDocument(bytes: Uint8Array, filename: string): Prom
 }
 if (process.env.AI_CHAT_EXTRACT_CHILD === '1') {
   process.once('disconnect', () => process.exit(1));
-  process.once('message', async (input: { bytes: Uint8Array; filename: string }) => {
+  process.once(
+    'message',
+    async (input: { bytes: Uint8Array; filename: string; mode?: 'docx-structure' }) => {
     try {
-      process.send!({ ok: true, result: await extractDocument(input.bytes, input.filename) });
+      const result =
+        input.mode === 'docx-structure'
+          ? readDocxStructureBytes(input.bytes)
+          : await extractDocument(input.bytes, input.filename);
+      process.send!({ ok: true, result });
     } catch (error) {
       const safe = [
         'FILE_TOO_LARGE',
@@ -141,5 +148,6 @@ if (process.env.AI_CHAT_EXTRACT_CHILD === '1') {
           : 'EXTRACTION_FAILED';
       process.send!({ ok: false, error: message });
     }
-  });
+    },
+  );
 }

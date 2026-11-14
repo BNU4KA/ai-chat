@@ -68,3 +68,13 @@ export {
 export { addDecimal } from './workspace.ts';
 
 export { approvalFields, revisedArguments } from './approval-edit.ts';
+export {
+  DOCUMENT_FORMATS,
+  DOCUMENT_MIME,
+  DOCUMENT_TEXT_LIMIT,
+  documentBlockSchema,
+  documentContentSchema,
+  documentPlainText,
+  normalizeDocumentContent,
+} from './documents.ts';
+export type { DocumentBlock, DocumentContent, DocumentFormat } from './documents.ts';

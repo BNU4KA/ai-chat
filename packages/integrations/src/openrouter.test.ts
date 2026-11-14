@@ -167,3 +167,68 @@ it('falls back cleanly via OpenRouter web plugin and marks Tavily quota errors f
     },
   ]);
 });
+
+it('edits a reference photo through the Image API with input_references', async () => {
+  const { editOpenRouterImage } = await import('./openrouter.ts');
+  const pngBase64 =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j0O0AAAAASUVORK5CYII=';
+  let url = '';
+  let sent: Record<string, unknown> = {};
+  const edited = await editOpenRouterImage(
+    {
+      apiKey: 'synthetic',
+      model: 'google/gemini-2.5-flash-image',
+      prompt: 'Remove the background',
+      reference: { bytes: new Uint8Array([0xff, 0xd8, 0xff, 0xe0]), mime: 'image/jpeg' },
+    },
+    async (requestUrl, init) => {
+      url = String(requestUrl);
+      sent = JSON.parse(String(init?.body ?? '{}'));
+      return Response.json({ usage: { cost: 0.03 }, data: [{ b64_json: pngBase64 }] });
+    },
+  );
+  expect(url).toBe('https://openrouter.ai/api/v1/images');
+  expect(sent.input_references).toEqual([
+    { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,/9j/4A==' } },
+  ]);
+  expect(edited.mime).toBe('image/png');
+  expect(edited.costUsd).toBe('0.03');
+});
+
+it('maps Image API failures and non-image payloads without returning a file', async () => {
+  const { editOpenRouterImage } = await import('./openrouter.ts');
+  const reference = { bytes: new Uint8Array([1, 2, 3]), mime: 'image/png' };
+  await expect(
+    editOpenRouterImage(
+      { apiKey: 'synthetic', model: 'm', prompt: 'p', reference },
+      async () => new Response('no', { status: 402 }),
+    ),
+  ).rejects.toMatchObject({ code: 'INSUFFICIENT_CREDITS' });
+  await expect(
+    editOpenRouterImage(
+      { apiKey: 'synthetic', model: 'm', prompt: 'p', reference },
+      async () => Response.json({ data: [{ b64_json: 'aGVsbG8=' }] }),
+    ),
+  ).rejects.toMatchObject({ code: 'PROVIDER_ERROR' });
+});
+
+it('requests a JSON document revision with a bounded non-streaming chat call', async () => {
+  const { completeOpenRouterJson } = await import('./openrouter.ts');
+  let sent: Record<string, unknown> = {};
+  const result = await completeOpenRouterJson(
+    { apiKey: 'synthetic', model: 'openai/gpt-test', system: 'sys', user: 'usr', maxTokens: 900 },
+    async (_url, init) => {
+      sent = JSON.parse(String(init?.body ?? '{}'));
+      return Response.json({
+        usage: { cost: 0.001 },
+        choices: [{ message: { content: '{"blocks":[]}' } }],
+      });
+    },
+  );
+  expect(sent).toMatchObject({
+    stream: false,
+    max_tokens: 900,
+    response_format: { type: 'json_object' },
+  });
+  expect(result).toEqual({ text: '{"blocks":[]}', costUsd: '0.001' });
+});

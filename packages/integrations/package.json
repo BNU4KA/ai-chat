@@ -11,8 +11,12 @@
   "dependencies": {
     "@ai-chat/agent-runtime": "workspace:*",
     "@ai-chat/contracts": "workspace:*",
+    "@pdf-lib/fontkit": "1.1.1",
     "@supabase/supabase-js": "^2.119.0",
+    "dejavu-fonts-ttf": "2.37.3",
+    "docx": "9.15.3",
     "fflate": "0.8.3",
+    "pdf-lib": "1.17.1",
     "sharp": "0.35.5",
     "unpdf": "2.1.0",
     "word-extractor": "1.0.4"

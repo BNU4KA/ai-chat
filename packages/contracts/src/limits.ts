@@ -63,7 +63,13 @@ export const READ_TOOLS = [
   'get_calendar_availability',
 ] as const;
 
-export const BUILTIN_TOOLS = ['switch_model', 'generate_image'] as const;
+export const BUILTIN_TOOLS = [
+  'switch_model',
+  'generate_image',
+  'create_document',
+  'edit_document',
+  'edit_image',
+] as const;
 
 export const ALL_TOOLS = [...READ_TOOLS, ...WRITE_TOOLS, ...BUILTIN_TOOLS] as const;
 export type ToolName = (typeof ALL_TOOLS)[number];
@@ -81,7 +87,10 @@ export function toolGroup(name: ToolName): ToolGroup {
     name === 'list_project_documents' ||
     name === 'read_project_document' ||
     name === 'switch_model' ||
-    name === 'generate_image'
+    name === 'generate_image' ||
+    name === 'create_document' ||
+    name === 'edit_document' ||
+    name === 'edit_image'
   )
     return 'files';
   if (

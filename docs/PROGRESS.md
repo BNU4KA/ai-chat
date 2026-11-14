@@ -924,3 +924,94 @@ the settings dialog. API and worker stayed on `20261113T213243Z`.
 - The divider was lowered with the options. Web release `20261113T220614Z` is current. Public
   readiness returned `database` and `queue` ok. Bundle `admin-da3015be1ef96bff9712fb57bc76b641.js`
   returned 200. Signed-in click-through of the live page was not run.
+
+
+## Chat Word/PDF creation, Word/PDF edits, and photo edit — 2026-11-15 (pushed to master)
+
+Spec: specs/002-chat-docs-photo-edit (tasks T001–T038). Owner decisions applied: new file on every
+edit, structure preservation attempted with honest fidelity, generative photo edit, and no workspace
+document versions. Chat attachments only; nothing is emailed, uploaded or shared.
+
+Implemented:
+
+- Three builtin `files`-group tools, not write-approval tools: `create_document` (DOCX/PDF from
+  structured blocks), `edit_document` (new DOCX/PDF from a conversation Word/PDF), and `edit_image`
+  (new PNG/JPEG/WebP from a conversation photo). Schemas, descriptions, dispatch and system guidance
+  are in agent-runtime. Availability follows the wired ports, as for `generate_image`.
+- Migration `0009_file_derived_from.sql` adds `files.derived_from_file_id` (ON DELETE SET NULL).
+- `saveAssistantFile` generalizes the image save path (quota, storage fail-closed, message link,
+  lineage, text chunks so `read_file`/`search_files` see created documents). `saveGeneratedImage`
+  is a thin wrapper.
+- DOCX/PDF builders in `packages/integrations/src/documents`. PDF embeds DejaVu Sans (Cyrillic is
+  required by the bilingual UI; pdf-lib standard fonts cannot draw it).
+- Word structure reader (headings, paragraphs, lists with bullet/number detection, tables) runs in the
+  existing isolated extraction child, with bounded unzip and XML size. Embedded pictures, text boxes,
+  long text/tables are reported as unsupported.
+- `edit_document`: source must be ready and in this conversation; legacy .doc → UNSUPPORTED_FILE; the
+  conversation's model rewrites the structured content as JSON; output is validated with zod; empty or
+  invalid output is a PROVIDER_ERROR with no file. `fidelity` is `structure_preserved` only for DOCX→DOCX
+  with no unsupported elements and no lost headings, lists or tables; otherwise `best_effort` with notes.
+  PDF sources are always `best_effort`.
+- `edit_image`: source must be a conversation PNG/JPEG/WebP. Animated GIF is refused with
+  UNSUPPORTED_FILE (the spec allows refusal). The normalized (metadata-stripped, ≤2048 px) photo is sent
+  to OpenRouter as `input_references`. Model: catalog models that accept and output images (preferred
+  list first). The original photo is never changed.
+- Worker ports wired with the run-pinned key (`readRunKey`); missing or mismatched key → KEY_MISSING.
+
+OpenRouter validation (official docs fetched 2026-11-15, image-generation guide): image editing uses
+`POST /api/v1/images` with `input_references: [{type:"image_url", image_url:{url}}]`, result in
+`data[0].b64_json`, cost in `usage.cost`. The adapter does not trust the declared media type and sniffs
+PNG/JPEG/WebP bytes. Create/edit text revision uses non-streaming chat completions with JSON response
+format. Live OpenRouter behaviour has NOT been exercised.
+
+Dependencies (integrations): `docx@9.15.3`, `pdf-lib@1.17.1`, `@pdf-lib/fontkit@1.1.1`,
+`dejavu-fonts-ttf@2.37.3` (license: bundled `LICENSE`). `docx@9.15.4` was published 2026-11-14 and
+would need a `minimumReleaseAgeExclude` exception; 9.15.3 was used instead and no policy exception was
+added. `pnpm-workspace.yaml` is unchanged. Migrations and lockfile were updated.
+
+Checks (Node v24.2.0; the project requires 26.13.0, which is not installed here; pnpm 12.18.0 run via
+`npx`; the global pnpm shim failed with ENOEXEC):
+
+- `pnpm typecheck`: passed across all workspace packages.
+- `pnpm lint`: passed.
+- `pnpm test`: 68 passed (21 files), including new document builder, structure round-trip, OpenRouter
+  image-edit/JSON adapters, contracts normalization and tool classification, and tool schema tests.
+- `pnpm test:integration` on the local disposable container `ai-chat-pg` (PostgreSQL 15, database
+  `ai_chat_feature002`): 55 passed (9 files). New: 8 file-action scenarios (create DOCX/PDF linked to the
+  assistant message; empty content refused; DOCX revision with new file, derived lineage, unchanged source
+  bytes and `structure_preserved`; PDF revision `best_effort` with notes; invalid model output saves no file;
+  not-ready, legacy .doc, missing key and foreign owner refused; photo edit with unchanged original; GIF
+  refused before provider call; storage unset → TOOL_NOT_CONFIGURED with no file) and 4 agent dispatch
+  scenarios (port dispatch without approval, absent ports not offered, malformed args rejected before the
+  port, source-id passthrough). Providers and storage are synthetic fixtures at the boundary; document
+  builders, extraction child and database are real.
+- `git diff --check`: passed.
+- `pnpm test:e2e`: 27 passed, 2 skipped, 15 failed. The failures are the same 15 recorded above for the
+  owner's sidebar redesign (missing "Settings" control and related locators). The client was not changed
+  by this task. I did not establish a clean baseline of the unmodified tree, so this is not proven
+  pre-existing; the owner should review it.
+
+Not verified (explicit):
+
+- Live OpenRouter document revision and photo edit: no paid request was made. Owner check needed.
+- Browser/native display of the new attachments after a run (T017, T030): the client reuses
+  `tool.completed`/`run.completed` invalidation that `generate_image` uses, but no browser scenario was
+  added or run for this feature. Left open. No e2e scenario covers created documents yet.
+- Native iOS/Android behaviour and real DOCX/PDF visual QA in Word/Preview.
+
+Known limits: PDF generation has no emoji or symbol fallback; glyphs outside DejaVu may render as empty
+boxes. Edited photos derive from the 2048 px normalized copy. Word edits regenerate lists as bullet or
+decimal from numbering format only, not exact styles. Documents over 80,000 characters are refused. The
+conversation's model must accept the text revision request; an image-only model returns PROVIDER_ERROR.
+Legacy .doc editing, HEIC, and GIF editing remain out of scope.
+
+Owner-facing summary: the assistant can now create Word and PDF files in chat, revise Word/PDF files in
+the conversation as new files, and make a new edited version of an attached photo. Source files are never
+overwritten. Word revisions report whether structure was kept. Automated checks pass; live OpenRouter
+checks and browser attachment evidence are still pending.
+
+Next task: owner runs one live photo-edit and one live document-revision check with an authorized key;
+then a browser scenario for created-file visibility (T017/T030) and the e2e baseline review (T037).
+This push contains only this feature's changes; the owner's uncommitted client and workspace work was
+left out. Migration 0009 must be applied and the API and worker restarted before the file tools run in
+production. The web deploy workflow does not do either.

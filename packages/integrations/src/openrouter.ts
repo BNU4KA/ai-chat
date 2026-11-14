@@ -291,17 +291,9 @@ export async function generateOpenRouterImage(
     }),
   });
   if (!response.ok) {
-    const code =
-      response.status === 401 || response.status === 403
-        ? 'KEY_INVALID'
-        : response.status === 402
-          ? 'INSUFFICIENT_CREDITS'
-          : response.status === 429
-            ? 'PROVIDER_RATE_LIMIT'
-            : response.status === 404
-              ? 'MODEL_UNAVAILABLE'
-              : 'PROVIDER_ERROR';
-    throw Object.assign(new Error('Image generation failed'), { code });
+    throw Object.assign(new Error('Image generation failed'), {
+      code: providerCode(response.status),
+    });
   }
   const body = (await response.json()) as {
     usage?: { cost?: number };
@@ -337,6 +329,125 @@ export async function generateOpenRouterImage(
   return {
     bytes: new Uint8Array(bytes),
     mime,
+    costUsd: body.usage?.cost == null ? null : String(body.usage.cost),
+  };
+}
+
+function providerCode(status: number): string {
+  if (status === 401 || status === 403) return 'KEY_INVALID';
+  if (status === 402) return 'INSUFFICIENT_CREDITS';
+  if (status === 429) return 'PROVIDER_RATE_LIMIT';
+  if (status === 404) return 'MODEL_UNAVAILABLE';
+  return 'PROVIDER_ERROR';
+}
+
+// The Image API returns base64 bytes; the declared media type is checked against the real signature.
+function sniffImage(bytes: Uint8Array): string | null {
+  const ascii = (start: number, end: number) => Buffer.from(bytes.subarray(start, end)).toString('latin1');
+  if (bytes[0] === 0x89 && ascii(1, 4) === 'PNG') return 'image/png';
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
+  if (ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WEBP') return 'image/webp';
+  return null;
+}
+
+export async function editOpenRouterImage(
+  input: {
+    apiKey: string;
+    model: string;
+    prompt: string;
+    reference: { bytes: Uint8Array; mime: string };
+    signal?: AbortSignal;
+  },
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ bytes: Uint8Array; mime: string; costUsd: string | null }> {
+  const signal = input.signal
+    ? AbortSignal.any([input.signal, AbortSignal.timeout(LIMITS.modelTimeoutMs)])
+    : AbortSignal.timeout(LIMITS.modelTimeoutMs);
+  const reference = `data:${input.reference.mime};base64,${Buffer.from(input.reference.bytes).toString('base64')}`;
+  const response = await fetchImpl(`${OPENROUTER}/images`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${input.apiKey}`,
+      'content-type': 'application/json',
+    },
+    signal,
+    body: JSON.stringify({
+      model: input.model,
+      prompt: input.prompt,
+      n: 1,
+      input_references: [{ type: 'image_url', image_url: { url: reference } }],
+    }),
+  });
+  if (!response.ok) {
+    throw Object.assign(new Error('Image editing failed'), { code: providerCode(response.status) });
+  }
+  const body = (await response.json()) as {
+    usage?: { cost?: number };
+    data?: { b64_json?: unknown }[];
+  };
+  const encoded = body.data?.[0]?.b64_json;
+  const bytes =
+    typeof encoded === 'string' && /^[A-Za-z0-9+/]+={0,2}$/.test(encoded)
+      ? new Uint8Array(Buffer.from(encoded, 'base64'))
+      : null;
+  const mime = bytes ? sniffImage(bytes) : null;
+  if (!bytes || !mime || !bytes.length || bytes.length > LIMITS.fileBytes) {
+    throw Object.assign(new Error('Provider did not return a valid image'), {
+      code: 'PROVIDER_ERROR',
+    });
+  }
+  return {
+    bytes,
+    mime,
+    costUsd: body.usage?.cost == null ? null : String(body.usage.cost),
+  };
+}
+
+export async function completeOpenRouterJson(
+  input: {
+    apiKey: string;
+    model: string;
+    system: string;
+    user: string;
+    maxTokens: number;
+    signal?: AbortSignal;
+  },
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ text: string; costUsd: string | null }> {
+  const signal = input.signal
+    ? AbortSignal.any([input.signal, AbortSignal.timeout(LIMITS.modelTimeoutMs)])
+    : AbortSignal.timeout(LIMITS.modelTimeoutMs);
+  const response = await fetchImpl(`${OPENROUTER}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${input.apiKey}`,
+      'content-type': 'application/json',
+    },
+    signal,
+    body: JSON.stringify({
+      model: input.model,
+      messages: [
+        { role: 'system', content: input.system },
+        { role: 'user', content: input.user },
+      ],
+      response_format: { type: 'json_object' },
+      max_tokens: input.maxTokens,
+      stream: false,
+    }),
+  });
+  if (!response.ok) {
+    throw Object.assign(new Error('Document revision failed'), { code: providerCode(response.status) });
+  }
+  const body = (await response.json()) as {
+    usage?: { cost?: number };
+    choices?: { message?: { content?: unknown } }[];
+  };
+  const text = body.choices?.[0]?.message?.content;
+  if (typeof text !== 'string' || !text.trim()) {
+    throw Object.assign(new Error('Provider returned no document'), { code: 'PROVIDER_ERROR' });
+  }
+  return {
+    text,
     costUsd: body.usage?.cost == null ? null : String(body.usage.cost),
   };
 }

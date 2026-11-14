@@ -1,10 +1,15 @@
 export {
+  completeOpenRouterJson,
   createOpenRouterModel,
+  editOpenRouterImage,
   fetchModelCatalog,
   generateOpenRouterImage,
   searchWebOpenRouter,
   validateOpenRouterKey,
 } from './openrouter.ts';
+export { buildDocx, buildPdf, readDocxStructure, readDocxStructureBytes } from './documents/index.ts';
+export type { DocumentModel, DocxStructure } from './documents/index.ts';
+export { extractDocxStructureIsolated } from './extract.ts';
 export { readPublicPage } from './page.ts';
 export { isPrivateAddress, resolvePublic } from './ssrf.ts';
 export { searchWeb, TavilyError } from './tavily.ts';

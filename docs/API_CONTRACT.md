@@ -176,6 +176,16 @@ RUN_LIMIT_REACHED, INTEGRATION_REAUTH_REQUIRED, WORKER_INTERRUPTED, TOOL_OUTCOME
 APPROVAL_EXPIRED. A failure after the POST was accepted is a persisted run failure, not a retroactive
 HTTP error. Never retry it as though the initial POST had not created a run.
 
+## Owner-approved chat documents and photo edit — 2026-11-15
+
+No new HTTP route. Three builtin tools in the `files` group create files during a run and link them
+to the assistant message through `message_files`: `create_document`, `edit_document` and
+`edit_image`. Their arguments and results are defined in `packages/agent-runtime/src/tools.ts` and
+specs/002-chat-docs-photo-edit/contracts. Results contain `file_id`, `filename`, `mime`, and for edits
+`source_file_id`; `edit_document` also contains `fidelity` (`structure_preserved` or `best_effort`)
+and `notes`. Files are downloaded through `GET /v1/files/{id}/download`. Migration 0009 adds
+`files.derived_from_file_id`. Failures are tool errors with stable codes and create no file.
+
 ## Owner-approved workspace expansion — 2026-11-11
 
 The generated `/openapi.json` includes projects and explicit shares; documents, exact-range

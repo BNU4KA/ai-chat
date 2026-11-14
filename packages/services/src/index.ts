@@ -1,10 +1,12 @@
 export {
   modelCatalog,
+  pickImageEditModel,
   pickImageModel,
   switchConversationModel,
   validateChatModel,
 } from './models.ts';
-export { processFile, purgeFile, filePorts, saveGeneratedImage } from './files.ts';
+export { processFile, purgeFile, filePorts, saveGeneratedImage, saveAssistantFile } from './files.ts';
+export { createDocumentFile, editDocumentFile, editImageFile } from './file-actions.ts';
 export {
   googleStatus,
   connectGoogle,

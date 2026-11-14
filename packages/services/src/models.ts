@@ -165,6 +165,27 @@ export async function pickImageModel(ownerId: string, requestedQuery?: string): 
   return imageModels[0]!;
 }
 
+export async function pickImageEditModel(ownerId: string, requestedQuery?: string): Promise<Model> {
+  const catalog = await modelCatalog(ownerId);
+  const editModels = catalog.filter((m) => m.supports_images && m.supports_image_output);
+  if (!editModels.length) {
+    throw new AppError(
+      422,
+      'MODEL_UNAVAILABLE',
+      'No model in your OpenRouter catalog can edit images. Choose an image model that accepts photo input.',
+    );
+  }
+  if (requestedQuery?.trim()) {
+    const matched = matchModels(editModels, requestedQuery);
+    if (matched.length) return matched[0]!;
+  }
+  for (const preferred of IMAGE_MODEL_PREFERENCES) {
+    const found = editModels.find((m) => m.id.toLowerCase() === preferred);
+    if (found) return found;
+  }
+  return editModels[0]!;
+}
+
 export async function switchConversationModel(
   ownerId: string,
   conversationId: string,

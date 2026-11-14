@@ -174,6 +174,28 @@ images are not supported; export a JPG/PNG copy when needed. Image validation ca
 photos at 40 MP and model images at 2048 px per side. Only the five latest distinct photos
 are included in model context; reattach an older photo to bring it into that set.
 
+Chat files can also be created and edited by the assistant (see Chat documents and photo edit
+below). Apply migration 0009 (`files.derived_from_file_id`) with `pnpm migrate` before starting
+the updated worker.
+
+## Chat documents and photo edit
+
+The assistant has three file tools: `create_document` (new DOCX or PDF from structured blocks),
+`edit_document` (new DOCX or PDF derived from a Word/PDF in the same conversation) and
+`edit_image` (new PNG/JPEG/WebP derived from a photo in the same conversation). They use the
+existing storage, quotas and deletion rules, and produce no email, calendar or drive action.
+
+Document edits send the extracted document structure and the instructions to the conversation's
+chosen model (JSON output). Photo edits call OpenRouter's Image API with the normalized photo as
+`input_references`; the model is chosen from the catalog among models that accept and output
+images. Both require the owner's OpenRouter key; without one, the tool reports KEY_MISSING.
+PDF text uses the bundled DejaVu Sans font (npm package `dejavu-fonts-ttf`, Bitstream Vera
+license), so Cyrillic and Latin text render in generated PDFs.
+
+Limits: legacy .doc edits and animated GIF edits are refused. Word edits preserve headings,
+lists and tables when the model keeps them; embedded pictures and text boxes are reported as not
+reproduced. Documents over 80,000 characters cannot be edited in one step.
+
 The API and worker must both run for processing. No additional service credential is needed.
 After installing dependencies, Sharp's platform-specific prebuilt package must be available
 on the worker's OS/architecture. Real OpenRouter inference incurs the user's normal model

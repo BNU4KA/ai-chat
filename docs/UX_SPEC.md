@@ -165,9 +165,18 @@ Photo bytes are decoded and normalized server-side, with orientation corrected a
 stripped before inference. Only the five most recent distinct photo attachments are included
 in a model request; earlier omitted photos are explicitly labelled in context. The current
 limit is 40 megapixels per source photo and 2048 pixels per side for model input. GIF uses
-its first frame. Word documents are text-extracted; this does not preserve embedded pictures
-or page layout and does not implement editing/export. Google Docs links need a separate
-Drive integration and are not supported by this attachment feature.
+its first frame. Word documents are text-extracted for questions; this does not preserve embedded
+pictures or page layout. Google Docs links need a separate Drive integration and are not
+supported by this attachment feature.
+
+Owner-approved 2026-11-15 (see specs/002-chat-docs-photo-edit): the assistant can create a
+Word or PDF file in chat, edit a Word or PDF already in the conversation into a new file, and
+edit an attached JPG/PNG/WebP photo into a new image. Every result is a new chat attachment
+downloaded from the same card as other files; the source file is never overwritten. An edit
+of a Word file reports whether its structure was kept (`structure_preserved`) or regenerated
+(`best_effort`); the answer must say so. PDF edits always regenerate the layout. Animated GIF
+and legacy .doc edits are refused with a clear message. Nothing is emailed or shared.
+Workspace document versions are not changed by these tools.
 
 ### Response action bar
 
