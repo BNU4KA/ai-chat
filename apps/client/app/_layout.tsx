@@ -1,23 +1,51 @@
 import { useEffect, useState } from 'react';
-import { AppState, Platform, View } from 'react-native';
+import { AppState, Platform, StyleSheet, View } from 'react-native';
 import { Stack, usePathname, useRouter, useRootNavigationState, type Href } from 'expo-router';
-import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
 import { StatusBar } from 'expo-status-bar';
+import * as SplashScreen from 'expo-splash-screen';
+import * as SystemUI from 'expo-system-ui';
 import { AuthProvider, useAuth } from '../src/auth';
 import { ThemeProvider, useTheme } from '../src/theme';
 import { Loading } from '../src/ui';
 import { ToastHost } from '../src/toast';
 import { LocaleProvider } from '../src/locale';
 import { WebEffects } from '../src/web-effects';
+import { useProfile } from '../src/queries';
 import { rememberReturnPath, consumeReturnPath } from '../src/return-path';
+
+void SplashScreen.preventAutoHideAsync();
+
+const SPLASH_TIMEOUT_MS = 3000;
+
 function Navigation() {
   const { session, ready } = useAuth();
   const path = usePathname();
-  const { colors, isDark } = useTheme();
+  const { colors, isDark, ready: themeReady, setChoice } = useTheme();
   const router = useRouter();
   const navigation = useRootNavigationState();
+  const profile = useProfile(!!session);
   const isPublic = path === '/sign-in' || path === '/auth/callback';
+  const profileSettled = !session || !profile.isPending;
+  const launchReady = themeReady && ready && profileSettled;
+  const profileTheme = profile.data?.theme;
+
+  useEffect(() => {
+    if (profileTheme) setChoice(profileTheme);
+  }, [profileTheme, setChoice]);
+  useEffect(() => {
+    if (launchReady) void SplashScreen.hideAsync();
+  }, [launchReady]);
+  useEffect(() => {
+    const timer = setTimeout(() => void SplashScreen.hideAsync(), SPLASH_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, []);
+  useEffect(() => {
+    void SystemUI.setBackgroundColorAsync(colors.background);
+  }, [colors.background]);
   useEffect(() => {
     const s = AppState.addEventListener('change', (state) =>
       focusManager.setFocused(state === 'active'),
@@ -33,7 +61,7 @@ function Navigation() {
   }, [ready, session, isPublic, path, router, navigation?.key]);
   return (
     <SafeAreaProvider>
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+      <View style={[styles.fill, { backgroundColor: colors.background }]}>
         <WebEffects />
         <StatusBar style={isDark ? 'light' : 'dark'} />
         <Stack
@@ -45,15 +73,16 @@ function Navigation() {
           }}
         />
         <ToastHost />
-        {(!ready || (!session && !isPublic)) && (
-          <View style={{ position: 'absolute', inset: 0 }}>
+        {themeReady && (!ready || (!session && !isPublic)) && (
+          <View style={StyleSheet.absoluteFill}>
             <Loading />
           </View>
         )}
-      </SafeAreaView>
+      </View>
     </SafeAreaProvider>
   );
 }
+
 export default function RootLayout() {
   const [cache] = useState(
     () =>
@@ -65,14 +94,20 @@ export default function RootLayout() {
       }),
   );
   return (
-    <QueryClientProvider client={cache}>
-      <ThemeProvider>
-        <AuthProvider>
-          <LocaleProvider>
-            <Navigation />
-          </LocaleProvider>
-        </AuthProvider>
-      </ThemeProvider>
-    </QueryClientProvider>
+    <GestureHandlerRootView style={styles.fill}>
+      <KeyboardProvider>
+        <QueryClientProvider client={cache}>
+          <ThemeProvider>
+            <AuthProvider>
+              <LocaleProvider>
+                <Navigation />
+              </LocaleProvider>
+            </AuthProvider>
+          </ThemeProvider>
+        </QueryClientProvider>
+      </KeyboardProvider>
+    </GestureHandlerRootView>
   );
 }
+
+const styles = StyleSheet.create({ fill: { flex: 1 } });

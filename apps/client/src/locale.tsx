@@ -43,8 +43,18 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
           queryKey: ['profile'],
           queryFn: () => api<Profile>('/v1/profile'),
         });
-        await api('/v1/profile', json('PATCH', { locale: next }, current.version));
-        await cache.invalidateQueries({ queryKey: ['profile'] });
+        const previous = current;
+        cache.setQueryData(['profile'], { ...current, locale: next });
+        try {
+          const updated = await api<Profile>(
+            '/v1/profile',
+            json('PATCH', { locale: next }, current.version),
+          );
+          cache.setQueryData(['profile'], updated);
+        } catch (error) {
+          cache.setQueryData(['profile'], previous);
+          throw error;
+        }
       },
     }),
     [language, choice, locales, cache],

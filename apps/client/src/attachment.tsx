@@ -1,10 +1,13 @@
 import { Pressable, Text } from './locale-ui';
 import { FoolSpinner } from './fool-spinner';
-import { Image, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Animated, Easing, Image, Platform, StyleSheet, View } from 'react-native';
+import Reanimated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useQuery } from '@tanstack/react-query';
 import { api } from './api';
 import { ChatGptIcon } from './chatgpt-icons';
 import { useTheme } from './theme';
+import { useMotionPaused } from './motion';
 import type { FileRecord } from './types';
 
 const failures: Record<string, string> = {
@@ -14,6 +17,68 @@ const failures: Record<string, string> = {
   EXTRACTION_FAILED: 'This document could not be read. Try saving a new copy.',
   FILE_SIZE_MISMATCH: 'The upload was incomplete. Try attaching it again.',
 };
+
+const LARGE_PHOTO = 280;
+
+const styles = StyleSheet.create({
+  largePhoto: { width: LARGE_PHOTO, height: LARGE_PHOTO },
+  largeImage: { ...StyleSheet.absoluteFill, width: LARGE_PHOTO, height: LARGE_PHOTO },
+});
+
+function PhotoSkeleton({ size }: { size: number }) {
+  const { colors: c, isDark } = useTheme();
+  const reduced = useMotionPaused();
+  const pulse = useRef(new Animated.Value(0.55)).current;
+  useEffect(() => {
+    if (Platform.OS === 'web' || reduced) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 900,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0.45,
+          duration: 900,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse, reduced]);
+
+  const webGradient = isDark
+    ? 'linear-gradient(110deg, rgba(255,255,255,0.05) 20%, rgba(255,255,255,0.14) 45%, rgba(255,255,255,0.05) 70%)'
+    : 'linear-gradient(110deg, rgba(13,13,13,0.05) 20%, rgba(13,13,13,0.12) 45%, rgba(13,13,13,0.05) 70%)';
+
+  return (
+    <Animated.View
+      testID="attachment-photo-skeleton"
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size > 100 ? 16 : 10,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(13,13,13,0.07)',
+        opacity: Platform.OS === 'web' ? 1 : pulse,
+        ...(Platform.OS === 'web'
+          ? ({
+              backgroundImage: webGradient,
+              backgroundSize: '220% 100%',
+              animation: 'ai-chat-photo-shimmer 1.4s linear infinite',
+            } as Record<string, unknown>)
+          : {}),
+      }}
+    >
+      <ChatGptIcon name="library" size={size > 100 ? 36 : 16} color={c.subtle} />
+    </Animated.View>
+  );
+}
 
 export function Attachment({
   file,
@@ -31,6 +96,14 @@ export function Attachment({
   large?: boolean;
 }) {
   const { colors: c } = useTheme();
+  const reduced = useMotionPaused();
+  const [loaded, setLoaded] = useState(false);
+  const shown = useSharedValue(0);
+  const markLoaded = useCallback(() => {
+    setLoaded(true);
+    shown.value = withTiming(1, { duration: reduced ? 0 : 220 });
+  }, [reduced, shown]);
+  const imageStyle = useAnimatedStyle(() => ({ opacity: shown.value }));
   const photo = !!file?.detected_mime?.startsWith('image/');
   const preview = useQuery({
     queryKey: ['attachment-preview', id],
@@ -41,14 +114,16 @@ export function Attachment({
   });
   const ready = file?.status === 'ready';
   const failed = file?.status === 'failed';
-  if (large && photo && ready && preview.data) {
+  const photoLoading = photo && !failed && (!ready || preview.isLoading || !preview.data);
+
+  if (large && (photo || !file)) {
     return (
       <Pressable
         testID="attachment-card"
-        accessibilityRole={onOpen ? 'button' : undefined}
+        accessibilityRole={onOpen && ready && preview.data ? 'button' : undefined}
         accessibilityLabel={`Open attachment ${file?.filename ?? ''}`}
         onPress={onOpen}
-        disabled={!onOpen}
+        disabled={!onOpen || !ready || !preview.data}
         style={{
           alignSelf: 'flex-start',
           borderRadius: 16,
@@ -58,15 +133,22 @@ export function Attachment({
           backgroundColor: c.raised,
         }}
       >
-        <Image
-          accessibilityLabel={file?.filename ?? 'Attached photo'}
-          source={{ uri: preview.data.url }}
-          style={{ width: 280, height: 280 }}
-          resizeMode="cover"
-        />
+        <View style={styles.largePhoto}>
+          {!loaded && <PhotoSkeleton size={LARGE_PHOTO} />}
+          {preview.data && (
+            <Reanimated.Image
+              accessibilityLabel={file?.filename ?? 'Attached photo'}
+              source={{ uri: preview.data.url }}
+              style={[styles.largeImage, imageStyle]}
+              resizeMode="cover"
+              onLoad={markLoaded}
+            />
+          )}
+        </View>
       </Pressable>
     );
   }
+
   return (
     <View
       testID="attachment-card"
@@ -94,6 +176,8 @@ export function Attachment({
               style={{ width: compact ? 40 : 56, height: compact ? 40 : 56, borderRadius: 10 }}
               resizeMode="cover"
             />
+          ) : photoLoading ? (
+            <PhotoSkeleton size={compact ? 40 : 56} />
           ) : (
             <View
               style={{
@@ -167,7 +251,7 @@ export function Attachment({
             paddingBottom: 10,
           }}
         >
-          {failures[file.error_code ?? ''] ?? 'Try uploading a new copy of this file.'}
+          {failures[file?.error_code ?? ''] ?? 'Try uploading a new copy of this file.'}
         </Text>
       )}
     </View>

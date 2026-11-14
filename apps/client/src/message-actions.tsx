@@ -1,9 +1,13 @@
 import { Pressable, Text } from './locale-ui';
 import { useEffect, useState } from 'react';
 import { Modal, Platform, Share, StyleSheet, View, useWindowDimensions } from 'react-native';
+import Animated, { ZoomIn } from 'react-native-reanimated';
 import * as Clipboard from 'expo-clipboard';
 import { ChatGptIcon, type ChatGptIconName } from './chatgpt-icons';
+import { haptic } from './motion';
 import { useTheme } from './theme';
+
+const ICON_ENTERING = ZoomIn.duration(160);
 
 function IconButton({
   icon,
@@ -24,7 +28,10 @@ function IconButton({
         accessibilityRole="button"
         accessibilityLabel={label}
         disabled={disabled}
-        onPress={(e) => onPress(e.currentTarget)}
+        onPress={(e) => {
+          setHovered(false);
+          onPress(e.currentTarget);
+        }}
         onHoverIn={() => setHovered(true)}
         onHoverOut={() => setHovered(false)}
         style={({ pressed }) => ({
@@ -37,7 +44,9 @@ function IconButton({
           opacity: disabled ? 0.35 : hovered || pressed ? 1 : 0.72,
         })}
       >
-        <ChatGptIcon name={icon} size={16} color={hovered ? c.text : c.muted} />
+        <Animated.View key={icon} entering={ICON_ENTERING}>
+          <ChatGptIcon name={icon} size={16} color={hovered ? c.text : c.muted} />
+        </Animated.View>
       </Pressable>
       {hovered && Platform.OS === 'web' && (
         <View
@@ -85,18 +94,14 @@ export function MessageActions({
 }) {
   const { colors: c, isDark } = useTheme();
   const { width: winWidth, height: winHeight } = useWindowDimensions();
-  const [notice, setNotice] = useState('');
   const [copied, setCopied] = useState(false);
   const [menuPos, setMenuPos] = useState<{ left: number; top: number } | null>(null);
 
   useEffect(() => {
-    if (!notice && !copied) return;
-    const timer = setTimeout(() => {
-      setNotice('');
-      setCopied(false);
-    }, 1800);
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 1800);
     return () => clearTimeout(timer);
-  }, [notice, copied]);
+  }, [copied]);
 
   useEffect(() => {
     if (!menuPos || Platform.OS !== 'web') return;
@@ -136,7 +141,7 @@ export function MessageActions({
     try {
       await Clipboard.setStringAsync(text);
       setCopied(true);
-      setNotice('Copied');
+      haptic();
     } catch (error) {
       onError(error);
     }
@@ -149,7 +154,6 @@ export function MessageActions({
         else {
           await Clipboard.setStringAsync(text);
           setCopied(true);
-          setNotice('Response copied to share');
         }
       } else await Share.share({ message: text });
     } catch (error) {
@@ -173,14 +177,14 @@ export function MessageActions({
       >
         <IconButton
           icon={copied ? 'check' : 'copy'}
-          label="Copy message"
+          label={copied ? 'Copied' : 'Copy message'}
           disabled={!text}
           onPress={() => void copy()}
         />
         {!assistant && onEdit && (
           <IconButton
             icon="edit"
-            label="Edit into a new branch"
+            label="Edit message"
             disabled={busy}
             onPress={() => onEdit()}
           />
@@ -292,12 +296,6 @@ export function MessageActions({
           )}
         </View>
       </Modal>
-
-      {!!notice && (
-        <Text accessibilityLiveRegion="polite" style={{ fontSize: 12, color: c.muted }}>
-          {notice}
-        </Text>
-      )}
     </View>
   );
 }

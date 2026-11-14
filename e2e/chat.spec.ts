@@ -47,6 +47,7 @@ async function fixture(
   answer = 'Synthetic answer with **Markdown** and a safe result.',
   initialLocale: 'auto' | 'en' | 'ru' = 'en',
   evidenceSources: Record<string, unknown>[] = [],
+  generatesFile = false,
 ) {
   let profileLocale = initialLocale;
   let profileVersion = 1;
@@ -249,9 +250,9 @@ async function fixture(
         content: answer,
         status: 'complete',
       };
-      run = { ...run, status: 'completed', last_event_seq: '5' };
-      messages[1] = { ...messages[1], file_ids: [generatedFileId] };
-      attachments.push({
+      run = { ...run, status: 'completed', last_event_seq: generatesFile ? '5' : '3' };
+      if (generatesFile) messages[1] = { ...messages[1], file_ids: [generatedFileId] };
+      if (generatesFile) attachments.push({
         id: generatedFileId,
         conversation_id: chatId,
         filename: 'Synthetic-report.docx',
@@ -291,11 +292,11 @@ async function fixture(
           },
         },
         {
-          seq: '5',
+          seq: generatesFile ? '5' : '3',
           type: 'run.completed',
           payload: { assistant_message_id: assistantId, final_content: messages[1].content, usage },
         },
-      ];
+      ].filter((event) => generatesFile || !event.type.startsWith('tool.'));
       return route.fulfill({
         contentType: 'text/event-stream',
         body: events
@@ -350,7 +351,7 @@ test('an authenticated user creates a chat, chooses a model and receives one per
   page,
 }) => {
   await seed(context);
-  const f = await fixture(page);
+  const f = await fixture(page, undefined, 'en', [], true);
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('console', (message) => {
@@ -379,7 +380,12 @@ test('an authenticated user creates a chat, chooses a model and receives one per
     .getByTestId('assistant-message-actions')
     .getByRole('button', { name: 'Copy message', exact: true })
     .click();
-  await expect(page.getByText('Copied', { exact: true })).toBeVisible();
+  await expect(
+    page
+      .getByTestId('assistant-message-actions')
+      .getByRole('button', { name: 'Copied', exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText('Copied', { exact: true })).toHaveCount(0);
   await page.getByLabel('Message', { exact: true }).focus();
   await expect(page.getByLabel('Message', { exact: true })).toHaveCSS('outline-style', 'none');
   await expect(page.getByTestId('composer-frame')).toBeVisible();
@@ -971,44 +977,32 @@ test('research citations reveal saved evidence and meeting suggestions prepare a
   expect(errors).toEqual([]);
 });
 
-test('editing a user message creates a preserved branch and keeps the new prompt as a draft', async ({
+test('editing a user message regenerates the answer in the same chat', async ({
   context,
   page,
 }) => {
   await seed(context);
   const base = await fixture(page);
   await workspaceFixture(page);
-  const branch = randomUUID();
+  const edits: { key: string; body: unknown }[] = [];
   await page.route('http://localhost:3001/**', async (route) => {
     const req = route.request(),
       path = new URL(req.url()).pathname;
     if (req.method() === 'OPTIONS') return route.fallback();
-    if (path === `/v1/messages/${userId}/branch`)
+    if (path === `/v1/messages/${userId}/edit`) {
+      edits.push({ key: req.headers()['idempotency-key']!, body: req.postDataJSON() });
+      return route.fulfill({ status: 202, json: { data: { run: base.snapshot().run } } });
+    }
+    if (path === `/v1/conversations/${chatId}/messages` && req.method() === 'GET' && edits.length)
       return route.fulfill({
         json: {
-          data: {
-            conversation_id: branch,
-            draft: req.postDataJSON().text,
-            attachments_copied: false,
-          },
+          data: [
+            { ...base.snapshot().assistant_message, id: userId, seq: '1', role: 'user', content: 'Edited synthetic question' },
+            base.snapshot().assistant_message,
+          ],
+          next_cursor: null,
         },
       });
-    if (path === `/v1/conversations/${branch}`)
-      return route.fulfill({
-        json: {
-          data: {
-            id: branch,
-            title: 'Branch: Synthetic question',
-            model_id: 'synthetic/model',
-            enabled_tools: [],
-            version: 1,
-            created_at: time,
-            updated_at: time,
-          },
-        },
-      });
-    if (path.startsWith(`/v1/conversations/${branch}/`))
-      return route.fulfill({ json: { data: [], next_cursor: null } });
     return route.fallback();
   });
   await page.goto('/');
@@ -1017,13 +1011,15 @@ test('editing a user message creates a preserved branch and keeps the new prompt
   await page.getByLabel('Message', { exact: true }).fill('Original synthetic question');
   await page.getByRole('button', { name: 'Send ↑', exact: true }).click();
   await expect(page.getByText(/Synthetic answer with/)).toBeVisible();
-  await page.getByRole('button', { name: 'Edit into a new branch', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit message', exact: true }).click();
   await page.getByLabel('Edited message', { exact: true }).fill('Edited synthetic question');
-  await page.getByRole('button', { name: 'Create branch', exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(branch));
-  await expect(page.getByRole('textbox', { name: 'Message', exact: true })).toHaveValue(
-    'Edited synthetic question',
-  );
+  await page.getByRole('button', { name: 'Save & regenerate', exact: true }).click();
+  await expect(page.getByLabel('Edited message', { exact: true })).toHaveCount(0);
+  await expect(page.getByTestId('user-message-bubble')).toHaveText('Edited synthetic question');
+  await expect(page).toHaveURL(new RegExp(chatId));
+  expect(edits).toEqual([
+    { key: expect.stringMatching(/^[0-9a-f-]{36}$/), body: { text: 'Edited synthetic question' } },
+  ]);
   expect(base.submissions).toHaveLength(1);
 });
 

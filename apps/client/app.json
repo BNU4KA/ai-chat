@@ -28,6 +28,16 @@
       "@react-native-google-signin/google-signin",
       "expo-document-picker",
       [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#ffffff",
+          "dark": {
+            "backgroundColor": "#212121"
+          }
+        }
+      ],
+      "./plugins/with-quiet-pods",
+      [
         "expo-localization",
         {
           "supportedLocales": {

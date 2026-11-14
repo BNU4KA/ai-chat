@@ -1,5 +1,5 @@
 import MarkdownIt from 'markdown-it';
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Linking, Platform, ScrollView, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { Pressable } from './locale-ui';
@@ -221,7 +221,7 @@ export function Markdown({
   onCitation?: (id: string) => void;
 }) {
   const { colors: c } = useTheme();
-  const tokens = parser.parse(text, {});
+  const tokens = useMemo(() => parser.parse(text, {}), [text]);
   const lastInlineIdx = streaming
     ? tokens.reduce((acc, tok, idx) => (tok.type === 'inline' ? idx : acc), -1)
     : -1;

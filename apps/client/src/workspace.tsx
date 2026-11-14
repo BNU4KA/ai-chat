@@ -20,7 +20,8 @@ import { Pressable, Text } from './locale-ui';
 import { Markdown } from './markdown';
 import { useModels, useCredential, useProfile, useCapabilities } from './queries';
 import { useLocale } from './locale';
-import { ConversationSidebar, ConversationDrawer, useSidebarTransition } from './sidebar';
+import { ConversationSidebar, useSidebarTransition } from './sidebar';
+import { ConversationDrawer } from './conversation-drawer';
 import { ChatGptIcon } from './chatgpt-icons';
 import { usePinnedChats } from './pinned-chats';
 import { SearchModal } from './search-modal';
@@ -1006,9 +1007,11 @@ export default function WorkspacePage() {
         </ScrollView>
       </View>
 
-      <ConversationDrawer visible={drawer && !wide} close={() => setDrawer(false)}>
-        {sidebar(true)}
-      </ConversationDrawer>
+      {!wide && (
+        <ConversationDrawer open={drawer} onOpenChange={setDrawer}>
+          {sidebar(true)}
+        </ConversationDrawer>
+      )}
       <SearchModal
         visible={searchOpen}
         close={() => setSearchOpen(false)}

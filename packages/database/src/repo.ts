@@ -985,7 +985,7 @@ export async function listMessages(
       cursorSql = ` and seq > $${params.length}::bigint`;
     }
     const found = await tx.query(
-      `select * from messages where conversation_id = $1${cursorSql} order by seq asc limit $2`,
+      `select * from messages where conversation_id = $1 and superseded_at is null${cursorSql} order by seq asc limit $2`,
       params,
     );
     const rows = found.rows.slice(0, limit);
@@ -1279,19 +1279,141 @@ export async function decideApproval(
   });
 }
 
+type AttemptModelMeta = {
+  contextLength: number | null;
+  maxOutputTokens?: number | null;
+  googleSubject?: string;
+  googleIntegrationId?: string;
+  inputPrice?: string | null;
+  outputPrice?: string | null;
+};
+
+async function startAttempt(
+  tx: Tx,
+  ownerId: string,
+  user: Row,
+  chat: Row,
+  modelMeta?: AttemptModelMeta,
+) {
+  const activeUser = await tx.query(
+    `select count(*)::int as count from runs where status in ${ACTIVE}`,
+  );
+  if (countOf(activeUser.rows[0] as Row) >= LIMITS.activeRunsPerUser) {
+    throw new AppError(409, 'USER_RUN_LIMIT', 'Three runs are already active');
+  }
+  const runKey = await runKeyForOwner(tx, ownerId);
+  const attempt = await tx.query(
+    `select coalesce(max(attempt), 0) + 1 as attempt from runs where user_message_id = $1`,
+    [user.id],
+  );
+  const seq = await tx.query(
+    `select coalesce(max(seq), 0) + 1 as seq from messages where conversation_id = $1`,
+    [user.conversation_id],
+  );
+  const assistantId = randomUUID();
+  const runId = randomUUID();
+  await tx.query(
+    `insert into messages (id, owner_id, conversation_id, seq, role, content, status)
+     values ($1, $2, $3, $4, 'assistant', '', 'pending')`,
+    [assistantId, ownerId, user.conversation_id, seq.rows[0]?.seq],
+  );
+  const runInsert = await tx.query(
+    `insert into runs (
+       id, owner_id, conversation_id, user_message_id, assistant_message_id, attempt, status,
+       model_id, tool_snapshot, credential_version
+     ) values ($1, $2, $3, $4, $5, $6, 'queued', $7, $8::jsonb, $9) returning *`,
+    [
+      runId,
+      ownerId,
+      user.conversation_id,
+      user.id,
+      assistantId,
+      attempt.rows[0]?.attempt,
+      chat.model_id,
+      JSON.stringify({
+        groups: chat.enabled_tools,
+        model_id: chat.model_id,
+        ...modelMeta,
+        budgetUsd: chat.budget_usd,
+        researchMode: chat.research_mode,
+        keySource: runKey.source,
+        managedKeyId: runKey.managedKeyId,
+      }),
+      runKey.version,
+    ],
+  );
+  await tx.query(`update messages set run_id = $2 where id = $1`, [assistantId, runId]);
+  await tx.query(
+    `insert into outbox (owner_id, topic, payload) values ($1, 'run.execute', $2::jsonb)`,
+    [ownerId, JSON.stringify({ runId })],
+  );
+  const seqMax = await tx.query(
+    `select coalesce(max(seq), 0) as seq from run_events where run_id = $1`,
+    [runId],
+  );
+  return { run: runFrom(runInsert.rows[0] as Row, String(seqMax.rows[0]?.seq ?? '0')) };
+}
+
+export async function editMessage(
+  ownerId: string,
+  messageId: string,
+  text: string,
+  idempotencyKey: string,
+  requestHash: string,
+  modelMeta?: AttemptModelMeta,
+) {
+  return withOwner(ownerId, async (tx) => {
+    const replay = await claimIdempotency(
+      tx,
+      ownerId,
+      'POST /messages/edit',
+      idempotencyKey,
+      requestHash,
+    );
+    if (replay) return { replayed: true, status: replay.status, body: replay.body };
+    await lockProfile(tx, ownerId);
+    await takeRate(tx, ownerId, 'runs', 'minute', LIMITS.runsPerMinute);
+    const message = await tx.query(
+      `select * from messages where id = $1 and superseded_at is null for update`,
+      [messageId],
+    );
+    if (!message.rowCount || message.rows[0]?.role !== 'user') {
+      throw new AppError(404, 'NOT_FOUND', 'Message not found');
+    }
+    const user = message.rows[0] as Row;
+    const conversation = await tx.query('select * from conversations where id = $1 for update', [
+      user.conversation_id,
+    ]);
+    if (!conversation.rowCount) throw new AppError(404, 'NOT_FOUND', 'Conversation not found');
+    const busy = await tx.query(
+      `select id from runs where conversation_id = $1 and status in ${ACTIVE}`,
+      [user.conversation_id],
+    );
+    if (busy.rowCount)
+      throw new AppError(409, 'ACTIVE_RUN_EXISTS', 'This conversation already has an active run');
+    await tx.query(
+      `update messages set superseded_at = now()
+       where conversation_id = $1 and seq > $2 and superseded_at is null`,
+      [user.conversation_id, user.seq],
+    );
+    await tx.query(`update messages set content = $2 where id = $1`, [messageId, text]);
+    await tx.query(
+      `update conversations set context_note = '', context_through_seq = 0, version = version + 1, updated_at = now()
+       where id = $1 and context_through_seq >= $2`,
+      [user.conversation_id, user.seq],
+    );
+    const body = await startAttempt(tx, ownerId, user, conversation.rows[0] as Row, modelMeta);
+    await finishIdempotency(tx, ownerId, 'POST /messages/edit', idempotencyKey, 202, body);
+    return { replayed: false, status: 202, body };
+  });
+}
+
 export async function retryMessage(
   ownerId: string,
   messageId: string,
   idempotencyKey: string,
   requestHash: string,
-  modelMeta?: {
-    contextLength: number | null;
-    maxOutputTokens?: number | null;
-    googleSubject?: string;
-    googleIntegrationId?: string;
-    inputPrice?: string | null;
-    outputPrice?: string | null;
-  },
+  modelMeta?: AttemptModelMeta,
 ) {
   return withOwner(ownerId, async (tx) => {
     const replay = await claimIdempotency(
@@ -1310,7 +1432,7 @@ export async function retryMessage(
     }
     const user = message.rows[0] as Row;
     const latest = await tx.query(
-      `select id from messages where conversation_id = $1 and role = 'user' order by seq desc limit 1`,
+      `select id from messages where conversation_id = $1 and role = 'user' and superseded_at is null order by seq desc limit 1`,
       [user.conversation_id],
     );
     if (String(latest.rows[0]?.id) !== messageId) {
@@ -1336,64 +1458,7 @@ export async function retryMessage(
     ) {
       throw new AppError(422, 'VALIDATION_ERROR', 'Wait until the previous run finishes');
     }
-    const activeUser = await tx.query(
-      `select count(*)::int as count from runs where status in ${ACTIVE}`,
-    );
-    if (countOf(activeUser.rows[0] as Row) >= LIMITS.activeRunsPerUser) {
-      throw new AppError(409, 'USER_RUN_LIMIT', 'Three runs are already active');
-    }
-    const runKey = await runKeyForOwner(tx, ownerId);
-    const chat = conversation.rows[0] as Row;
-    const attempt = await tx.query(
-      `select coalesce(max(attempt), 0) + 1 as attempt from runs where user_message_id = $1`,
-      [messageId],
-    );
-    const seq = await tx.query(
-      `select coalesce(max(seq), 0) + 1 as seq from messages where conversation_id = $1`,
-      [user.conversation_id],
-    );
-    const assistantId = randomUUID();
-    const runId = randomUUID();
-    await tx.query(
-      `insert into messages (id, owner_id, conversation_id, seq, role, content, status)
-       values ($1, $2, $3, $4, 'assistant', '', 'pending')`,
-      [assistantId, ownerId, user.conversation_id, seq.rows[0]?.seq],
-    );
-    const runInsert = await tx.query(
-      `insert into runs (
-         id, owner_id, conversation_id, user_message_id, assistant_message_id, attempt, status,
-         model_id, tool_snapshot, credential_version
-       ) values ($1, $2, $3, $4, $5, $6, 'queued', $7, $8::jsonb, $9) returning *`,
-      [
-        runId,
-        ownerId,
-        user.conversation_id,
-        messageId,
-        assistantId,
-        attempt.rows[0]?.attempt,
-        chat.model_id,
-        JSON.stringify({
-          groups: chat.enabled_tools,
-          model_id: chat.model_id,
-          ...modelMeta,
-          budgetUsd: chat.budget_usd,
-          researchMode: chat.research_mode,
-          keySource: runKey.source,
-          managedKeyId: runKey.managedKeyId,
-        }),
-        runKey.version,
-      ],
-    );
-    await tx.query(`update messages set run_id = $2 where id = $1`, [assistantId, runId]);
-    await tx.query(
-      `insert into outbox (owner_id, topic, payload) values ($1, 'run.execute', $2::jsonb)`,
-      [ownerId, JSON.stringify({ runId })],
-    );
-    const seqMax = await tx.query(
-      `select coalesce(max(seq), 0) as seq from run_events where run_id = $1`,
-      [runId],
-    );
-    const body = { run: runFrom(runInsert.rows[0] as Row, String(seqMax.rows[0]?.seq ?? '0')) };
+    const body = await startAttempt(tx, ownerId, user, conversation.rows[0] as Row, modelMeta);
     await finishIdempotency(tx, ownerId, 'POST /messages/retry', idempotencyKey, 202, body);
     return { replayed: false, status: 202, body };
   });
@@ -1475,7 +1540,7 @@ export async function latestMessages(
     const chat = await tx.query('select id from conversations where id=$1', [conversationId]);
     if (!chat.rowCount) throw new AppError(404, 'NOT_FOUND', 'Conversation not found');
     const found = await tx.query(
-      `select * from messages where conversation_id=$1 ${before ? 'and seq < $3::bigint' : ''} order by seq desc limit $2`,
+      `select * from messages where conversation_id=$1 and superseded_at is null ${before ? 'and seq < $3::bigint' : ''} order by seq desc limit $2`,
       before ? [conversationId, limit + 1, before] : [conversationId, limit + 1],
     );
     const rows = found.rows.slice(0, limit).reverse();

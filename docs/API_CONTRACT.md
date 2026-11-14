@@ -81,6 +81,7 @@ integration DTOs must expose only the safe columns listed below; lock them as fi
 | GET /conversations/:id/messages | limit?, cursor? | 200 Message collection with attachment metadata |
 | POST /conversations/:id/messages | {client_message_id:uuid,text:string,file_ids:uuid[]} | 202 {message:Message,run:Run} |
 | POST /messages/:id/retry | {} + Idempotency-Key | 202 {run:Run}; only latest user turn, terminal previous run |
+| POST /messages/:id/edit | {text:string} + Idempotency-Key | 202 {run:Run}; any visible user message, no active run; updates the text, sets `superseded_at` on later messages and starts a new attempt. Superseded messages are omitted from message lists, search, context and run input; context returns 404 for them |
 | GET /conversations/:id/runs | limit?, cursor? | 200 collection, newest first |
 | GET /runs/:id | — | 200 {run,assistant_message,tool_calls,approvals,sources}; coherent snapshot |
 | POST /runs/:id/cancel | {} | 200 Run with cancellation requested; repeated cancel is idempotent |
@@ -180,11 +181,11 @@ HTTP error. Never retry it as though the initial POST had not created a run.
 
 No new HTTP route. Three builtin tools in the `files` group create files during a run and link them
 to the assistant message through `message_files`: `create_document`, `edit_document` and
-`edit_image`. Their arguments and results are defined in `packages/agent-runtime/src/tools.ts` and
-specs/002-chat-docs-photo-edit/contracts. Results contain `file_id`, `filename`, `mime`, and for edits
-`source_file_id`; `edit_document` also contains `fidelity` (`structure_preserved` or `best_effort`)
-and `notes`. Files are downloaded through `GET /v1/files/{id}/download`. Migration 0009 adds
-`files.derived_from_file_id`. Failures are tool errors with stable codes and create no file.
+`edit_image`. Their arguments and results are defined in `packages/agent-runtime/src/tools.ts`
+and specs/002-chat-docs-photo-edit/contracts. Results contain `file_id`, `filename`, `mime`, and
+for edits `source_file_id`; `edit_document` also contains `fidelity` (`structure_preserved` or
+`best_effort`) and `notes`. Files are downloaded through `GET /v1/files/{id}/download`. Migration
+0009 adds `files.derived_from_file_id`. Failures are tool errors with stable codes and create no file.
 
 ## Owner-approved workspace expansion — 2026-11-11
 

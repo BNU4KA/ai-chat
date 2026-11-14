@@ -49,6 +49,7 @@ export {
   documentSchema,
   rangeEditSchema,
   branchSchema,
+  editMessageSchema,
   compactSchema,
   approvalRevisionSchema,
   scheduleInputSchema,

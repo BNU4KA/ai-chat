@@ -37,9 +37,11 @@ Existing provider/native acceptance gaps remain separate from automated feature 
   prices fail closed for capped tasks. Estimates are a submission guard, not a provider billing
   guarantee (provider pricing can change). No silent fallback. Original run recovery rules apply.
 - Message search filters owner and non-deleted conversation, returns snippets and message IDs.
-  Deep links load the requested message vicinity, including older messages. Editing creates a new
-  branch with copied visible text before the edited turn; original stays unchanged. Files must
-  be explicitly reattached rather than silently copied across chats.
+  Deep links load the requested message vicinity, including older messages. Owner decision
+  (2026-11-14): editing a user message regenerates the answer in place in the same conversation;
+  later messages are hidden (superseded), not deleted. The branch endpoint remains for compatibility
+  but is no longer used by the client. Files must be explicitly reattached rather than silently
+  copied across chats.
 - Source PDF opens an authenticated signed download with an actual one-based page fragment;
   built-in browser PDF support varies. Excerpts/dates remain inspectable in the application.
 - Explain/shorten/check follow-ups accept a selected passage, preserve it in the draft, and wait

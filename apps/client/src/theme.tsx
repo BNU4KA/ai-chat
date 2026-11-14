@@ -1,6 +1,18 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
-import { useColorScheme } from 'react-native';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
+import { Platform, useColorScheme } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
+
 export type ThemeChoice = 'system' | 'light' | 'dark';
+
+const THEME_KEY = 'ai-chat.theme';
 
 const light = {
   background: '#ffffff',
@@ -56,19 +68,81 @@ const dark: typeof light = {
   success: '#10a37f',
 };
 
+function parseTheme(value: string | null | undefined): ThemeChoice | null {
+  if (value === 'system' || value === 'light' || value === 'dark') return value;
+  return null;
+}
+
+function readCachedThemeSync(): ThemeChoice | null {
+  if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
+    return parseTheme(localStorage.getItem(THEME_KEY));
+  }
+  return memoryTheme;
+}
+
+let memoryTheme: ThemeChoice | null = null;
+
+async function readCachedThemeAsync(): Promise<ThemeChoice | null> {
+  if (Platform.OS === 'web') return readCachedThemeSync();
+  try {
+    return parseTheme(await SecureStore.getItemAsync(THEME_KEY));
+  } catch {
+    return memoryTheme;
+  }
+}
+
+async function writeCachedTheme(choice: ThemeChoice) {
+  memoryTheme = choice;
+  try {
+    if (Platform.OS === 'web') {
+      if (typeof localStorage !== 'undefined') localStorage.setItem(THEME_KEY, choice);
+      return;
+    }
+    await SecureStore.setItemAsync(THEME_KEY, choice);
+  } catch {
+    /* ignore persistence failures */
+  }
+}
+
 const Context = createContext({
   colors: light,
   isDark: false,
   choice: 'system' as ThemeChoice,
+  ready: true,
   setChoice: (_choice: ThemeChoice) => {},
 });
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const system = useColorScheme();
-  const [choice, setChoice] = useState<ThemeChoice>('system');
+  const [choice, setChoiceState] = useState<ThemeChoice>(() => readCachedThemeSync() ?? 'system');
+  const [ready, setReady] = useState(Platform.OS === 'web' || memoryTheme !== null);
+
+  useEffect(() => {
+    let alive = true;
+    void readCachedThemeAsync().then((cached) => {
+      if (!alive) return;
+      if (cached) {
+        memoryTheme = cached;
+        setChoiceState(cached);
+      }
+      setReady(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const setChoice = useCallback((next: ThemeChoice) => {
+    setChoiceState(next);
+    void writeCachedTheme(next);
+  }, []);
+
   const isDark = (choice === 'system' ? system : choice) === 'dark';
   const colors = isDark ? dark : light;
-  const value = useMemo(() => ({ colors, isDark, choice, setChoice }), [colors, isDark, choice]);
+  const value = useMemo(
+    () => ({ colors, isDark, choice, ready, setChoice }),
+    [colors, isDark, choice, ready, setChoice],
+  );
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 

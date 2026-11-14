@@ -96,7 +96,8 @@ the bottom; show Jump to latest rather than force-scrolling on every token.
 
 Retry is available only on the latest assistant result of the latest user turn, after its run is terminal.
 Label that a retry creates a new paid run. It appends another attempt; it does not overwrite history.
-Earlier attempts remain collapsible and link to their run. Do not add message editing/branching in MVP.
+Only the latest attempt of a turn is shown. Owner decision (2026-11-14): any user message can be edited
+in place; saving hides later messages and regenerates the answer in the same conversation.
 
 ## Tool, source, and confirmation cards
 

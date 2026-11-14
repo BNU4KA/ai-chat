@@ -13,7 +13,7 @@ import type { Conversation, Message, Run } from './types';
 export function ChatExtras({
   chat,
   messages,
-  draft,
+  getDraft,
   fileIds,
   onDraft,
   running,
@@ -23,7 +23,7 @@ export function ChatExtras({
 }: {
   chat?: Conversation;
   messages: Message[];
-  draft: string;
+  getDraft: () => string;
   fileIds: string[];
   onDraft: (s: string) => void;
   running: boolean;
@@ -152,7 +152,7 @@ export function ChatExtras({
     <View
       style={{
         paddingHorizontal: 16,
-        paddingTop: open ? 12 : 4,
+        paddingTop: open ? 12 : 56,
         paddingBottom: 6,
         gap: 8,
         ...(open
@@ -382,7 +382,7 @@ export function ChatExtras({
                     setEstimate(
                       await api(
                         `/v1/conversations/${chat!.id}/estimate`,
-                        json('POST', { text: draft, file_ids: fileIds }),
+                        json('POST', { text: getDraft(), file_ids: fileIds }),
                       ),
                     ),
                   )

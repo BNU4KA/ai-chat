@@ -24,4 +24,8 @@ export default tseslint.config(
       '@typescript-eslint/consistent-type-imports': 'error',
     },
   },
+  {
+    files: ['apps/client/plugins/**/*.js'],
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
+  },
 );

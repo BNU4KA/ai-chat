@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Animated, Easing, Platform, View, type DimensionValue, type ViewStyle } from 'react-native';
+import Reanimated, { FadeIn } from 'react-native-reanimated';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { Text } from './locale-ui';
 import { useMotionPaused } from './motion';
@@ -122,6 +123,7 @@ export function ThinkingDot() {
 }
 
 const SKELETON_WIDTHS: DimensionValue[] = ['88%', '96%', '62%'];
+const SKELETON_ENTERING = FadeIn.duration(240);
 
 export function ThinkingSkeleton() {
   const reduced = useMotionPaused();
@@ -155,7 +157,10 @@ export function ThinkingSkeleton() {
     : 'linear-gradient(90deg, rgba(13,13,13,0.06) 25%, rgba(13,13,13,0.12) 50%, rgba(13,13,13,0.06) 75%)';
 
   return (
-    <View style={{ gap: 10, paddingVertical: 4, maxWidth: 520, width: '100%' }}>
+    <Reanimated.View
+      entering={SKELETON_ENTERING}
+      style={{ gap: 10, paddingVertical: 4, maxWidth: 520, width: '100%' }}
+    >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         <ThinkingDot />
         <Text testID="chatgpt-thinking-text" style={{ fontSize: 14, color: c.muted }}>
@@ -180,7 +185,7 @@ export function ThinkingSkeleton() {
           />
         ))}
       </View>
-    </View>
+    </Reanimated.View>
   );
 }
 

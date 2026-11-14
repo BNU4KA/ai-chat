@@ -925,6 +925,69 @@ the settings dialog. API and worker stayed on `20261113T213243Z`.
   readiness returned `database` and `queue` ok. Bundle `admin-da3015be1ef96bff9712fb57bc76b641.js`
   returned 200. Signed-in click-through of the live page was not run.
 
+## 001 — Mobile and web polish — 2026-11-14 (local, uncommitted)
+
+Spec: `specs/001-mobile-web-polish/` (T001–T046). The Word/PDF feature is deferred to a separate spec.
+
+- Launch theme: the splash screen is held until the theme resolves, and native backgrounds follow the
+  system scheme.
+- Chat layout: the thread has no background. The header and composer dock float with gradient fades,
+  and content scrolls under them. Native uses `KeyboardChatScrollView` and `KeyboardStickyView`
+  from react-native-keyboard-controller. Web uses a plain `ScrollView`.
+- Drawer: a new `conversation-drawer.tsx` uses Reanimated with gesture-handler v3 pan gestures. It
+  covers the header and has no empty top inset.
+- Motion: Reanimated entering animations for the optimistic message, the thinking skeleton, the
+  photo fade-in and the copy icon. expo-haptics fires on send, edit and copy. Reduced motion is
+  respected. The CSS keyframes they replaced were removed.
+- Generated images: the run snapshot is invalidated when a run finishes, so the image appears
+  without re-entering the chat.
+- Copy: the button turns into a check labelled "Copied". No text notice.
+- Edit in place (owner decision, replaces branch-on-edit): `POST /v1/messages/:id/edit`, migration
+  `0008_message_supersede.sql` (`messages.superseded_at`). Any visible user message can be edited.
+  Later messages are superseded and filtered from lists, tail, lease input, search, context,
+  branch copy, compaction and estimate. Compaction resets when the edited turn is covered by it.
+  The client updates the cache optimistically and expands the edit field smoothly.
+- iOS warnings: a Podfile post-install step inhibits warnings in pod targets.
+
+Checks (Node v24.2.0, pnpm 12.18.0 native binary, local `postgres:15` container on port 54329):
+
+- `pnpm typecheck` and `pnpm lint`: passed.
+- `pnpm test`: 54 passed across 16 files.
+- `pnpm test:integration`: 43 passed, including the new edit test. It covers 422, a 404 for another
+  owner, idempotent replay, a 409 while a run is active, hidden later turns, search, and the model
+  input excluding superseded text.
+- `pnpm test:e2e`: 27 passed, 2 skipped, 15 failed. All 15 failures also occur on the owner's
+  staged sidebar redesign without these changes (Settings moved into the profile menu, and the
+  "Coming soon" tooltip). The rewritten edit test, the copy test and the mobile drawer test pass.
+- `expo prebuild --platform ios` and `pod install`, then `xcodebuild` Debug for the iOS simulator:
+  BUILD SUCCEEDED. Unique located warnings dropped from 242 to 56. The rest come from headers in
+  prebuilt Expo and React frameworks (nullability, ExpoFileSystem, RCTMultipartDataTask).
+- `git diff --check`: clean.
+
+Not run: a native device or simulator session (haptics, keyboard, launch theme), migration `0008`
+on hosted Postgres, and any deploy. Next: update the e2e tests for the owner's sidebar redesign,
+then the Word/PDF document feature spec.
+
+## Chat and sidebar render performance — 2026-11-14 (local, uncommitted)
+
+Owner reported input freezes on iOS. The cause was whole-screen re-renders of `ChatWorkspace`.
+
+- The drawer mounts its content only while open or animating (previously the hidden sidebar
+  re-rendered on every keystroke).
+- `ComposerInput` (`composer-input.tsx`) owns the text and height. The screen keeps the draft in a
+  ref and re-renders only when has-text, multiline or tall flips (`composer-shape.ts`).
+- `ConversationSidebar` is memoized and receives stable handlers. Lists are memoized.
+- Streaming: SSE deltas are batched every 32 ms. The screen subscribes to the run without the live
+  text, and `LiveMessageContent` renders the text inside the message row. The reveal step runs
+  every 33 ms instead of every frame.
+- The greeting color loop moved from the JS driver to Reanimated.
+- Polling relaxed: conversation lists and files 30 s, runs 10 s, notices 30 s, capabilities 60 s.
+- Source evidence excerpts render as plain text (`excerpt.ts`).
+
+Checks: `pnpm typecheck`, `pnpm lint` passed. `pnpm test`: 56 passed. `pnpm test:e2e`: 27 passed,
+2 skipped, 15 failed. All 15 are the known failures from the owner's sidebar redesign. The send and
+stream test reaches its final Settings assertion. Device check with Perf Monitor in a Release
+build is still pending.
 
 ## Chat Word/PDF creation, Word/PDF edits, and photo edit — 2026-11-15 (pushed to master)
 
@@ -1012,6 +1075,7 @@ checks and browser attachment evidence are still pending.
 
 Next task: owner runs one live photo-edit and one live document-revision check with an authorized key;
 then a browser scenario for created-file visibility (T017/T030) and the e2e baseline review (T037).
-This push contains only this feature's changes; the owner's uncommitted client and workspace work was
-left out. Migration 0009 must be applied and the API and worker restarted before the file tools run in
-production. The web deploy workflow does not do either.
+The owner's uncommitted work (client, workspace, admin and API changes, and migration `0008_message_supersede.sql`)
+was pushed to master in the same push by owner request, on top of the feature commit. Migration `0008` is
+not applied to production. Migration `0009` was applied to production on 2026-11-14 (UTC) and the backend
+release `20261114T230503Z` was installed. The web deploy workflow publishes the client only.

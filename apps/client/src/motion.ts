@@ -1,36 +1,7 @@
 import { useEffect, useState } from 'react';
-import { AccessibilityInfo, AppState, Platform } from 'react-native';
-function prefersReducedMotion() {
-  if (
-    Platform.OS === 'web' &&
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function'
-  )
-    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  return Platform.OS !== 'web';
-}
-export function useReducedMotion() {
-  const [reduced, setReduced] = useState(prefersReducedMotion);
-  useEffect(() => {
-    if (Platform.OS === 'web') {
-      const query = window.matchMedia('(prefers-reduced-motion: reduce)');
-      const update = () => setReduced(query.matches);
-      update();
-      query.addEventListener('change', update);
-      return () => query.removeEventListener('change', update);
-    }
-    let active = true;
-    void AccessibilityInfo.isReduceMotionEnabled().then((value) => {
-      if (active) setReduced(value);
-    });
-    const listener = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduced);
-    return () => {
-      active = false;
-      listener.remove();
-    };
-  }, []);
-  return reduced;
-}
+import { AppState, Platform } from 'react-native';
+import * as Haptics from 'expo-haptics';
+import { useReducedMotion } from 'react-native-reanimated';
 
 export function useMotionPaused() {
   const reduced = useReducedMotion();
@@ -47,4 +18,9 @@ export function useMotionPaused() {
     return () => listener.remove();
   }, []);
   return reduced || hidden;
+}
+
+export function haptic() {
+  if (Platform.OS !== 'ios') return;
+  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
 }

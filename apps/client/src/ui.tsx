@@ -1,9 +1,10 @@
 import { Pressable, Text, TextInput } from './locale-ui';
 import { FoolSpinner } from './fool-spinner';
-import { Children, type ReactNode, type Ref, type ComponentRef } from 'react';
-import { ScrollView, View, type TextInputProps, type ViewStyle } from 'react-native';
+import { Children, useEffect, useRef, type ReactNode, type Ref, type ComponentRef } from 'react';
+import { Animated, Easing, ScrollView, View, type TextInputProps, type ViewStyle } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from './theme';
+import { BRAND_NAME } from './sidebar';
 
 export function Button({
   children,
@@ -142,6 +143,45 @@ export function ErrorNotice({ error }: { error: unknown }) {
 
 export function Loading() {
   const { colors: c } = useTheme();
+  const opacity = useRef(new Animated.Value(0)).current;
+  const scale = useRef(new Animated.Value(0.96)).current;
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 420,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(scale, {
+        toValue: 1,
+        duration: 520,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(scale, {
+          toValue: 1.03,
+          duration: 900,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(scale, {
+          toValue: 1,
+          duration: 900,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    const delay = setTimeout(() => pulse.start(), 520);
+    return () => {
+      clearTimeout(delay);
+      pulse.stop();
+    };
+  }, [opacity, scale]);
   return (
     <View
       style={{
@@ -150,9 +190,18 @@ export function Loading() {
         justifyContent: 'center',
         backgroundColor: c.background,
         padding: 32,
+        gap: 18,
       }}
     >
-      <FoolSpinner size={32} />
+      <Animated.View style={{ opacity, transform: [{ scale }], alignItems: 'center', gap: 16 }}>
+        <Text
+          translate={false}
+          style={{ fontSize: 18, fontWeight: '600', color: c.text, letterSpacing: -0.2 }}
+        >
+          {BRAND_NAME}
+        </Text>
+        <FoolSpinner size={28} />
+      </Animated.View>
     </View>
   );
 }

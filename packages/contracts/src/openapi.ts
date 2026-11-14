@@ -58,7 +58,9 @@ export function applicationOpenApi() {
         ]
       : [];
     const idempotency =
-      (path.endsWith('/messages') && method === 'post') || path.endsWith('/retry')
+      (path.endsWith('/messages') && method === 'post') ||
+      path.endsWith('/retry') ||
+      path.endsWith('/edit')
         ? [
             {
               name: 'Idempotency-Key',
@@ -132,6 +134,7 @@ export function applicationOpenApi() {
   route('/v1/search/messages', 'get');
   route('/v1/messages/{id}/context', 'get');
   route('/v1/messages/{id}/branch', 'post', undefined, 'branchSchema');
+  route('/v1/messages/{id}/edit', 'post', undefined, 'editMessageSchema');
   route('/v1/workflows', 'get');
   route('/v1/approvals/{id}/revise', 'post', undefined, 'approvalRevisionSchema');
   route('/v1/schedules', 'get', 'scheduleSchema', undefined, true);
@@ -161,6 +164,7 @@ export function applicationOpenApi() {
     ['/v1/conversations/{id}', 'delete', '202'],
     ['/v1/conversations/{id}/messages', 'post', '202'],
     ['/v1/messages/{id}/retry', 'post', '202'],
+    ['/v1/messages/{id}/edit', 'post', '202'],
     ['/v1/files/uploads', 'post', '201'],
     ['/v1/files/{id}/finalize', 'post', '202'],
     ['/v1/files/{id}', 'delete', '202'],

@@ -1,5 +1,15 @@
-import { useEffect, useState } from 'react';
-import { Linking, Modal, Platform, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import {
+  Animated,
+  Easing,
+  Linking,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Pressable, Text } from './locale-ui';
@@ -10,7 +20,9 @@ import { useCredential, useProfile } from './queries';
 import { api, json } from './api';
 import { ChatGptIcon, type ChatGptIconName } from './chatgpt-icons';
 import { Button, Copy, ErrorNotice, Field } from './ui';
-import type { Integration } from './types';
+import { showToast } from './toast';
+import { TimezonePickerModal, deviceTimezone } from './timezone-picker';
+import type { Integration, Profile } from './types';
 
 export type SettingsTab = 'general' | 'key' | 'connections' | 'data' | 'account';
 
@@ -72,7 +84,8 @@ export function SettingsContent({
 
   const [key, setKey] = useState('');
   const [show, setShow] = useState(false);
-  const [timezone, setTimezone] = useState('');
+  const [timezone, setTimezone] = useState(deviceTimezone());
+  const [timezoneOpen, setTimezoneOpen] = useState(false);
   const [confirmation, setConfirmation] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -91,7 +104,8 @@ export function SettingsContent({
   }, [initialTab]);
 
   useEffect(() => {
-    if (profile.data) setTimezone(profile.data.timezone);
+    if (profile.data?.timezone) setTimezone(profile.data.timezone);
+    else if (!profile.data) setTimezone(deviceTimezone());
   }, [profile.data]);
 
   async function saveKey() {
@@ -116,22 +130,38 @@ export function SettingsContent({
 
   async function appearance(theme: ThemeChoice) {
     if (!profile.data) return;
+    const previous = profile.data;
+    setChoice(theme);
+    cache.setQueryData(['profile'], { ...previous, theme });
     try {
-      await api('/v1/profile', json('PATCH', { theme }, profile.data.version));
-      setChoice(theme);
-      await cache.invalidateQueries({ queryKey: ['profile'] });
+      const updated = await api<Profile>(
+        '/v1/profile',
+        json('PATCH', { theme }, previous.version),
+      );
+      cache.setQueryData(['profile'], updated);
+      showToast('Appearance updated.');
     } catch (e) {
+      setChoice(previous.theme);
+      cache.setQueryData(['profile'], previous);
       setError(e);
     }
   }
 
-  async function saveTimezone() {
+  async function saveTimezone(next = timezone) {
     if (!profile.data) return;
+    const previous = profile.data;
+    setTimezone(next);
+    cache.setQueryData(['profile'], { ...previous, timezone: next });
     try {
-      await api('/v1/profile', json('PATCH', { timezone }, profile.data.version));
-      setNotice('Timezone saved.');
-      await cache.invalidateQueries({ queryKey: ['profile'] });
+      const updated = await api<Profile>(
+        '/v1/profile',
+        json('PATCH', { timezone: next }, previous.version),
+      );
+      cache.setQueryData(['profile'], updated);
+      showToast('Timezone saved.');
     } catch (e) {
+      setTimezone(previous.timezone);
+      cache.setQueryData(['profile'], previous);
       setError(e);
     }
   }
@@ -179,7 +209,7 @@ export function SettingsContent({
   }
 
   return (
-    <View style={{ flex: 1, minHeight: 0 }}>
+    <View style={{ flexGrow: 1, flexShrink: 1, minHeight: 0 }}>
       <View
         style={{
           flexDirection: 'row',
@@ -216,7 +246,7 @@ export function SettingsContent({
         )}
       </View>
 
-      <View style={{ flex: 1, flexDirection: wide ? 'row' : 'column', minHeight: 0 }}>
+      <View style={{ flexGrow: 1, flexShrink: 1, flexDirection: wide ? 'row' : 'column', minHeight: 0 }}>
         {/* Left Navigation Column */}
         {wide ? (
           <View
@@ -302,7 +332,7 @@ export function SettingsContent({
         )}
 
         {/* Right Content Column */}
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 22, paddingBottom: 24 }}>
+        <ScrollView style={{ flexGrow: 1, flexShrink: 1 }} contentContainerStyle={{ paddingHorizontal: 22, paddingBottom: 24 }}>
           <ErrorNotice error={error ?? profile.error ?? saved.error} />
           {!!notice && (
             <View
@@ -351,10 +381,10 @@ export function SettingsContent({
                       accessibilityState={{ checked: choice === value, disabled: languageBusy }}
                       disabled={languageBusy}
                       onPress={() => {
-                        setLanguageBusy(true);
                         setError(null);
+                        setLanguageBusy(true);
                         void saveLanguage(value)
-                          .then(() => setNotice('Language saved.'))
+                          .then(() => showToast('Language saved.'))
                           .catch(setError)
                           .finally(() => setLanguageBusy(false));
                       }}
@@ -376,19 +406,32 @@ export function SettingsContent({
               </SettingRow>
 
               <SettingRow label="Calendar timezone">
-                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-                  <Field
-                    accessibilityLabel="Calendar timezone"
-                    placeholder="Europe/Warsaw"
-                    value={timezone}
-                    onChangeText={setTimezone}
-                    style={{ flex: 1 }}
-                  />
-                  <Button secondary onPress={() => void saveTimezone()}>
-                    Save timezone
-                  </Button>
-                </View>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Calendar timezone"
+                  onPress={() => setTimezoneOpen(true)}
+                  style={({ pressed, hovered }) => ({
+                    alignSelf: 'flex-start',
+                    maxWidth: '100%',
+                    paddingHorizontal: 12,
+                    paddingVertical: 7,
+                    borderRadius: 999,
+                    borderWidth: 1,
+                    borderColor: c.border,
+                    backgroundColor: pressed || hovered ? c.hover : 'transparent',
+                  })}
+                >
+                  <Text numberOfLines={1} style={{ fontSize: 13, color: c.text }}>
+                    {timezone || deviceTimezone()}
+                  </Text>
+                </Pressable>
               </SettingRow>
+              <TimezonePickerModal
+                visible={timezoneOpen}
+                value={timezone || deviceTimezone()}
+                onClose={() => setTimezoneOpen(false)}
+                onSelect={(zone) => void saveTimezone(zone)}
+              />
             </>
           )}
 
@@ -585,6 +628,10 @@ export function SettingsModal({
   initialTab?: SettingsTab;
 }) {
   const { colors: c, isDark } = useTheme();
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(14)).current;
+  const [bodyReady, setBodyReady] = useState(false);
+
   useEffect(() => {
     if (!visible || Platform.OS !== 'web') return;
     const onKey = (e: KeyboardEvent) => {
@@ -597,8 +644,36 @@ export function SettingsModal({
     return () => window.removeEventListener('keydown', onKey);
   }, [visible, close]);
 
+  useEffect(() => {
+    if (!visible) {
+      setBodyReady(false);
+      opacity.setValue(0);
+      translateY.setValue(14);
+      return;
+    }
+    setBodyReady(false);
+    opacity.setValue(0);
+    translateY.setValue(14);
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 200,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration: 220,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+    const t = setTimeout(() => setBodyReady(true), 120);
+    return () => clearTimeout(t);
+  }, [visible, opacity, translateY]);
+
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={close}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={close}>
       <View
         style={{
           flex: 1,
@@ -613,18 +688,19 @@ export function SettingsModal({
           onPress={close}
           style={StyleSheet.absoluteFill}
         />
-        <View
+        <Animated.View
           testID="settings-modal"
           style={{
             width: '100%',
             maxWidth: 740,
-            height: 540,
             maxHeight: '88%',
             backgroundColor: isDark ? '#2f2f2f' : '#ffffff',
             borderRadius: 16,
             borderWidth: 1,
             borderColor: c.border,
             overflow: 'hidden',
+            opacity,
+            transform: [{ translateY }],
             ...(Platform.OS === 'web'
               ? {
                   boxShadow: isDark
@@ -634,8 +710,24 @@ export function SettingsModal({
               : {}),
           }}
         >
-          <SettingsContent initialTab={initialTab} onClose={close} />
-        </View>
+          {bodyReady ? (
+            <SettingsContent initialTab={initialTab} onClose={close} />
+          ) : (
+            <View style={{ padding: 22, gap: 12, justifyContent: 'center' }}>
+              {[0.55, 0.9, 0.75, 0.85].map((w, i) => (
+                <View
+                  key={i}
+                  style={{
+                    height: 14,
+                    width: `${w * 100}%`,
+                    borderRadius: 7,
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(13,13,13,0.08)',
+                  }}
+                />
+              ))}
+            </View>
+          )}
+        </Animated.View>
       </View>
     </Modal>
   );

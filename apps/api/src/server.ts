@@ -12,6 +12,7 @@ import {
   createConversationSchema,
   credentialPutSchema,
   deleteAccountSchema,
+  editMessageSchema,
   messageCreateSchema,
   profilePatchSchema,
 } from '@ai-chat/contracts';
@@ -32,6 +33,7 @@ import {
   latestMessages,
   listRuns,
   retryMessage,
+  editMessage,
   saveOpenRouter,
   scheduleAccountDeletion,
   updateConversation,
@@ -411,19 +413,31 @@ export function buildServer(): FastifyInstance {
       reply.header('idempotent-replayed', 'true').status(replay.status);
       return { data: replay.body };
     }
-    const chat = await withOwner(
+    const meta = await validateChatModel(
       request.ownerId,
-      async (tx) =>
-        (
-          await tx.query(
-            'select m.conversation_id from messages m join conversations c on c.id=m.conversation_id where m.id=$1',
-            [params.id],
-          )
-        ).rows[0],
+      await conversationOfMessage(request.ownerId, params.id),
     );
-    if (!chat) throw new AppError(404, 'NOT_FOUND', 'Message not found');
-    const meta = await validateChatModel(request.ownerId, String(chat.conversation_id));
     const created = await retryMessage(request.ownerId, params.id, key, sha256(params.id), meta);
+    if (created.replayed) reply.header('idempotent-replayed', 'true');
+    reply.status(created.status as number);
+    return { data: created.body };
+  });
+
+  app.post('/v1/messages/:id/edit', async (request, reply) => {
+    const params = request.params as { id: string };
+    const { text } = editMessageSchema.parse(request.body);
+    const key = idempotencyOf(request);
+    const hash = sha256(JSON.stringify([params.id, text]));
+    const replay = await requestReplay(request.ownerId, 'POST /messages/edit', key, hash);
+    if (replay) {
+      reply.header('idempotent-replayed', 'true').status(replay.status);
+      return { data: replay.body };
+    }
+    const meta = await validateChatModel(
+      request.ownerId,
+      await conversationOfMessage(request.ownerId, params.id),
+    );
+    const created = await editMessage(request.ownerId, params.id, text, key, hash, meta);
     if (created.replayed) reply.header('idempotent-replayed', 'true');
     reply.status(created.status as number);
     return { data: created.body };
@@ -587,6 +601,21 @@ function idempotencyOf(request: FastifyRequest): string {
     throw new AppError(422, 'VALIDATION_ERROR', 'Idempotency-Key must be a UUID');
   }
   return header;
+}
+
+async function conversationOfMessage(ownerId: string, messageId: string): Promise<string> {
+  const row = await withOwner(
+    ownerId,
+    async (tx) =>
+      (
+        await tx.query(
+          'select m.conversation_id from messages m join conversations c on c.id=m.conversation_id where m.id=$1 and m.superseded_at is null',
+          [messageId],
+        )
+      ).rows[0],
+  );
+  if (!row) throw new AppError(404, 'NOT_FOUND', 'Message not found');
+  return String(row.conversation_id);
 }
 
 function limitOf(value: string | undefined): number {

@@ -3,8 +3,10 @@ import { useState } from 'react';
 import { Linking, View } from 'react-native';
 import { api } from './api';
 import { Button, Copy } from './ui';
+import { plainExcerpt } from './excerpt';
 import { safeUrl } from './markdown';
 import type { Source } from './types';
+
 export function SourceCard({
   source: s,
   onError,
@@ -29,22 +31,27 @@ export function SourceCard({
       onError(e);
     }
   }
+  const excerpt = plainExcerpt(s.excerpt ?? '');
   return (
-    <View style={{ gap: 6 }}>
+    <View style={{ gap: 8 }}>
       <Button secondary quiet onPress={() => setOpen(!open)}>
         [{s.citation_id}] {s.title}
         {s.page ? ` · page ${s.page}` : s.section ? ` · ${s.section}` : ''}
       </Button>
       {open && (
-        <>
+        <View style={{ gap: 10 }}>
           <Copy small muted>
             Retrieved: {s.retrieved_at ? new Date(s.retrieved_at).toLocaleString() : 'Not provided'}
           </Copy>
-          <Copy translate={false}>{s.excerpt || 'No stored excerpt is available.'}</Copy>
+          {excerpt ? (
+            <Copy translate={false}>{excerpt}</Copy>
+          ) : (
+            <Copy>No stored excerpt is available.</Copy>
+          )}
           <Button secondary onPress={() => void visit()}>
             {s.page ? 'Open source page' : 'Open original source'}
           </Button>
-        </>
+        </View>
       )}
     </View>
   );

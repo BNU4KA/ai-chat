@@ -22,23 +22,29 @@ export function applyRunEvent(old:Snapshot,event:RunEvent):Snapshot{
  }
  return value;
 }
+export const runQuery=(runId:string|undefined)=>({queryKey:['run',runId] as const,queryFn:()=>api<Snapshot>(`/v1/runs/${runId}`)});
+export const withoutLiveText=(s:Snapshot):Snapshot=>activeStatus(s.run.status)?{...s,run:{...s.run,last_event_seq:''},assistant_message:{...s.assistant_message,content:''}}:s;
 export function useRun(runId:string|undefined){
  const cache=useQueryClient();const[reconnecting,setReconnecting]=useState(false);
- const query=useQuery({queryKey:['run',runId],queryFn:()=>api<Snapshot>(`/v1/runs/${runId}`),enabled:!!runId,refetchInterval:q=>q.state.data&&activeStatus(q.state.data.run.status)?5000:false});
+ const query=useQuery({...runQuery(runId),select:withoutLiveText,enabled:!!runId,refetchInterval:q=>q.state.data&&activeStatus(q.state.data.run.status)?5000:false});
  useEffect(()=>{if(!runId)return;const controller=new AbortController();let mounted=true;
  void(async()=>{let delay=1000;while(!controller.signal.aborted){try{
    const snapshot=await api<Snapshot>(`/v1/runs/${runId}`,{signal:controller.signal});if(!mounted)return;
    cache.setQueryData(['run',runId],snapshot);if(!activeStatus(snapshot.run.status))break;
    setReconnecting(false);
+   let queued:RunEvent[]=[];let frame:ReturnType<typeof setTimeout>|null=null;
+   const flush=()=>{frame=null;const events=queued;queued=[];if(events.length)cache.setQueryData<Snapshot>(['run',runId],old=>old?events.reduce(applyRunEvent,old):old);};
    await readEvents(runId,snapshot.run.last_event_seq,controller.signal,event=>{
-     cache.setQueryData<Snapshot>(['run',runId],old=>old?applyRunEvent(old,event):old);
+     queued.push(event);
+     if(event.type!=='message.delta'){if(frame)clearTimeout(frame);flush();}else if(!frame)frame=setTimeout(flush,32);
      if(event.type==='tool.completed'){void cache.invalidateQueries({queryKey:['run',runId]});void cache.invalidateQueries({queryKey:['conversation']});void cache.invalidateQueries({queryKey:['files']});}
      if(['run.completed','run.failed','run.cancelled'].includes(event.type)){void cache.invalidateQueries({queryKey:['run',runId]});void cache.invalidateQueries({queryKey:['messages']});void cache.invalidateQueries({queryKey:['runs']});void cache.invalidateQueries({queryKey:['conversations']});void cache.invalidateQueries({queryKey:['conversation']});void cache.invalidateQueries({queryKey:['files']});}
    });
+   if(frame)clearTimeout(frame);flush();
    const current=cache.getQueryData<Snapshot>(['run',runId]);if(current&&!activeStatus(current.run.status))break;
  }catch{if(controller.signal.aborted)break;if(mounted)setReconnecting(true);}
  await new Promise<void>(resolve=>{const timer=setTimeout(resolve,delay);controller.signal.addEventListener('abort',()=>{clearTimeout(timer);resolve();},{once:true});});delay=Math.min(delay*2,10000);
  }})().finally(()=>{if(mounted)setReconnecting(false);});
  return()=>{mounted=false;controller.abort();};},[cache,runId]);
- return {...query,reconnecting};
+ return {data:query.data,reconnecting};
 }

@@ -13,10 +13,6 @@ const css = `
   50% { opacity: 0.95; }
   100% { opacity: 0.45; }
 }
-@keyframes chatgpt-msg-enter {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
-}
 @keyframes chatgpt-panel-enter {
   from { opacity: 0; transform: translateY(6px) scale(0.982); }
   to { opacity: 1; transform: translateY(0) scale(1); }
@@ -25,19 +21,19 @@ const css = `
   from { opacity: 0; transform: translateY(-4px) scale(0.97); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
-@keyframes chatgpt-drawer-enter {
-  from { transform: translateX(-100%); }
-  to { transform: translateX(0); }
-}
-@keyframes chatgpt-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
 @keyframes chatgpt-tooltip-enter {
   from { opacity: 0; transform: translateY(2px); }
   to { opacity: 1; transform: translateY(0); }
 }
 @keyframes chatgpt-skeleton-sweep {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+@keyframes ai-chat-name-shimmer {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+@keyframes ai-chat-photo-shimmer {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
@@ -97,12 +93,6 @@ button:not(:disabled):active, [role="button"]:not([aria-disabled="true"]):active
   transform: scale(0.97);
 }
 
-[data-testid="chat-message"] {
-  animation: chatgpt-msg-enter 220ms cubic-bezier(0.2, 0, 0, 1);
-}
-[data-testid="attachment-card"] {
-  animation: chatgpt-msg-enter 180ms cubic-bezier(0.2, 0, 0, 1);
-}
 [data-testid="dialog-panel"],
 [data-testid="search-modal"],
 [data-testid="settings-modal"] {
@@ -111,12 +101,6 @@ button:not(:disabled):active, [role="button"]:not([aria-disabled="true"]):active
 [data-testid="popover-menu"],
 [data-testid="model-popover"] {
   animation: chatgpt-menu-enter 140ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-[data-testid="drawer-panel"] {
-  animation: chatgpt-drawer-enter 220ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-[data-testid="drawer-backdrop"] {
-  animation: chatgpt-fade-in 180ms ease-out;
 }
 [data-testid="action-tooltip"] {
   animation: chatgpt-tooltip-enter 110ms ease-out;

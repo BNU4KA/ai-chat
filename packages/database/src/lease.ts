@@ -38,7 +38,7 @@ export async function readThreadInputs(runId: string): Promise<{
     const run = found.rows[0] as Row | undefined;
     if (!run) return null;
     const messages = await tx.query(
-      'select * from messages where conversation_id = $1 order by seq asc',
+      'select * from messages where conversation_id = $1 and superseded_at is null order by seq asc',
       [run.conversation_id],
     );
     const attempts = await tx.query(

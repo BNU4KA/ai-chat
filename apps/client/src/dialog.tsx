@@ -1,6 +1,6 @@
 import { Pressable, Text } from './locale-ui';
-import type { ReactNode } from 'react';
-import { Modal, Platform, ScrollView, View } from 'react-native';
+import { useEffect, useRef, type ReactNode } from 'react';
+import { Animated, Easing, Modal, Platform, ScrollView, View } from 'react-native';
 import { ChatGptIcon } from './chatgpt-icons';
 import { useTheme } from './theme';
 
@@ -9,13 +9,42 @@ export function Dialog({
   visible,
   close,
   children,
+  loading = false,
 }: {
   title: string;
   visible: boolean;
   close: () => void;
   children: ReactNode;
+  loading?: boolean;
 }) {
   const { colors: c, isDark } = useTheme();
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(10)).current;
+
+  useEffect(() => {
+    if (!visible) {
+      opacity.setValue(0);
+      translateY.setValue(10);
+      return;
+    }
+    opacity.setValue(0);
+    translateY.setValue(12);
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 200,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration: 220,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [visible, opacity, translateY]);
+
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={close}>
       <View
@@ -32,7 +61,7 @@ export function Dialog({
           onPress={close}
           style={{ position: 'absolute', inset: 0 }}
         />
-        <View
+        <Animated.View
           testID="dialog-panel"
           style={{
             width: '100%',
@@ -44,6 +73,8 @@ export function Dialog({
             borderColor: c.border,
             padding: 20,
             gap: 14,
+            opacity,
+            transform: [{ translateY }],
             ...(Platform.OS === 'web'
               ? {
                   boxShadow: isDark
@@ -85,9 +116,26 @@ export function Dialog({
             </Pressable>
           </View>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 10 }}>
-            {children}
+            {loading ? (
+              <View style={{ gap: 10, paddingVertical: 8 }}>
+                {[0.92, 1, 0.7].map((w, i) => (
+                  <View
+                    key={i}
+                    testID="dialog-skeleton-line"
+                    style={{
+                      height: 12,
+                      width: `${w * 100}%`,
+                      borderRadius: 6,
+                      backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(13,13,13,0.08)',
+                    }}
+                  />
+                ))}
+              </View>
+            ) : (
+              children
+            )}
           </ScrollView>
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );

@@ -280,6 +280,75 @@ it('searches private message text, opens older hits and branches without modifyi
     ).statusCode,
   ).toBe(404);
 });
+it('edits a user message in place, hides later turns and regenerates from the edited text', async () => {
+  const c = await chat(),
+    first = await run(c.id, 'Original malachite question');
+  await executeRun(first.body.run.id, {
+    now: () => new Date(),
+    model: scriptedModel([{ text: 'Original malachite answer' }]),
+    ports: {},
+    loadKey,
+  });
+  const second = await run(c.id, 'Later zircon question');
+  await executeRun(second.body.run.id, {
+    now: () => new Date(),
+    model: scriptedModel([{ text: 'Later zircon answer' }]),
+    ports: {},
+    loadKey,
+  });
+  const edit = (text: string, key: string, who = token) =>
+    app.inject({
+      method: 'POST',
+      url: `/v1/messages/${first.body.message.id}/edit`,
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${who}`,
+        'idempotency-key': key,
+      },
+      payload: JSON.stringify({ text }),
+    });
+  expect((await edit('   ', randomUUID())).statusCode).toBe(422);
+  expect((await edit('Stolen', randomUUID(), otherToken)).statusCode).toBe(404);
+  const key = randomUUID();
+  const edited = await edit('Edited malachite question', key);
+  expect(edited.statusCode).toBe(202);
+  const replayed = await edit('Edited malachite question', key);
+  expect(replayed.headers['idempotent-replayed']).toBe('true');
+  expect(replayed.json().data.run.id).toBe(edited.json().data.run.id);
+  expect((await edit('Again', randomUUID())).statusCode).toBe(409);
+  const visible = (await request('GET', `/v1/conversations/${c.id}/messages`)).json().data;
+  expect(visible.map((m: { content: string }) => m.content)).toEqual([
+    'Edited malachite question',
+    '',
+  ]);
+  expect(
+    (await request('GET', `/v1/conversations/${c.id}/messages?tail=true`)).json().data,
+  ).toHaveLength(2);
+  expect(await searchMessages(owner, 'zircon', 0)).toEqual([]);
+  expect(
+    (await request('GET', `/v1/messages/${second.body.message.id}/context`)).statusCode,
+  ).toBe(404);
+  let observed = '';
+  await executeRun(edited.json().data.run.id, {
+    now: () => new Date(),
+    model: {
+      complete: async (req) => {
+        observed = JSON.stringify(req.messages);
+        return scriptedModel([{ text: 'Edited malachite answer' }]).complete(req);
+      },
+    },
+    ports: {},
+    loadKey,
+  });
+  expect(observed).toContain('Edited malachite question');
+  expect(observed).not.toContain('Original malachite answer');
+  expect(observed).not.toContain('zircon');
+  expect(
+    (await request('GET', `/v1/conversations/${c.id}/messages`))
+      .json()
+      .data.map((m: { content: string }) => m.content),
+  ).toEqual(['Edited malachite question', 'Edited malachite answer']);
+});
 it('uses only the reviewed note and uncovered turns while preserving full history', async () => {
   const c = await chat(),
     a = await run(c.id, 'Old long background');

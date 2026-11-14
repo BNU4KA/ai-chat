@@ -295,6 +295,7 @@ export const rangeEditSchema = z
   .strict()
   .refine((v) => v.end >= v.start, 'Invalid range');
 export const branchSchema = z.object({ text: z.string().trim().min(1).max(32000) }).strict();
+export const editMessageSchema = branchSchema;
 export const compactSchema = z
   .object({
     note: z.string().trim().min(1).max(24000),
