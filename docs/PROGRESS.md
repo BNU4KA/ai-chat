@@ -1094,3 +1094,18 @@ same commit through the GitHub `Deploy web` workflow.
   `POST /v1/messages/:id/edit` answers 401 anonymously (route present).
 - Not run: a live OpenRouter request for document creation/revision, photo edit, or message edit.
   Browser verification of an attachment appearing without reload was covered by the e2e scenario only.
+
+## Native iOS simulator build — 2026-11-13
+
+Task ID: T19 partial (native compile evidence only).
+Implemented behavior: regenerated ignored Expo iOS project and compiled Debug for iPhone Simulator.
+
+Commands and results:
+- `node node_modules/expo/bin/cli prebuild --platform ios --no-install` in `apps/client`: created `apps/client/ios`.
+- `pod install` in `apps/client/ios`: 118 Podfile deps / 126 pods.
+- `xcodebuild -workspace AIChat.xcworkspace -scheme AIChat -configuration Debug -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 17'`: **BUILD SUCCEEDED** (Xcode 27.2 / 27B52).
+- Opened `apps/client/ios/AIChat.xcworkspace` in Xcode.
+
+Environment: macOS darwin 25.6.0; Xcode 27.2; CocoaPods 1.16.2; Expo SDK 58 / RN 0.88.1.
+Not claimed: physical device install, Google native SSO smoke, Metro/dev-client runtime, store signing, Android re-verify.
+Next: T19 remaining live/native device acceptance; configure `EXPO_PUBLIC_GOOGLE_*` before native login checks.

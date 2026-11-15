@@ -124,13 +124,13 @@ pnpm --filter @ai-chat/client exec expo run:ios
 ```
 
 Generated `ios` and `android` directories are ignored (Expo Continuous Native Generation).
-No signing credentials are committed. Xcode 26.2 currently fails compiling the SDK 58
+No signing credentials are committed. Xcode 26.2 failed compiling the SDK 58
 ExpoModulesJSI dependency with `sending 'slot' risks causing data races`; see
 [upstream issue #52754](https://github.com/expo/expo/issues/52754).
-Expo's SDK 58 build image currently uses Xcode 27.1; see its
-[upgrade guidance](https://expo.dev/blog/how-to-upgrade-to-sdk-58). This machine's failed
-iOS build is recorded as blocked, not a successful native test. No dependency workaround
-or toolchain installation has been applied.
+Xcode 27.2 (27B52) successfully built the Debug iPhone Simulator target for this
+repository after `expo prebuild --platform ios` and `pod install`. Open
+`apps/client/ios/AIChat.xcworkspace`, not the `.xcodeproj`. Simulator compile success
+is not a device smoke, store signing, or live Google sign-in check.
 
 ## Automated checks
 
