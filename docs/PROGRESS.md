@@ -1079,3 +1079,18 @@ The owner's uncommitted work (client, workspace, admin and API changes, and migr
 was pushed to master in the same push by owner request, on top of the feature commit. Migration `0008` is
 not applied to production. Migration `0009` was applied to production on 2026-11-14 (UTC) and the backend
 release `20261114T230503Z` was installed. The web deploy workflow publishes the client only.
+
+## Production release — 2026-11-15 (UTC 2026-11-15 12:36)
+
+Backend release `20261115T123617Z` from commit `4fbc78e` is live on the owner's VPS. Web is served from the
+same commit through the GitHub `Deploy web` workflow.
+
+- Migrations: `0008_message_supersede.sql` and `0009_file_derived_from.sql` applied in production after
+  backups `pre-0009-20261114T230330Z.dump` and `pre-0008-20261115T123547Z.dump` (kept on the owner's machine).
+  `schema_migrations` lists 0001–0009.
+- Installed with `deploy/install-release.sh`; API and worker restarted; previous runtime
+  `20261114T230503Z` retained for rollback.
+- Checks: readiness database/queue `ok`; anonymous `/v1/profile` 401; `/.env` 404; home 200;
+  `POST /v1/messages/:id/edit` answers 401 anonymously (route present).
+- Not run: a live OpenRouter request for document creation/revision, photo edit, or message edit.
+  Browser verification of an attachment appearing without reload was covered by the e2e scenario only.
