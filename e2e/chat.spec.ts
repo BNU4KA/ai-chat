@@ -63,6 +63,8 @@ async function fixture(
   let messages: Record<string, unknown>[] = [];
   let run: Record<string, unknown> | null = null;
   const submissions: { key: string; body: unknown }[] = [];
+  const answers: unknown[] = [];
+  let questions: Record<string, unknown>[] = [];
   const chatPatches: Record<string, unknown>[] = [];
   const attachments: Record<string, unknown>[] = [];
   const usage = { input_tokens: null, output_tokens: null, cost_usd: null, cost_status: 'unknown' };
@@ -242,12 +244,19 @@ async function fixture(
       return data({ message: messages[0], run }, 202);
     }
     if (path === `/v1/conversations/${chatId}/runs`) return data(run ? [run] : []);
+    if (path.startsWith('/v1/questions/') && path.endsWith('/answer') && method === 'POST') {
+      answers.push(req.postDataJSON());
+      questions = [];
+      if (run) run = { ...run, status: 'completed' };
+      return data({ status: 'answered' });
+    }
     if (path === `/v1/runs/${runId}`)
       return data({
         run,
         assistant_message: messages[1],
         tool_calls: [],
         approvals: [],
+        questions,
         sources: evidenceSources,
       });
     if (path === `/v1/runs/${runId}/events`) {
@@ -332,6 +341,11 @@ async function fixture(
       approvals: [],
       sources: evidenceSources,
     }),
+    answers,
+    askQuestion(question: Record<string, unknown>) {
+      run = { ...run!, status: 'waiting_input' };
+      questions = [question];
+    },
   };
 }
 test('Google sign-in uses PKCE and does not request Gmail or Calendar scopes', async ({ page }) => {
@@ -524,6 +538,39 @@ test('a photo attachment opens in a viewer inside the app, not in a new tab', as
   expect(context.pages().length).toBe(pagesBefore);
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'Close image' })).toHaveCount(0);
+});
+
+test('an agent question shows its options and sends the chosen answer', async ({ context, page }) => {
+  await seed(context);
+  const f = await fixture(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Choose model' }).click();
+  await page.getByRole('button', { name: /Synthetic Model Tools supported/ }).click();
+  await page.getByLabel('Message', { exact: true }).fill('Write a report');
+  await page.getByRole('button', { name: 'Send ↑', exact: true }).click();
+  await expect(page.getByText(/Synthetic answer with/)).toBeVisible();
+  f.askQuestion({
+    id: 'question-1',
+    run_id: runId,
+    tool_call_id: 'tool-synthetic',
+    questions: [
+      {
+        id: 'format',
+        text: 'Which format should the report use?',
+        allow_custom: true,
+        options: [{ label: 'Short' }, { label: 'Detailed', description: 'With tables' }],
+      },
+    ],
+    status: 'pending',
+    expires_at: new Date(Date.now() + 12 * 3600_000).toISOString(),
+  });
+  await page.reload();
+  await expect(page.getByText('Which format should the report use?')).toBeVisible({ timeout: 15000 });
+  await page.getByRole('radio', { name: 'Detailed' }).click();
+  await page.getByRole('button', { name: 'Answer', exact: true }).click();
+  await expect.poll(() => f.answers.length).toBe(1);
+  expect(f.answers[0]).toEqual({ answers: [{ question_id: 'format', option_index: 1 }] });
+  await expect(page.getByText('Which format should the report use?')).toHaveCount(0);
 });
 
 test('settings expose separate Google consent and require typed account-deletion confirmation', async ({

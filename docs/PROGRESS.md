@@ -1394,3 +1394,13 @@ kept for rollback. Readiness database and queue ok; both services active. Web bu
 secrets.
 
 Not verified on the hosted site with a live model asking a question.
+
+## CHAT-111 — tests for question card and expiry — 2026-11-16 (tests only, no release)
+
+- Expiry integration test (`packages/services/src/questions-expiry.integration.test.ts`): a run waiting
+  for an answer past its window is failed with `QUESTION_EXPIRED` by the maintenance job and the question
+  is marked `expired`. Passed on a disposable database.
+- Playwright scenario "an agent question shows its options and sends the chosen answer": the card appears
+  after a reload, the chosen option is sent as `{answers:[{question_id, option_index}]}`, and the card
+  disappears. Passed on desktop and mobile web. The page is reloaded because the fixture does not emit SSE
+  `question.required`; live SSE delivery is therefore still covered only by code review.
