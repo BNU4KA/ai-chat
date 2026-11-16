@@ -1385,3 +1385,12 @@ client; eslint on touched code passed; full Playwright run 37 passed, 15 failed 
 failures). Not verified: the maintenance expiry path end to end (typecheck only), the card in a
 browser, and the behaviour with a live model. The sidebar shows a running spinner while a run waits
 for an answer; a distinct "needs input" marker is not built yet.
+
+## Release — CHAT-111 — 2026-11-16
+
+Migration `0015_agent_questions.sql` applied to the hosted database (table and constraints verified).
+Release `20261116T152442Z` (commit `2658825`, archive sha256 `923298ef…`); previous `20261116T150107Z`
+kept for rollback. Readiness database and queue ok; both services active. Web bundle scan: no server
+secrets.
+
+Not verified on the hosted site with a live model asking a question.
