@@ -206,6 +206,13 @@ export function assistantFileName(base: string, extension: string): string {
   return `${safe || 'document'}.${extension}`;
 }
 
+// Storage object keys must be ASCII; the readable name is kept in files.original_name.
+export function storageObjectName(safeName: string, fallbackName: string): string {
+  const parts = /^(.*?)(\.[A-Za-z0-9]+)?$/.exec(safeName.replace(/[^A-Za-z0-9._-]+/g, '_'));
+  const stem = (parts?.[1] ?? '').replace(/^[._-]+|[._-]+$/g, '');
+  return /[A-Za-z0-9]/.test(stem) ? `${stem}${parts?.[2] ?? ''}` : fallbackName;
+}
+
 export async function saveAssistantFile(input: {
   ownerId: string;
   conversationId: string;
@@ -223,7 +230,7 @@ export async function saveAssistantFile(input: {
   const safeName =
     input.filename.replace(/[^\p{L}\p{N}._-]/gu, '_').slice(0, 120) || input.fallbackName;
   const fileId = randomUUID();
-  const objectKey = `${input.ownerId}/${input.conversationId}/${fileId}-${safeName}`;
+  const objectKey = `${input.ownerId}/${input.conversationId}/${fileId}-${storageObjectName(safeName, input.fallbackName)}`;
   await withWorker(async (tx) => {
     const quota = (
       await tx.query(

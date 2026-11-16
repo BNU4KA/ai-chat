@@ -1428,3 +1428,15 @@ Frontend change only (no migration, runtime code unchanged). Release `20261116T1
 database and queue ok; both services active; web bundle scan clean.
 
 Not verified on the hosted site with a live model drafting a document.
+
+## Fix — generated Word/PDF files failed with PROVIDER_ERROR — 2026-11-16
+
+Cause: the storage object key included the readable file name. For a Cyrillic title (for example
+"Луффи — будущий король пиратов") Supabase Storage rejected the key with `Invalid key`; the upload
+error was then reported to the model as a generic provider error, so every `create_document` call
+failed. Verified by a direct upload with a Cyrillic key (rejected) and an ASCII key (accepted).
+
+Fix: `storageObjectName` keeps only the ASCII stem and extension for the object key (fallback
+`document.<ext>`); the readable name stays in `files.original_name`. Checks: unit test for the rule;
+unit suite 76 passed; file-actions integration suite 8 passed on a disposable database. Not yet
+re-run from the chat on the hosted site; retry the document request after the release.
