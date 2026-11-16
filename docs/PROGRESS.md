@@ -1354,3 +1354,10 @@ Also fixed the branching unit test typing (`editMessage` body). Not verified wit
 Runtime (prompt) and web release `20261116T150107Z` from commit `8f4f931`, archive sha256 `fdf186da…`.
 No migration. Previous `20261116T144859Z` kept for rollback. Readiness database and queue ok; both
 services active.
+
+## ADR-002 — Agent questions with answer options — 2026-11-16 (docs only)
+
+Recorded `docs/ADR-002-agent-questions.md` with the owner's decisions: one to three questions per
+call, single choice with optional "Other" field, skipping allowed, 12-hour wait without model cost,
+questions only when the request is ambiguous. Mirrors the approval pause (new `waiting_input`
+status, `agent_questions` table, same continuation and expiry sweep). No code changed in this step.
