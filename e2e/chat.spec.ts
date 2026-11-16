@@ -65,6 +65,10 @@ async function fixture(
   const submissions: { key: string; body: unknown }[] = [];
   const answers: unknown[] = [];
   let questions: Record<string, unknown>[] = [];
+  let toolCalls: Record<string, unknown>[] = [];
+  const draftStore = new Map<string, Record<string, unknown>>();
+  const draftPatches: Record<string, unknown>[] = [];
+  const draftCreates: string[] = [];
   const chatPatches: Record<string, unknown>[] = [];
   const attachments: Record<string, unknown>[] = [];
   const usage = { input_tokens: null, output_tokens: null, cost_usd: null, cost_status: 'unknown' };
@@ -244,6 +248,29 @@ async function fixture(
       return data({ message: messages[0], run }, 202);
     }
     if (path === `/v1/conversations/${chatId}/runs`) return data(run ? [run] : []);
+    if (path === `/v1/conversations/${chatId}/document-drafts` && method === 'GET')
+      return data([...draftStore.values()]);
+    if (path.startsWith('/v1/document-drafts/')) {
+      const [draftId, action] = path.slice('/v1/document-drafts/'.length).split('/');
+      const draft = draftStore.get(draftId ?? '');
+      if (draft && action === 'create' && method === 'POST') {
+        draft.status = 'created';
+        draft.file_id = 'file-synthetic-draft';
+        draftCreates.push(draftId!);
+        return data(draft);
+      }
+      if (draft && !action && method === 'GET') return data(draft);
+      if (draft && !action && method === 'PATCH') {
+        const body = req.postDataJSON();
+        draftPatches.push(body);
+        Object.assign(draft, {
+          title: body.title ?? draft.title,
+          content: body.content ?? draft.content,
+          version: Number(draft.version) + 1,
+        });
+        return data(draft);
+      }
+    }
     if (path.startsWith('/v1/questions/') && path.endsWith('/answer') && method === 'POST') {
       answers.push(req.postDataJSON());
       questions = [];
@@ -254,7 +281,7 @@ async function fixture(
       return data({
         run,
         assistant_message: messages[1],
-        tool_calls: [],
+        tool_calls: toolCalls,
         approvals: [],
         questions,
         sources: evidenceSources,
@@ -337,11 +364,41 @@ async function fixture(
     snapshot: () => ({
       run,
       assistant_message: messages[1],
-      tool_calls: [],
+      tool_calls: toolCalls,
       approvals: [],
       sources: evidenceSources,
     }),
     answers,
+    addDraft(draft: { id: string; title: string; format: string; blocks: unknown[] }) {
+      draftStore.set(draft.id, {
+        id: draft.id,
+        conversation_id: chatId,
+        assistant_message_id: assistantId,
+        format: draft.format,
+        title: draft.title,
+        content: { blocks: draft.blocks },
+        status: 'draft',
+        file_id: null,
+        version: 1,
+        created_at: time,
+        updated_at: time,
+      });
+      toolCalls = [
+        {
+          id: 'tool-draft-synthetic',
+          name: 'draft_document',
+          status: 'succeeded',
+          arguments: {},
+          safe_result: {
+            ok: true,
+            data: { draft_id: draft.id, title: draft.title, format: draft.format },
+          },
+        },
+      ];
+      if (run) run = { ...run, status: 'completed' };
+    },
+    draftPatches,
+    draftCreates,
     askQuestion(question: Record<string, unknown>) {
       run = { ...run!, status: 'waiting_input' };
       questions = [question];
@@ -571,6 +628,39 @@ test('an agent question shows its options and sends the chosen answer', async ({
   await expect.poll(() => f.answers.length).toBe(1);
   expect(f.answers[0]).toEqual({ answers: [{ question_id: 'format', option_index: 1 }] });
   await expect(page.getByText('Which format should the report use?')).toHaveCount(0);
+});
+
+test('a drafted document opens in a side panel, saves edits, and creates the file', async ({
+  context,
+  page,
+}) => {
+  await seed(context);
+  const f = await fixture(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Choose model' }).click();
+  await page.getByRole('button', { name: /Synthetic Model Tools supported/ }).click();
+  await page.getByLabel('Message', { exact: true }).fill('Draft a quarterly report');
+  await page.getByRole('button', { name: 'Send ↑', exact: true }).click();
+  await expect(page.getByText(/Synthetic answer with/)).toBeVisible();
+  f.addDraft({
+    id: 'draft-synthetic',
+    title: 'Quarterly report',
+    format: 'docx',
+    blocks: [
+      { type: 'heading', level: 1, text: 'Summary' },
+      { type: 'paragraph', text: 'Synthetic paragraph.' },
+      { type: 'list', ordered: false, items: ['One', 'Two'] },
+    ],
+  });
+  await page.reload();
+  await page.getByTestId('draft-link').click();
+  await expect(page.getByTestId('draft-panel')).toBeVisible();
+  await page.getByLabel('Draft title').fill('Quarterly report v2');
+  await expect.poll(() => f.draftPatches.length, { timeout: 8000 }).toBeGreaterThan(0);
+  expect(f.draftPatches.at(-1)).toMatchObject({ title: 'Quarterly report v2' });
+  await page.getByRole('button', { name: 'Create file', exact: true }).click();
+  await expect.poll(() => f.draftCreates.length).toBe(1);
+  await expect(page.getByText('File created')).toBeVisible();
 });
 
 test('settings expose separate Google consent and require typed account-deletion confirmation', async ({

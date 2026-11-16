@@ -1404,3 +1404,19 @@ Not verified on the hosted site with a live model asking a question.
   after a reload, the chosen option is sent as `{answers:[{question_id, option_index}]}`, and the card
   disappears. Passed on desktop and mobile web. The page is reloaded because the fixture does not emit SSE
   `question.required`; live SSE delivery is therefore still covered only by code review.
+
+## CHAT-207 — Draft panel — 2026-11-16 (local, web release pending)
+
+Completes the planned draft panel. A drafted document opens in a side panel (wide screens, 440 px
+beside the chat) or a full-height sheet (narrow screens) with Back and Create file. Title, paragraphs,
+headings, bulleted/numbered lists (items add/remove, toggle) and tables (header and cells, rows
+add/remove) are editable; blocks can be added and removed. Edits autosave after 800 ms with the
+draft version (writes run one at a time; a conflict shows an error). Create file saves pending edits,
+then creates the file with the existing path; the draft becomes read-only. A card for the draft
+appears in the conversation stream; the Drafts tab in the work-tools panel opens the same panel.
+Opening a draft closes the work-tools panel and the other way round.
+
+Checks: client typecheck and eslint passed. Playwright scenario "a drafted document opens in a side
+panel, saves edits, and creates the file" passed on desktop and mobile web. Full run: 41 passed,
+15 failed (same pre-existing failures). Not verified on a device or with a live model producing a
+draft. Limit: the in-stream card shows only for the latest run; older drafts are reached from the Drafts tab.

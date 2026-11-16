@@ -21,6 +21,7 @@ export function ChatExtras({
   documentSeed,
   open: controlledOpen,
   onOpenChange,
+  onOpenDraft,
 }: {
   chat?: Conversation;
   messages: Message[];
@@ -31,6 +32,7 @@ export function ChatExtras({
   documentSeed?: { text: string; key: string };
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  onOpenDraft?: (draftId: string) => void;
 }) {
   const dimensions = useWindowDimensions(),
     wide = dimensions.width >= 1024,
@@ -335,7 +337,9 @@ export function ChatExtras({
               )}
             </>
           )}
-          {tab === 'drafts' && chat && <DocumentDrafts conversationId={chat.id} />}
+          {tab === 'drafts' && chat && (
+            <DocumentDrafts conversationId={chat.id} onOpen={(id) => onOpenDraft?.(id)} />
+          )}
           {tab === 'workflows' && (
             <Panel>
               {Object.entries(workflowPrompts).map(([key, prompt]) => (

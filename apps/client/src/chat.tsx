@@ -54,6 +54,7 @@ import { SettingsModal, type SettingsTab } from './settings-modal';
 import { Markdown } from './markdown';
 import { ApprovalCard } from './approval';
 import { AgentQuestionCard } from './agent-question';
+import { DRAFT_PANEL_WIDTH, DraftLink, DraftPanel } from './draft-panel';
 import { Attachment } from './attachment';
 import { ComposerFrame } from './composer-frame';
 import { GreetingName } from './greeting-name';
@@ -96,6 +97,13 @@ const styles = StyleSheet.create({
 const dismissKeyboardOnNative = () => {
   if (Platform.OS !== 'web') Keyboard.dismiss();
 };
+
+function draftFromTool(tool: { name: string; safe_result?: unknown }) {
+  if (tool.name !== 'draft_document') return null;
+  const data = (tool.safe_result as { data?: { draft_id?: unknown; title?: unknown; format?: unknown } } | null)?.data;
+  if (typeof data?.draft_id !== 'string' || typeof data.title !== 'string') return null;
+  return { id: data.draft_id, title: data.title, format: String(data.format ?? 'docx') };
+}
 
 type Group = 'web' | 'files' | 'gmail' | 'calendar';
 const groupLabels: Record<Group, string> = {
@@ -156,6 +164,11 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     [c.background],
   );
   const [workToolsOpen, setWorkToolsOpen] = useState(false);
+  const [openDraftId, setOpenDraftId] = useState<string | null>(null);
+  const openDraft = useCallback((draftId: string) => {
+    setWorkToolsOpen(false);
+    setOpenDraftId(draftId);
+  }, []);
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
   const [searchModalOpen, setSearchModalOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(null);
@@ -1100,7 +1113,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
         style={{
           flex: 1,
           minWidth: 0,
-          paddingRight: wide && workToolsOpen ? 420 : 0,
+          paddingRight: wide && openDraftId ? DRAFT_PANEL_WIDTH : wide && workToolsOpen ? 420 : 0,
           position: 'relative',
         }}
       >
@@ -1249,8 +1262,15 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
           running={running}
           documentSeed={documentSeed}
           open={workToolsOpen}
-          onOpenChange={setWorkToolsOpen}
+          onOpenChange={(next) => {
+            if (next) setOpenDraftId(null);
+            setWorkToolsOpen(next);
+          }}
+          onOpenDraft={openDraft}
         />
+        {openDraftId && (
+          <DraftPanel draftId={openDraftId} onClose={() => setOpenDraftId(null)} />
+        )}
 
         <View style={styles.column}>
           {isHome ? (
@@ -1477,6 +1497,17 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
               {snapshot.data?.questions?.map((question) => (
                 <AgentQuestionCard key={question.id} question={question} />
               ))}
+              {snapshot.data?.tool_calls.map((tool) => {
+                const draft = draftFromTool(tool);
+                return draft ? (
+                  <DraftLink
+                    key={tool.id}
+                    title={draft.title}
+                    format={draft.format}
+                    onOpen={() => openDraft(draft.id)}
+                  />
+                ) : null;
+              })}
               <RunUsage run={snapshot.data?.run} />
               {snapshot.data?.run.error_code && (
                 <ErrorNotice
