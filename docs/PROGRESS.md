@@ -1278,3 +1278,12 @@ disposable database; unit 75 passed; tsc for contracts, database, api, worker, a
 client, eslint on touched files passed. Full Playwright run: 31 passed, 15 failed; same
 pre-existing failures as before. No new Playwright scenario for drafts yet.
 Not verified with a live model producing a draft.
+
+## Release — CHAT-207 — 2026-11-16
+
+Migration `0013_document_drafts.sql` applied to the hosted database (latest is now 0013; new table
+verified). Release `20261116T143419Z` (commit `723743f`, archive sha256 `66c4ccf4…`); previous
+`20261116T142148Z` kept for rollback. Readiness reports database and queue ok; both services active;
+the new draft route answers anonymously with 401. Web bundle scan: no server secrets.
+
+Not verified on the hosted site with a live model producing a draft.
