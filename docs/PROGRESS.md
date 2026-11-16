@@ -1440,3 +1440,18 @@ Fix: `storageObjectName` keeps only the ASCII stem and extension for the object 
 `document.<ext>`); the readable name stays in `files.original_name`. Checks: unit test for the rule;
 unit suite 76 passed; file-actions integration suite 8 passed on a disposable database. Not yet
 re-run from the chat on the hosted site; retry the document request after the release.
+
+## Release — storage key fix — 2026-11-16
+
+Release `20261116T185139Z` (commit `e078c19`, archive sha256 `72bd6c95…` was the earlier attempt; this
+archive was rebuilt from the same commit). Previous `20261116T160602Z` kept for rollback.
+
+Incident during rollout: the first install attempt failed with `No space left on device` (14 GB disk at
+100%; each release carries ~630 MB of dependencies). The installer's failed attempt had left a partial
+runtime/web directory, which was removed. Old releases were removed, keeping only `20261116T160602Z` and
+`20261116T152442Z`. The web symlink `/srv/ai-chat/current` pointed at a removed release for a short
+window and was re-pointed to `20261116T160602Z` before the new install. The site returned 200 and
+readiness stayed ok during the window. Disk after cleanup and install: 55% used.
+
+Follow-up: the installer's pipeline in earlier releases hid install failures (`| tail`); use the full log
+(`> install.log`) and check the exit status before trusting the symlinks.
