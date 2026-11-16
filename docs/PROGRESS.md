@@ -1178,3 +1178,18 @@ unmodified baseline (pre-existing, see the CHAT-203 entry).
 
 Limitation: the reply block depends on model compliance; a model that ignores the instruction shows
 no chips. Not verified against a live model.
+
+## Release — CHAT-204 — 2026-11-16
+
+Migration `0011_message_suggestions.sql` (additive nullable column) was applied to the hosted
+database; schema_migrations then listed 0001–0011. No backup of table rows was needed for an
+additive column; rollback is dropping `messages.suggestions` if ever required.
+
+Release `20261116T140334Z` (commit `8f2a4d4`, archive sha256 `d382de16…40af17`): runtime
+`/opt/ai-chat/releases/20261116T140334Z`, web `/srv/ai-chat/releases/20261116T140334Z`. Previous
+release `20261116T132544Z` is kept for rollback. Public and local readiness report database and
+queue ok; the journal shows no error entries in the 3 minutes after restart. Web bundle scan:
+no server secrets; the new chip testID is present.
+
+Not verified on the hosted site with a live model: chips depend on the model following the
+`<suggestions>` instruction.
