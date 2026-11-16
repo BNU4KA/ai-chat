@@ -1287,3 +1287,12 @@ verified). Release `20261116T143419Z` (commit `723743f`, archive sha256 `66c4ccf
 the new draft route answers anonymously with 401. Web bundle scan: no server secrets.
 
 Not verified on the hosted site with a live model producing a draft.
+
+## CHAT-202 — ADR-001 message branching — 2026-11-16 (docs only)
+
+Recorded `docs/ADR-001-message-branching.md`. Current behaviour: an edit sets `superseded_at` on all
+later messages, so the earlier answers disappear and cannot be reopened. Decision: a branch tree
+(`conversation_branches` with `fork_seq`, `messages.branch_id`, active leaf per conversation) with a
+single visible-thread SQL function, plus a migration that puts existing messages into one root branch
+and keeps legacy superseded rows hidden. Implementation, the UX fixes for edit (no modal, scrollable
+field, focus) and the switcher follow in later commits. No code or schema changed in this step.
