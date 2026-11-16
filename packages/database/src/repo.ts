@@ -810,6 +810,7 @@ function messageFrom(row: Row, fileIds: string[]) {
     content: String(row.content),
     status: String(row.status) as 'pending' | 'complete' | 'partial' | 'failed' | 'cancelled',
     file_ids: fileIds,
+    suggestions: Array.isArray(row.suggestions) ? (row.suggestions as string[]) : undefined,
     created_at: mustIso(row.created_at as Date),
   };
 }

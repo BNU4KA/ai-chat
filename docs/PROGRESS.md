@@ -1158,3 +1158,23 @@ errors in the 3 minutes after the restart.
 
 Not verified: an authenticated pin/unread journey on the hosted site. The owner should pin a
 chat and check the indicators in the browser.
+
+## CHAT-204 — Suggested replies — 2026-11-16 (local, release pending)
+
+The model ends a completed answer with an optional `<suggestions>["…", "…"]</suggestions>` line
+(system prompt). At run completion the server parses it with `extractSuggestions`
+(`packages/contracts/src/suggestions.ts`): up to 4 unique strings of at most 60 code points, the
+block is removed from `messages.content`, and the list is stored in the new nullable column
+`messages.suggestions` (migration `0011_message_suggestions.sql`, additive). Invalid JSON drops the
+replies but still removes the block. While streaming, the client hides an unfinished block.
+Chips appear above the composer only for the latest, completed assistant message, not while a run
+is active and not when the composer has text. Tapping one sends it.
+
+Checks: contracts unit tests for parsing (5); integration test that the stored answer has no block
+and the suggestions are persisted (57 integration tests passed on a disposable database); unit total
+73 passed; `tsc` and eslint on touched files passed; Playwright reply-suggestion scenario passed on
+desktop and mobile web. Full Playwright run: 29 passed, 15 failed; the same 15 failures exist on the
+unmodified baseline (pre-existing, see the CHAT-203 entry).
+
+Limitation: the reply block depends on model compliance; a model that ignores the instruction shows
+no chips. Not verified against a live model.

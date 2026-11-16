@@ -1,6 +1,8 @@
 export const LIMITS = {
   messageCodePoints: 32_000,
   titleCodePoints: 60,
+  suggestionCodePoints: 60,
+  suggestionCount: 4,
   manualTitleCodePoints: 200,
   fileBytes: 20 * 1024 * 1024,
   attachmentsPerMessage: 5,

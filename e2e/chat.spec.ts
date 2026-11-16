@@ -248,10 +248,12 @@ async function fixture(
         sources: evidenceSources,
       });
     if (path === `/v1/runs/${runId}/events`) {
+      const suggestionBlock = /\s*<suggestions>([\s\S]*?)<\/suggestions>\s*$/.exec(answer);
       messages[1] = {
         ...messages[1],
-        content: answer,
+        content: suggestionBlock ? answer.slice(0, suggestionBlock.index) : answer,
         status: 'complete',
+        ...(suggestionBlock ? { suggestions: JSON.parse(suggestionBlock[1]!) } : {}),
       };
       run = { ...run, status: 'completed', last_event_seq: generatesFile ? '5' : '3' };
       if (generatesFile) messages[1] = { ...messages[1], file_ids: [generatedFileId] };
@@ -406,6 +408,25 @@ test('an authenticated user creates a chat, chooses a model and receives one per
     await page.getByRole('button', { name: 'Open conversation history' }).click();
   await expect(page.getByRole('button', { name: 'Settings', exact: true }).first()).toBeVisible();
 });
+test('reply suggestions appear under a finished answer and send the chosen reply', async ({
+  context,
+  page,
+}) => {
+  await seed(context);
+  const f = await fixture(
+    page,
+    'Synthetic follow-up answer.\n<suggestions>["Make it shorter", "Add examples"]</suggestions>',
+  );
+  await page.goto('/');
+  await page.getByLabel('Message', { exact: true }).fill('Synthetic question');
+  await page.getByRole('button', { name: 'Send ↑', exact: true }).click();
+  await expect(page.getByText('Synthetic follow-up answer.', { exact: true })).toBeVisible();
+  await expect(page.getByText('<suggestions>')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Send reply: Add examples' }).click();
+  await expect.poll(() => f.submissions.length).toBe(2);
+  expect(f.submissions[1]?.body).toMatchObject({ text: 'Add examples' });
+});
+
 test('settings expose separate Google consent and require typed account-deletion confirmation', async ({
   context,
   page,

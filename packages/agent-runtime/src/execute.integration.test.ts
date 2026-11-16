@@ -74,6 +74,39 @@ it('runs a scripted reply and hides the chat from another account', async () => 
   expect(hidden).toEqual([]);
 });
 
+it('stores reply suggestions separately and removes the block from a completed answer', async () => {
+  const owner = randomUUID();
+  await ensureProfile(owner, { displayName: 'S', avatarUrl: null, timezone: 'UTC' });
+  const key = 'sk-or-test-key-suggestions';
+  const ring = loadKeyring(process.env.ENCRYPTION_KEYS);
+  const sealed = seal(ring, key, credentialAad(owner, 'openrouter', 1));
+  await saveOpenRouter(owner, 0, { ...sealed, lastFour: lastFour(key) });
+  const conversation = await createConversation(owner, { modelId: 'openai/gpt-test', enabledTools: [] });
+  const created = await createMessageRun(owner, conversation.id, randomUUID(), {
+    clientMessageId: randomUUID(),
+    text: 'Suggest follow-ups',
+    fileIds: [],
+  });
+  await executeRun(created.body.run.id, {
+    now: () => new Date(),
+    model: scriptedModel([
+      { text: 'Here is the answer.\n<suggestions>["Make it shorter", "Add an example"]</suggestions>' },
+    ]),
+    ports: {},
+    loadKey: async () => ({ version: 1, apiKey: key }),
+  });
+  const snapshot = await getSnapshot(owner, created.body.run.id);
+  expect(snapshot.run.status).toBe('completed');
+  expect(snapshot.assistant_message.content).toBe('Here is the answer.');
+  const stored = await withOwner(owner, async (tx) => {
+    const found = await tx.query('select suggestions from messages where id = $1', [
+      snapshot.assistant_message.id,
+    ]);
+    return found.rows[0]?.suggestions;
+  });
+  expect(stored).toEqual(['Make it shorter', 'Add an example']);
+});
+
 it('does not send mail until a matching approval, and a rejection does not send', async () => {
   let sent = 0;
   const conversation = await createConversation(ownerA, {

@@ -40,6 +40,7 @@ export {
   usageSchema,
 } from './schemas.ts';
 export { canonicalJson, codePointLength, truncateCodePoints } from './text.ts';
+export { extractSuggestions, hideSuggestionBlock } from './suggestions.ts';
 export { z } from 'zod';
 export { applicationOpenApi } from './openapi.ts';
 export {

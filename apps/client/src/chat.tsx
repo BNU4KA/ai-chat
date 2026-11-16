@@ -325,6 +325,11 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     return collapseAttempts(merged);
   }, [messages.data, liveMessage, targetMessage.data]);
 
+  const lastMessage = visibleMessages.at(-1);
+  const replySuggestions =
+    lastMessage?.role === 'assistant' && lastMessage.status === 'complete'
+      ? (lastMessage.suggestions ?? [])
+      : [];
   const isHome = !id && !visibleMessages.length && optimisticUser === null;
   const firstName = (profile.data?.display_name ?? '').trim().split(/\s+/)[0] || '';
   const homeGreetingPrefix = language === 'ru' ? 'Что будем делать сегодня' : 'What are we doing today';
@@ -870,6 +875,39 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
         </View>
       )}
 
+      {!running && !shape.hasText && replySuggestions.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          testID="reply-suggestions"
+          contentContainerStyle={{ gap: 8, paddingVertical: 2 }}
+        >
+          {replySuggestions.map((text) => (
+            <Pressable
+              key={text}
+              accessibilityRole="button"
+              accessibilityLabel={`Send reply: ${text}`}
+              onPress={() => {
+                setDraft(text);
+                void handlers.current.send();
+              }}
+              style={({ hovered, pressed }) => ({
+                minHeight: wide ? 36 : 44,
+                justifyContent: 'center',
+                paddingHorizontal: 14,
+                borderRadius: 18,
+                borderWidth: 1,
+                borderColor: c.border,
+                backgroundColor: pressed || hovered ? c.hover : c.raised,
+              })}
+            >
+              <Text translate={false} numberOfLines={1} style={{ fontSize: 14, color: c.text }}>
+                {text}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      )}
       <ComposerFrame focused={composerFocused} compact={!stackedComposer}>
         <View style={{ gap: stackedComposer ? 8 : 0, position: 'relative' }}>
           <View

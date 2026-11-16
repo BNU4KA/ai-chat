@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ThinkingSkeleton } from './fool-spinner';
 import { StreamingMarkdown } from './streaming-markdown';
 import { useTheme } from './theme';
+import { hideSuggestionBlock } from '@ai-chat/contracts';
 import { runQuery } from './use-run';
 import type { Snapshot } from './types';
 
@@ -22,7 +23,8 @@ export function LiveMessageContent({ runId, text, pending, onCitation }: LiveMes
     enabled: false,
     select: selectText,
   }).data;
-  const content = pending ? live || text : text;
+  const raw = pending ? live || text : text;
+  const content = pending ? hideSuggestionBlock(raw) : raw;
 
   if (!content) return pending ? <ThinkingSkeleton /> : null;
   return (

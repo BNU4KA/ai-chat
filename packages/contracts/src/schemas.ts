@@ -160,6 +160,7 @@ export const messageSchema = z.object({
   content: z.string(),
   status: z.enum(['pending', 'complete', 'partial', 'failed', 'cancelled']),
   file_ids: z.array(z.uuid()),
+  suggestions: z.array(z.string()).optional(),
   created_at: timestamp,
 });
 
