@@ -165,6 +165,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
   );
   const [workToolsOpen, setWorkToolsOpen] = useState(false);
   const [openDraftId, setOpenDraftId] = useState<string | null>(null);
+  const [draftWidth, setDraftWidth] = useState(DRAFT_PANEL_WIDTH);
   const openDraft = useCallback((draftId: string) => {
     setWorkToolsOpen(false);
     setOpenDraftId(draftId);
@@ -1126,7 +1127,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
         style={{
           flex: 1,
           minWidth: 0,
-          paddingRight: wide && openDraftId ? DRAFT_PANEL_WIDTH : wide && workToolsOpen ? 420 : 0,
+          paddingRight: wide && openDraftId ? draftWidth : wide && workToolsOpen ? 420 : 0,
           position: 'relative',
         }}
       >
@@ -1282,7 +1283,12 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
           onOpenDraft={openDraft}
         />
         {openDraftId && (
-          <DraftPanel draftId={openDraftId} onClose={() => setOpenDraftId(null)} />
+          <DraftPanel
+            draftId={openDraftId}
+            width={draftWidth}
+            onWidthChange={setDraftWidth}
+            onClose={() => setOpenDraftId(null)}
+          />
         )}
 
         <View style={styles.column}>

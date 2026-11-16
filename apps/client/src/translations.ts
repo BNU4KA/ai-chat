@@ -180,6 +180,8 @@ export const russian: Record<string, string> = {
   Shorten: 'Сократить',
   Check: 'Проверить',
   'Creates a draft. Review before sending.': 'Создаёт черновик. Проверьте его перед отправкой.',
+  'Markdown: # heading, - bullets, 1. numbered items, | tables |. A blank line starts a new paragraph.':
+    'Markdown: # заголовок, - маркированные пункты, 1. нумерованные пункты, | таблицы |. Пустая строка начинает новый абзац.',
   'Edit message': 'Изменить сообщение',
   'Edited message': 'Изменённое сообщение',
   'Save & regenerate': 'Сохранить и обновить ответ',
