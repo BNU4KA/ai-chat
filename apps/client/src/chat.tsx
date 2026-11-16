@@ -53,7 +53,7 @@ import { SearchModal } from './search-modal';
 import { SettingsModal, type SettingsTab } from './settings-modal';
 import { Markdown } from './markdown';
 import { ApprovalCard } from './approval';
-import { AgentQuestionCard } from './agent-question';
+import { AgentQuestionDock } from './agent-question';
 import { DRAFT_PANEL_WIDTH, DraftLink, DraftPanel } from './draft-panel';
 import { Attachment } from './attachment';
 import { ComposerFrame } from './composer-frame';
@@ -99,7 +99,7 @@ const dismissKeyboardOnNative = () => {
 };
 
 function draftFromTool(tool: { name: string; safe_result?: unknown }) {
-  if (tool.name !== 'draft_document') return null;
+  if (tool.name !== 'draft_document' && tool.name !== 'create_document') return null;
   const data = (tool.safe_result as { data?: { draft_id?: unknown; title?: unknown; format?: unknown } } | null)?.data;
   if (typeof data?.draft_id !== 'string' || typeof data.title !== 'string') return null;
   return { id: data.draft_id, title: data.title, format: String(data.format ?? 'docx') };
@@ -291,6 +291,18 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
   const latest = runs.data?.[0];
   const snapshot = useRun(latest?.id);
   const running = !!latest && activeStatus(snapshot.data?.run.status ?? latest.status);
+
+  const wasRunning = useRef(false);
+  useEffect(() => {
+    if (running) {
+      wasRunning.current = true;
+      return;
+    }
+    if (!wasRunning.current) return;
+    wasRunning.current = false;
+    const draft = (snapshot.data?.tool_calls ?? []).map(draftFromTool).find(Boolean);
+    if (draft) setOpenDraftId(draft.id);
+  }, [running, snapshot.data]);
 
   useEffect(() => {
     if (!id || running) return;
@@ -913,6 +925,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
         </View>
       )}
 
+      {snapshot.data?.questions?.[0] && <AgentQuestionDock question={snapshot.data.questions[0]} />}
       {!running && !shape.hasText && replySuggestions.length > 0 && (
         <ScrollView
           horizontal
@@ -1493,9 +1506,6 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                 })}
               {snapshot.data?.approvals.map((approval) => (
                 <ApprovalCard key={approval.id} approval={approval} />
-              ))}
-              {snapshot.data?.questions?.map((question) => (
-                <AgentQuestionCard key={question.id} question={question} />
               ))}
               {snapshot.data?.tool_calls.map((tool) => {
                 const draft = draftFromTool(tool);

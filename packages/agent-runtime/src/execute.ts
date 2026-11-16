@@ -836,7 +836,8 @@ async function runRead(
         })) ?? missing()
       );
     }
-    if (name === 'draft_document') {
+    // A document request always becomes an editable draft first; the file is created only from the draft panel.
+    if (name === 'draft_document' || (name === 'create_document' && ports.draftDocument)) {
       const value = args as {
         format: 'docx' | 'pdf';
         title: string;
@@ -1178,7 +1179,8 @@ function cleanTitle(text: string): string | null {
     .replace(/^["'«“”]+|["'»“”]+$/g, '')
     .replace(/[.!?。]+$/, '')
     .trim();
-  return cleaned ? truncateCodePoints(cleaned, LIMITS.titleCodePoints) : null;
+  if ([...cleaned].length < 4) return null;
+  return truncateCodePoints(cleaned, LIMITS.titleCodePoints);
 }
 
 // Runs only after the first completed exchange of a chat that still has an automatic title.
@@ -1204,7 +1206,7 @@ async function nameFirstExchange(
         },
       ],
       tools: [],
-      maxTokens: 24,
+      maxTokens: 200,
       modelCalls: 0,
       signal: AbortSignal.timeout(15_000),
       onDelta: async () => {},

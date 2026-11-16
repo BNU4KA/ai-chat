@@ -128,3 +128,47 @@ it('rejects an answer after the wait expired', async () => {
     answerAgentQuestion(owner, questionId, { skip: true }),
   ).rejects.toMatchObject({ status: 410, code: 'QUESTION_EXPIRED' });
 });
+
+it('turns a document request into a draft instead of creating the file directly', async () => {
+  const conversation = await createConversation(owner, { modelId: 'openai/gpt-test', enabledTools: [] });
+  const created = await createMessageRun(owner, conversation.id, randomUUID(), {
+    clientMessageId: randomUUID(),
+    text: 'Write an essay as a Word file',
+    fileIds: [],
+  });
+  const runId = created.body.run.id as string;
+  const drafted: string[] = [];
+  let filed = false;
+  await executeRun(runId, {
+    now: () => new Date(),
+    model: scriptedModel([
+      {
+        calls: [
+          {
+            name: 'create_document',
+            arguments: {
+              format: 'docx',
+              title: 'Synthetic essay',
+              content: { blocks: [{ type: 'paragraph', text: 'Synthetic text.' }] },
+            },
+          },
+        ],
+      },
+      { text: 'The draft is ready for review.' },
+    ]),
+    ports: {
+      draftDocument: async (input) => {
+        drafted.push(input.title);
+        return { ok: true, data: { draft_id: 'draft-1', title: input.title, format: input.format } };
+      },
+      createDocument: async () => {
+        filed = true;
+        return { ok: false, error: { code: 'UNEXPECTED', message: 'no file', retryable: false } };
+      },
+    },
+    loadKey: async () => ({ version: 1, apiKey: key }),
+  });
+  expect(drafted).toEqual(['Synthetic essay']);
+  expect(filed).toBe(false);
+  expect((await getSnapshot(owner, runId)).run.status).toBe('completed');
+});

@@ -1455,3 +1455,18 @@ readiness stayed ok during the window. Disk after cleanup and install: 55% used.
 
 Follow-up: the installer's pipeline in earlier releases hid install failures (`| tail`); use the full log
 (`> install.log`) and check the exit status before trusting the symlinks.
+
+## Fixes — chat title, question dock, draft before document — 2026-11-16
+
+- Chat title: the title model's 24-token limit cut a reasoning model's reply to one word ("на").
+  Limit raised to 200 tokens; titles shorter than 4 characters are ignored (first-message title kept).
+  The bad title of the affected chat was restored to the first message.
+- Agent questions: asked one at a time in a dock above the composer (step counter, Next, Skip);
+  answers are sent together on the last step. Removed from the message stream.
+- Documents: `create_document` requests are turned into a draft (same arguments, nothing is filed).
+  The draft panel opens automatically when a run that produced a draft finishes; the stream card
+  recognises both tool names.
+
+Checks: unit 76 passed; integration 66 passed on a disposable database (new test: a document request
+becomes a draft and no file is created); e2e full run 41 passed, 15 failed (same pre-existing failures);
+tsc and eslint on touched files passed. Not verified with a live model.
