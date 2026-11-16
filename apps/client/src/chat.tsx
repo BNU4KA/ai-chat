@@ -59,6 +59,7 @@ import { GreetingName } from './greeting-name';
 import { ChatThreadSkeleton, FoolSpinner, ThinkingSkeleton } from './fool-spinner';
 import { ChatGptIcon, type ChatGptIconName } from './chatgpt-icons';
 import { haptic } from './motion';
+import { ReasoningEffortButton } from './reasoning-effort';
 import { MessageRow } from './message-row';
 import { collapseAttempts } from './visible-messages';
 import { usePinnedChats } from './pinned-chats';
@@ -946,6 +947,14 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                 marginLeft: 'auto',
               }}
             >
+              {!!id && !!currentModel?.reasoning_efforts?.length && (
+                <ReasoningEffortButton
+                  efforts={currentModel.reasoning_efforts}
+                  value={chat.data?.reasoning_effort ?? null}
+                  wide={wide}
+                  onSelect={(next) => void patch({ reasoning_effort: next })}
+                />
+              )}
               {toolsBtn}
               {(shape.tall || composerExpanded) && (
                 <Pressable

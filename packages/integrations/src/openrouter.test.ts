@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { createOpenRouterModel } from './openrouter.ts';
+import { createOpenRouterModel, fetchModelCatalog } from './openrouter.ts';
 
 async function complete(sse: string, onDelta: (text: string) => Promise<void> = async () => {}) {
   const bytes = new TextEncoder().encode(sse);
@@ -231,4 +231,51 @@ it('requests a JSON document revision with a bounded non-streaming chat call', a
     response_format: { type: 'json_object' },
   });
   expect(result).toEqual({ text: '{"blocks":[]}', costUsd: '0.001' });
+});
+
+async function capturedBody(reasoningEffort: 'low' | 'medium' | 'high' | null) {
+  let body: Record<string, unknown> | null = null;
+  const model = createOpenRouterModel(async (_url, init) => {
+    body = JSON.parse(String(init?.body));
+    return new Response('', { status: 500 });
+  });
+  await model
+    .complete({
+      apiKey: 'synthetic',
+      model: 'synthetic/effort',
+      messages: [],
+      tools: [],
+      maxTokens: 10,
+      reasoningEffort,
+      modelCalls: 1,
+      signal: AbortSignal.timeout(2000),
+      onDelta: async () => {},
+    })
+    .catch(() => undefined);
+  return body as unknown as Record<string, unknown>;
+}
+
+it('sends reasoning effort to OpenRouter only when the conversation selected one', async () => {
+  expect((await capturedBody('medium')).reasoning).toEqual({ effort: 'medium' });
+  expect(await capturedBody(null)).not.toHaveProperty('reasoning');
+});
+
+it('reads reasoning effort levels from the model catalog in our order', async () => {
+  const models = await fetchModelCatalog('synthetic', async () =>
+    Response.json({
+      data: [
+        { id: 'a/listed', reasoning: { supported_efforts: ['high', 'low', 'none'] } },
+        { id: 'b/all', reasoning: { supported_efforts: null } },
+        { id: 'c/none', reasoning: { default_enabled: true } },
+        { id: 'd/plain' },
+      ],
+    }),
+  );
+  const efforts = Object.fromEntries(models.map((model) => [model.id, model.reasoning_efforts]));
+  expect(efforts).toEqual({
+    'a/listed': ['low', 'high'],
+    'b/all': ['low', 'medium', 'high'],
+    'c/none': [],
+    'd/plain': [],
+  });
 });

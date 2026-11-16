@@ -498,6 +498,7 @@ function conversationFrom(row: Row) {
     budget_usd: row.budget_usd == null ? null : String(row.budget_usd),
     model_id: (row.model_id as string | null) ?? null,
     enabled_tools: (row.enabled_tools as ToolGroup[]) ?? [],
+    reasoning_effort: (row.reasoning_effort as 'low' | 'medium' | 'high' | null) ?? null,
     pinned_at: row.pinned_at ? mustIso(row.pinned_at as Date) : null,
     activity: row.is_running ? 'running' : row.has_unread ? 'unread' : 'idle',
     version: Number(row.version),
@@ -654,6 +655,7 @@ export async function updateConversation(
     projectId?: string | null;
     researchMode?: boolean;
     budgetUsd?: string | null;
+    reasoningEffort?: 'low' | 'medium' | 'high' | null;
   },
 ) {
   return withOwner(ownerId, async (tx) => {
@@ -685,6 +687,7 @@ export async function updateConversation(
          title_source = case when $3::bool then 'manual' else title_source end,
          model_id = $4,
          enabled_tools = $5, project_id=$6, research_mode=$7,budget_usd=$8,
+         reasoning_effort = $9,
          version = version + 1,
          updated_at = now()
        where id = $1 returning *`,
@@ -697,6 +700,7 @@ export async function updateConversation(
         patch.projectId === undefined ? row.project_id : patch.projectId,
         patch.researchMode ?? row.research_mode,
         patch.budgetUsd === undefined ? row.budget_usd : patch.budgetUsd,
+        patch.reasoningEffort === undefined ? row.reasoning_effort : patch.reasoningEffort,
       ],
     );
     return loadConversation(tx, id);
@@ -880,6 +884,7 @@ export async function createMessageRun(
     inputPrice?: string | null;
     outputPrice?: string | null;
     scheduleOccurrenceId?: string;
+    reasoningEfforts?: string[];
   },
 ): Promise<CreatedRun> {
   if (!input.text.trim() && input.fileIds.length === 0) {
@@ -1001,6 +1006,10 @@ export async function createMessageRun(
           inputPrice: input.inputPrice,
           outputPrice: input.outputPrice,
           budgetUsd: chat.budget_usd,
+          reasoningEffort:
+            chat.reasoning_effort && (input.reasoningEfforts ?? []).includes(String(chat.reasoning_effort))
+              ? String(chat.reasoning_effort)
+              : null,
           researchMode: chat.research_mode,
           keySource: runKey.source,
           managedKeyId: runKey.managedKeyId,

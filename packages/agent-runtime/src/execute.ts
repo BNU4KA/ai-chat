@@ -396,6 +396,7 @@ async function executeClaimedRun(
         messages,
         tools,
         maxTokens: maxOutput,
+        reasoningEffort: (bundle.run.tool_snapshot as { reasoningEffort?: 'low' | 'medium' | 'high' | null }).reasoningEffort ?? null,
         modelCalls: marked,
         signal: AbortSignal.any([signal, AbortSignal.timeout(LIMITS.modelTimeoutMs)]),
         onDelta: async (text) => {

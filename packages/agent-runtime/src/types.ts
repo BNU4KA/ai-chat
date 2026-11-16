@@ -14,6 +14,7 @@ export type ModelRequest = {
   messages: unknown[];
   tools: { name: string; description: string; parameters: Record<string, unknown> }[];
   maxTokens: number;
+  reasoningEffort?: 'low' | 'medium' | 'high' | null;
   modelCalls: number;
   signal: AbortSignal;
   onDelta: (text: string) => Promise<void>;

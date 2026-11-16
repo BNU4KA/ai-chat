@@ -63,6 +63,7 @@ async function fixture(
   let messages: Record<string, unknown>[] = [];
   let run: Record<string, unknown> | null = null;
   const submissions: { key: string; body: unknown }[] = [];
+  const chatPatches: Record<string, unknown>[] = [];
   const attachments: Record<string, unknown>[] = [];
   const usage = { input_tokens: null, output_tokens: null, cost_usd: null, cost_status: 'unknown' };
   await page.route('https://synthetic.supabase.co/**', (route) => route.fulfill({ json: {} }));
@@ -135,6 +136,7 @@ async function fixture(
           input_price_per_million_usd: '1',
           output_price_per_million_usd: '2',
           supported_parameters: ['tools'],
+          reasoning_efforts: ['low', 'medium', 'high'],
           catalog_fetched_at: time,
           catalog_stale: false,
         },
@@ -157,6 +159,7 @@ async function fixture(
     }
     if (path === `/v1/conversations/${chatId}` && method === 'GET') return data(chat);
     if (path === `/v1/conversations/${chatId}` && method === 'PATCH') {
+      chatPatches.push(req.postDataJSON());
       chat = { ...chat!, ...req.postDataJSON(), version: chat!.version + 1 };
       return data(chat);
     }
@@ -321,6 +324,7 @@ async function fixture(
   });
   return {
     submissions,
+    chatPatches,
     snapshot: () => ({
       run,
       assistant_message: messages[1],
@@ -425,6 +429,21 @@ test('reply suggestions appear under a finished answer and send the chosen reply
   await page.getByRole('button', { name: 'Send reply: Add examples' }).click();
   await expect.poll(() => f.submissions.length).toBe(2);
   expect(f.submissions[1]?.body).toMatchObject({ text: 'Add examples' });
+});
+
+test('reasoning effort is chosen next to Tools and saved on the chat', async ({ context, page }) => {
+  await seed(context);
+  const f = await fixture(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Choose model' }).click();
+  await page.getByRole('button', { name: /Synthetic Model Tools supported/ }).click();
+  await page.getByLabel('Message', { exact: true }).fill('Synthetic question');
+  await page.getByRole('button', { name: 'Send ↑', exact: true }).click();
+  await expect(page.getByText(/Synthetic answer with/)).toBeVisible();
+  await page.getByTestId('reasoning-effort-button').click();
+  await page.getByTestId('reasoning-effort-high').click();
+  await expect.poll(() => f.chatPatches.at(-1)?.reasoning_effort).toBe('high');
+  await expect(page.getByTestId('reasoning-effort-button')).toContainText('High');
 });
 
 test('settings expose separate Google consent and require typed account-deletion confirmation', async ({

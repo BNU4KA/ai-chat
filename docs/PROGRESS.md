@@ -1219,3 +1219,26 @@ local readiness report database and queue ok; both services are active. The titl
 to `google/gemini-3.8-flash`; set `TITLE_MODEL_ID` in `/etc/ai-chat/server.env` to change it.
 
 Not verified against the live title model on a real chat.
+
+## CHAT-206 — Reasoning effort — 2026-11-16 (local, release pending)
+
+Effort control (Default / Low / Medium / High) appears left of Tools only for a chat with a
+selected model whose catalog entry lists supported efforts. The catalog reads OpenRouter's
+per-model `reasoning.supported_efforts` (absent: no control; null: all; intersected with
+low/medium/high). The value is stored per conversation (migration `0012_conversation_reasoning_effort.sql`,
+nullable, check constraint), set with the existing `PATCH /v1/conversations/:id`, and copied into
+the run snapshot only when the current model supports it. The provider request then carries
+`reasoning: { effort }` (documented OpenRouter parameter; verified against
+openrouter.ai/docs/use-cases/reasoning-tokens). Without a selection, no `reasoning` field is sent.
+Note: reasoning tokens count toward the request's output budget on OpenRouter; the existing
+`max_tokens` for a run is unchanged.
+
+Limitation: the control is shown only after a chat exists. Choosing an effort on the start screen
+is not supported yet.
+
+Checks: adapter and catalog unit tests (12 in openrouter tests); integration test for PATCH,
+invalid value rejection, and snapshot filtering by supported efforts (59 integration tests
+passed on a disposable database); unit total 75 passed; tsc and eslint on touched files passed;
+Playwright: effort selection test passed on desktop and mobile web. Full run: 31 passed, 15 failed,
+the same pre-existing failures as before.
+Not verified against the live provider with a reasoning model.

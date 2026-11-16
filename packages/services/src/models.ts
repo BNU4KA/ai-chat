@@ -107,6 +107,7 @@ export async function validateChatModel(
     contextLength: model.context_length,
     maxOutputTokens: model.max_output_tokens ?? null,
     supportsTools: model.supports_tools,
+    reasoningEfforts: model.reasoning_efforts ?? [],
     googleSubject: google?.google_subject as string | undefined,
     googleIntegrationId: google?.id as string | undefined,
   };

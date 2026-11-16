@@ -4,6 +4,7 @@ import { codePointLength } from './text.ts';
 
 const timestamp = z.iso.datetime({ offset: true });
 const toolGroup = z.enum(TOOL_GROUPS);
+export const reasoningEffort = z.enum(['low', 'medium', 'high']);
 
 export const usageSchema = z.object({
   input_tokens: z.number().int().nullable(),
@@ -107,6 +108,7 @@ export const modelSchema = z.object({
   input_price_per_million_usd: z.string().nullable(),
   output_price_per_million_usd: z.string().nullable(),
   supported_parameters: z.array(z.string()),
+  reasoning_efforts: z.array(reasoningEffort).optional(),
   catalog_fetched_at: timestamp,
   catalog_stale: z.boolean(),
 });
@@ -121,6 +123,7 @@ export const conversationSchema = z.object({
   budget_usd: z.string().nullable().optional(),
   model_id: z.string().nullable(),
   enabled_tools: z.array(toolGroup),
+  reasoning_effort: reasoningEffort.nullable().optional(),
   pinned_at: timestamp.nullable().optional(),
   activity: z.enum(['idle', 'running', 'unread']).optional(),
   version: z.number().int(),
@@ -148,6 +151,7 @@ export const conversationPatchSchema = z
       .optional(),
     model_id: z.string().min(1).max(200).nullable().optional(),
     enabled_tools: z.array(toolGroup).optional(),
+    reasoning_effort: reasoningEffort.nullable().optional(),
   })
   .strict();
 

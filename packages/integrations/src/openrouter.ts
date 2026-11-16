@@ -21,6 +21,19 @@ export async function validateOpenRouterKey(
   }
 }
 
+type ReasoningEffort = 'low' | 'medium' | 'high';
+const REASONING_EFFORTS: ReasoningEffort[] = ['low', 'medium', 'high'];
+
+// Per OpenRouter's model listing: an absent reasoning object or supported_efforts means no effort
+// control; null means every gateway effort value is accepted.
+function reasoningEfforts(value: unknown): ReasoningEffort[] {
+  if (!value || typeof value !== 'object' || !('supported_efforts' in value)) return [];
+  const supported = (value as { supported_efforts: unknown }).supported_efforts;
+  if (supported === null) return [...REASONING_EFFORTS];
+  if (!Array.isArray(supported)) return [];
+  return REASONING_EFFORTS.filter((effort) => supported.includes(effort));
+}
+
 type CatalogModel = {
   id: string;
   name: string;
@@ -32,6 +45,7 @@ type CatalogModel = {
   input_price_per_million_usd: string | null;
   output_price_per_million_usd: string | null;
   supported_parameters: string[];
+  reasoning_efforts: ReasoningEffort[];
   catalog_fetched_at: string;
   catalog_stale: boolean;
 };
@@ -76,6 +90,7 @@ export async function fetchModelCatalog(
       input_price_per_million_usd: perMillion(pricing.prompt),
       output_price_per_million_usd: perMillion(pricing.completion),
       supported_parameters: parameters,
+      reasoning_efforts: reasoningEfforts(model.reasoning),
       catalog_fetched_at: fetchedAt,
       catalog_stale: false,
     };
@@ -99,6 +114,9 @@ export function createOpenRouterModel(fetchImpl: typeof fetch = fetch): ModelAda
             messages: request.messages,
             stream: true,
             max_tokens: request.maxTokens,
+            ...(request.reasoningEffort
+              ? { reasoning: { effort: request.reasoningEffort } }
+              : {}),
             ...(request.tools.length
               ? {
                   tools: request.tools.map((tool) => ({

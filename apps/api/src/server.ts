@@ -331,6 +331,7 @@ export function buildServer(): FastifyInstance {
         title: body.title,
         modelId: body.model_id,
         enabledTools: body.enabled_tools,
+        reasoningEffort: body.reasoning_effort,
         projectId:body.project_id, researchMode:body.research_mode,budgetUsd:body.budget_usd,
       }),
     };
@@ -412,6 +413,7 @@ export function buildServer(): FastifyInstance {
       contextLength: model.contextLength,
       maxOutputTokens: model.maxOutputTokens,
       supportsTools: model.supportsTools,
+      reasoningEfforts: model.reasoningEfforts,
       googleSubject: model.googleSubject,
       googleIntegrationId: model.googleIntegrationId,
       inputPrice:model.inputPrice,outputPrice:model.outputPrice,
