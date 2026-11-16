@@ -1420,3 +1420,11 @@ Checks: client typecheck and eslint passed. Playwright scenario "a drafted docum
 panel, saves edits, and creates the file" passed on desktop and mobile web. Full run: 41 passed,
 15 failed (same pre-existing failures). Not verified on a device or with a live model producing a
 draft. Limit: the in-stream card shows only for the latest run; older drafts are reached from the Drafts tab.
+
+## Release — CHAT-207 draft panel — 2026-11-16
+
+Frontend change only (no migration, runtime code unchanged). Release `20261116T160602Z` from commit
+`a4ce364`, archive sha256 `4685e8f5…`. Previous `20261116T152442Z` kept for rollback. Readiness
+database and queue ok; both services active; web bundle scan clean.
+
+Not verified on the hosted site with a live model drafting a document.
