@@ -1348,3 +1348,9 @@ Checks: client, agent-runtime typecheck and eslint on touched files passed; unit
 Playwright scenarios (paste, long message collapse/expand, photo viewer without a new page) passed on
 desktop and mobile web. Full run: 37 passed, 15 failed, the same pre-existing failures as before.
 Also fixed the branching unit test typing (`editMessage` body). Not verified with live models.
+
+## Release — chat input and reading — 2026-11-16
+
+Runtime (prompt) and web release `20261116T150107Z` from commit `8f4f931`, archive sha256 `fdf186da…`.
+No migration. Previous `20261116T144859Z` kept for rollback. Readiness database and queue ok; both
+services active.
