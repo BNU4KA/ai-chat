@@ -115,6 +115,7 @@ await boss.work('run.execute', async (jobs) => {
       prepareMessages: workspaceMessages(),
       now: () => new Date(),
       model,
+      titleModel: process.env.TITLE_MODEL_ID ?? 'google/gemini-3.8-flash',
       ports: {
         ...projectDocumentPorts(String(run.owner_id), String(run.conversation_id)),
         ...filePorts(String(run.owner_id), String(run.conversation_id)),

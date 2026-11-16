@@ -150,6 +150,7 @@ export type AgentDeps = {
   ) => Promise<{ args: unknown; preview?: Record<string, unknown> }>;
   now: () => Date;
   model: ModelAdapter;
+  titleModel?: string | null;
   ports: ToolPorts;
   loadKey: (
     ownerId: string,

@@ -1193,3 +1193,19 @@ no server secrets; the new chip testID is present.
 
 Not verified on the hosted site with a live model: chips depend on the model following the
 `<suggestions>` instruction.
+
+## CHAT-205 — Automatic chat titles — 2026-11-16 (local, release pending)
+
+Owner decision (2026-11-16) allows one low-cost title request. `docs/AGENT_TASK.md` now
+records the rule. The first-message truncation stays as the immediate title. After a run
+completes, `nameFirstExchange` (`packages/agent-runtime/src/execute.ts`) runs only when the chat
+has exactly one user message, its title is still automatic, and the answer is complete. It asks
+`deps.titleModel` (worker: `TITLE_MODEL_ID`, default `google/gemini-3.8-flash`) for at most 24
+tokens, with a 15 s timeout, and updates the title with `title_source = 'auto'` in the query.
+Failures are ignored and the title stays. The title request is not counted in run budgets or
+usage; its provider cost is not recorded, so it is outside the per-run estimate.
+
+Checks: integration test (named chat and unchanged chat with `titleModel: null`) passed on a
+disposable database (58 integration tests in total); unit tests 73 passed; `tsc` for runtime,
+database and worker, and eslint on touched files passed.
+Not verified against the live title model.

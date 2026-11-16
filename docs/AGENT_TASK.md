@@ -59,7 +59,7 @@ key per account and one active run per conversation, with at most three active r
 - Enabling an integration globally does not silently enable it in every conversation.
 - Users see actions, sources, and results, not hidden model reasoning.
 - Model/tool errors never become fabricated successful answers.
-- No automatic paid generation to create chat titles; use the first user message, truncated to 60 characters.
+- Chat titles: the first user message, truncated to 60 characters, is the immediate title. After the first completed exchange of a chat whose title was not renamed manually, one short request to a low-cost title model (`TITLE_MODEL_ID`, default `google/gemini-3.8-flash`) may replace it. Owner-approved 2026-11-16. Manual renames are never overwritten; a failed request keeps the first-message title.
 - The owner of the deployment supplies Tavily and infrastructure credentials. Users supply only their OpenRouter key and Google consent.
 
 ## 5. Sources of implementation detail

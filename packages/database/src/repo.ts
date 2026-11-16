@@ -586,6 +586,35 @@ export async function listPinnedConversations(ownerId: string) {
   });
 }
 
+export async function firstExchangeForTitle(
+  ownerId: string,
+  conversationId: string,
+): Promise<{ firstUser: string; firstAssistant: string } | null> {
+  return withOwner(ownerId, async (tx) => {
+    const found = await tx.query(
+      `select c.title_source,
+         (select count(*)::int from messages m where m.conversation_id = c.id and m.role = 'user') as user_count,
+         (select m.content from messages m where m.conversation_id = c.id and m.role = 'user' order by m.seq limit 1) as first_user,
+         (select m.content from messages m where m.conversation_id = c.id and m.role = 'assistant' and m.status = 'complete' order by m.seq limit 1) as first_assistant
+       from conversations c where c.id = $1`,
+      [conversationId],
+    );
+    const row = found.rows[0];
+    if (!row || row.title_source !== 'auto' || row.user_count !== 1) return null;
+    if (!row.first_user || !row.first_assistant) return null;
+    return { firstUser: String(row.first_user), firstAssistant: String(row.first_assistant) };
+  });
+}
+
+export async function applyGeneratedTitle(ownerId: string, conversationId: string, title: string) {
+  await withOwner(ownerId, (tx) =>
+    tx.query(`update conversations set title = $2 where id = $1 and title_source = 'auto'`, [
+      conversationId,
+      title,
+    ]),
+  );
+}
+
 export async function getConversation(ownerId: string, id: string) {
   return withOwner(ownerId, (tx) => loadConversation(tx, id));
 }

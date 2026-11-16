@@ -13,6 +13,7 @@ import {
   credentialAad,
   decideApproval,
   ensureProfile,
+  getConversation,
   getPool,
   getSnapshot,
   lastFour,
@@ -105,6 +106,46 @@ it('stores reply suggestions separately and removes the block from a completed a
     return found.rows[0]?.suggestions;
   });
   expect(stored).toEqual(['Make it shorter', 'Add an example']);
+});
+
+it('names a chat after its first exchange with the title model and keeps the first message otherwise', async () => {
+  const owner = randomUUID();
+  await ensureProfile(owner, { displayName: 'T', avatarUrl: null, timezone: 'UTC' });
+  const key = 'sk-or-test-key-titles';
+  const ring = loadKeyring(process.env.ENCRYPTION_KEYS);
+  const sealed = seal(ring, key, credentialAad(owner, 'openrouter', 1));
+  await saveOpenRouter(owner, 0, { ...sealed, lastFour: lastFour(key) });
+  const named = await createConversation(owner, { modelId: 'openai/gpt-test', enabledTools: [] });
+  const first = await createMessageRun(owner, named.id, randomUUID(), {
+    clientMessageId: randomUUID(),
+    text: 'Plan my week of trips',
+    fileIds: [],
+  });
+  await executeRun(first.body.run.id, {
+    now: () => new Date(),
+    model: scriptedModel([{ text: 'Here is a plan.' }, { text: '"Weekly Trip Plan."' }]),
+    ports: {},
+    loadKey: async () => ({ version: 1, apiKey: key }),
+    titleModel: 'google/title-test',
+  });
+  const renamed = await getConversation(owner, named.id);
+  expect(renamed.title).toBe('Weekly Trip Plan');
+
+  const plain = await createConversation(owner, { modelId: 'openai/gpt-test', enabledTools: [] });
+  const second = await createMessageRun(owner, plain.id, randomUUID(), {
+    clientMessageId: randomUUID(),
+    text: 'Keep this title',
+    fileIds: [],
+  });
+  await executeRun(second.body.run.id, {
+    now: () => new Date(),
+    model: scriptedModel([{ text: 'Done.' }]),
+    ports: {},
+    loadKey: async () => ({ version: 1, apiKey: key }),
+    titleModel: null,
+  });
+  const untouched = await getConversation(owner, plain.id);
+  expect(untouched.title).toBe('Keep this title');
 });
 
 it('does not send mail until a matching approval, and a rejection does not send', async () => {

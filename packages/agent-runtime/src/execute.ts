@@ -10,11 +10,14 @@ import {
   isBuiltinTool,
   isWriteTool,
   toolGroup,
+  truncateCodePoints,
   type ToolName,
 } from '@ai-chat/contracts';
 import {
   appendEvent,
+  applyGeneratedTitle,
   claimLease,
+  firstExchangeForTitle,
   hashEqual,
   locked,
   readRun,
@@ -447,6 +450,7 @@ async function executeClaimedRun(
         String(bundle.run.assistant_message_id),
         token,
       );
+      await nameFirstExchange(deps, ownerId, String(bundle.run.conversation_id), key.apiKey);
       return;
     }
     if (Number(bundle.run.tool_calls) + result.toolCalls.length > LIMITS.toolCalls) {
@@ -1066,6 +1070,54 @@ async function persistThread(runId: string, token: string, checkpoint: Checkpoin
       JSON.stringify(checkpoint),
     ]);
   });
+}
+
+const TITLE_PROMPT =
+  'Write a short title (at most 6 words) for this conversation, in the same language as the user. Reply with the title only: no quotes, no trailing punctuation, no prefix.';
+
+function cleanTitle(text: string): string | null {
+  const cleaned = text
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^["'«“”]+|["'»“”]+$/g, '')
+    .replace(/[.!?。]+$/, '')
+    .trim();
+  return cleaned ? truncateCodePoints(cleaned, LIMITS.titleCodePoints) : null;
+}
+
+// Runs only after the first completed exchange of a chat that still has an automatic title.
+// Failures keep the title from the first message; the answer is never affected.
+async function nameFirstExchange(
+  deps: AgentDeps,
+  ownerId: string,
+  conversationId: string,
+  apiKey: string,
+) {
+  if (!deps.titleModel) return;
+  try {
+    const exchange = await firstExchangeForTitle(ownerId, conversationId);
+    if (!exchange) return;
+    const result = await deps.model.complete({
+      apiKey,
+      model: deps.titleModel,
+      messages: [
+        { role: 'system', content: TITLE_PROMPT },
+        {
+          role: 'user',
+          content: `User message:\n${exchange.firstUser.slice(0, 1000)}\n\nAssistant reply:\n${exchange.firstAssistant.slice(0, 1000)}`,
+        },
+      ],
+      tools: [],
+      maxTokens: 24,
+      modelCalls: 0,
+      signal: AbortSignal.timeout(15_000),
+      onDelta: async () => {},
+    });
+    const title = cleanTitle(result.text);
+    if (title) await applyGeneratedTitle(ownerId, conversationId, title);
+  } catch {
+    return;
+  }
 }
 
 async function settle(

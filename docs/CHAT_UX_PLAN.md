@@ -108,7 +108,7 @@ Replace the current first-message truncation (`packages/database/src/repo.ts`, t
 Rules:
 - Only when `title_source = 'auto'`; a manual rename is never overwritten.
 - Max 60 characters. On failure, keep the truncated first-message title.
-- Note: AGENT_TASK.md currently says "no automatic paid generation to create chat titles".
+- Decision (owner, 2026-11-16): low-cost title model allowed; `AGENT_TASK.md` updated accordingly.
   This conflicts with the requested feature and must be resolved in the docs first (ADR or an
   explicit owner decision) before implementation. Options: use a zero-cost route, or keep
   truncation and only improve it (for example, strip greetings and take the first sentence).
