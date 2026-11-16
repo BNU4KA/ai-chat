@@ -1138,3 +1138,23 @@ Checks (Node v24.2.0, pnpm shim unavailable so binaries were run directly):
 
 Not done: backend release (migration 0010 on the hosted database plus API/worker restart) is
 still pending; the web client is guarded so it shows no pins when the server lacks `pinned_at`.
+
+## Release — CHAT-203 backend and web — 2026-11-16
+
+Owner authorized the release. Migration `0010_chat_activity.sql` was applied to the hosted
+database before the runtime switch (schema_migrations had 0001–0009; 34 existing conversations
+were backfilled as seen). A local JSON backup of the `conversations` rows (34) was written
+outside the repository with mode 0600 before the migration.
+
+Built the web export with the public origin and Supabase publishable settings from the local
+environment; no server secrets in the bundle. Archive from commit `b805a0f` plus `web/`,
+sha256 `cdebc50e…04e6b3`. Ran `deploy/install-release.sh` as root.
+
+Release `20261116T132544Z`: runtime `/opt/ai-chat/releases/20261116T132544Z`, web
+`/srv/ai-chat/releases/20261116T132544Z`. Previous release: `20261115T123617Z`, kept for rollback.
+Public and local readiness report database and queue ok. Anonymous calls to the new routes
+(`PUT .../pin`, `POST .../seen`, `GET ...?pinned=true`) return 401, not 404. Journal shows no
+errors in the 3 minutes after the restart.
+
+Not verified: an authenticated pin/unread journey on the hosted site. The owner should pin a
+chat and check the indicators in the browser.
