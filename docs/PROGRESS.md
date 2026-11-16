@@ -1470,3 +1470,9 @@ Follow-up: the installer's pipeline in earlier releases hid install failures (`|
 Checks: unit 76 passed; integration 66 passed on a disposable database (new test: a document request
 becomes a draft and no file is created); e2e full run 41 passed, 15 failed (same pre-existing failures);
 tsc and eslint on touched files passed. Not verified with a live model.
+
+## Release — title, question dock, draft before file — 2026-11-16
+
+Release `20261116T190645Z` (commit `3f01214`, archive sha256 `4b169f20…`). Previous `20261116T185139Z`
+kept for rollback; older releases removed to keep disk usage (55% -> 60% after install). Install exit 0;
+readiness ok; both services active; site 200.
