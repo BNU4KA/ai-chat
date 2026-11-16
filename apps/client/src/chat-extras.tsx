@@ -9,6 +9,7 @@ import { api, json } from './api';
 import { Button, Copy, Field, Panel, ErrorNotice, Choice, TabBar } from './ui';
 import { DocumentEditor, useProjects, useDocuments, type Document } from './workspace';
 import type { Conversation, Message, Run } from './types';
+import { DocumentDrafts } from './document-drafts';
 
 export function ChatExtras({
   chat,
@@ -211,6 +212,7 @@ export function ChatExtras({
             items={[
               { value: 'context', label: 'Context & project' },
               { value: 'documents', label: 'Documents' },
+              { value: 'drafts', label: 'Drafts' },
               { value: 'workflows', label: 'Workflows' },
               { value: 'budget', label: 'Cost & limits' },
               { value: 'meetings', label: 'Meeting times' },
@@ -333,6 +335,7 @@ export function ChatExtras({
               )}
             </>
           )}
+          {tab === 'drafts' && chat && <DocumentDrafts conversationId={chat.id} />}
           {tab === 'workflows' && (
             <Panel>
               {Object.entries(workflowPrompts).map(([key, prompt]) => (

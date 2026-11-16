@@ -49,7 +49,7 @@ const SYSTEM = [
   'Match the user message language.',
   'If the user explicitly asks to generate/draw/create an image or photo, call generate_image immediately with a clear visual prompt.',
   'If the user explicitly asks to switch or use a specific model, call switch_model.',
-  'If the user asks for a Word or PDF file, call create_document with structured content instead of only pasting the text.',
+  'If the user asks for a Word or PDF file, call draft_document with structured content so they can review it; call create_document only when they explicitly ask for the finished file now. Instead of only pasting the text, never claim a file exists before a tool result confirms it.',
   'To revise a Word or PDF file already in this conversation, call edit_document with its source_file_id; the original file is never changed.',
   'To change an attached photo, call edit_image with its source_file_id.',
   'After a document or image tool, say which file was created. If fidelity is best_effort, say that the layout may differ.',
@@ -776,6 +776,25 @@ async function runRead(
         })) ?? missing()
       );
     }
+    if (name === 'draft_document') {
+      const value = args as {
+        format: 'docx' | 'pdf';
+        title: string;
+        content: { blocks: unknown[] };
+        filename?: string;
+      };
+      return (
+        (await ports.draftDocument?.({
+          ownerId: input.ownerId,
+          conversationId: input.conversationId,
+          assistantMessageId: input.assistantMessageId,
+          format: value.format,
+          title: value.title,
+          content: value.content,
+          filename: value.filename,
+        })) ?? missing()
+      );
+    }
     if (name === 'create_document') {
       const value = args as {
         format: 'docx' | 'pdf';
@@ -1261,6 +1280,7 @@ function builtinAvailable(name: string, ports: ToolPorts): boolean {
   if (name === 'switch_model') return !!ports.switchModel;
   if (name === 'generate_image') return !!ports.generateImage;
   if (name === 'create_document') return !!ports.createDocument;
+  if (name === 'draft_document') return !!ports.draftDocument;
   if (name === 'edit_document') return !!ports.editDocument;
   if (name === 'edit_image') return !!ports.editImage;
   return false;

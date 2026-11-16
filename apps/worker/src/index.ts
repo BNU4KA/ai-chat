@@ -1,3 +1,4 @@
+import { createDocumentDraft } from '@ai-chat/database';
 import {
   workspaceMessages,
   projectDocumentPorts,
@@ -122,6 +123,16 @@ await boss.work('run.execute', async (jobs) => {
         ...googlePorts(String(run.owner_id), runId),
         switchModel: async ({ ownerId, conversationId, query }) =>
           switchConversationModel(ownerId, conversationId, query),
+        draftDocument: async (input) => {
+          const draft = await createDocumentDraft(input.ownerId, {
+            conversationId: input.conversationId,
+            assistantMessageId: input.assistantMessageId,
+            format: input.format,
+            title: input.title.trim(),
+            content: input.content,
+          });
+          return { ok: true, data: { draft_id: draft.id, title: draft.title, format: draft.format } };
+        },
         createDocument: (input) => createDocumentFile(input),
         editDocument: async (input) =>
           editDocumentFile({

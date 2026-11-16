@@ -8,3 +8,4 @@ export { locked, readRun, readThreadInputs, renewLease } from './lease.ts';
 export { purgeConversation, recoverExpiredRuns } from './cleanup.ts';
 export * from './files.ts';
 export * from './workspace.ts';
+export * from './document-drafts.ts';

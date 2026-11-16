@@ -47,6 +47,7 @@ export {
   projectInputSchema,
   projectSchema,
   documentInputSchema,
+  documentDraftPatchSchema,
   documentSchema,
   rangeEditSchema,
   branchSchema,

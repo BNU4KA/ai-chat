@@ -96,6 +96,15 @@ export type ToolPorts = {
     modelQuery?: string;
     signal?: AbortSignal;
   }): Promise<ToolOutcome>;
+  draftDocument?(input: {
+    ownerId: string;
+    conversationId: string;
+    assistantMessageId: string;
+    format: 'docx' | 'pdf';
+    title: string;
+    content: { blocks: unknown[] };
+    filename?: string;
+  }): Promise<ToolOutcome>;
   createDocument?(input: {
     ownerId: string;
     conversationId: string;

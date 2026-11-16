@@ -1252,3 +1252,29 @@ reports database and queue ok; both services active; no error entries in the jou
 Web bundle scan: no server secrets.
 
 Not verified on the hosted site with a reasoning-capable model.
+
+## CHAT-207 — Document drafts — 2026-11-16 (local, release pending)
+
+The model calls the new built-in tool `draft_document` (same structured content as
+`create_document`) when the user asks for a Word or PDF file. The worker stores it in the new
+owner-scoped table `document_drafts` (migration `0013_document_drafts.sql`, RLS like other
+workspace tables). No file is created. The conversation's work-tools panel has a Drafts tab that
+lists drafts, edits the title and heading/paragraph text with version checks (`If-Match`), and
+creates the file with `Create file` (existing `createDocumentFile`, linked to the original
+assistant message). A created draft becomes read-only; further changes use the existing revision
+path.
+
+API: `GET /v1/conversations/:id/document-drafts`, `GET /v1/document-drafts/:id`,
+`PATCH /v1/document-drafts/:id` (If-Match), `POST /v1/document-drafts/:id/create`.
+
+Deviations from the plan: the editor lives in the work-tools panel, not a dedicated right-side
+draft panel; list and table blocks are displayed but not editable yet; a manual create could race
+with a second create and produce a duplicate file (status change is atomic only after the file is
+made).
+
+Checks: integration test for draft lifecycle (list, save, stale version 409, create blocked
+without assistant message 422, read-only after file 409); full integration suite 60 passed on a
+disposable database; unit 75 passed; tsc for contracts, database, api, worker, agent-runtime and
+client, eslint on touched files passed. Full Playwright run: 31 passed, 15 failed; same
+pre-existing failures as before. No new Playwright scenario for drafts yet.
+Not verified with a live model producing a draft.

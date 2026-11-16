@@ -4,6 +4,7 @@ import {
   AppError,
   projectInputSchema,
   documentInputSchema,
+  documentDraftPatchSchema,
   rangeEditSchema,
   compactSchema,
   branchSchema,
@@ -16,6 +17,10 @@ import {
   type ToolName,
 } from '@ai-chat/contracts';
 import {
+  listDocumentDrafts,
+  getDocumentDraft,
+  updateDocumentDraft,
+  markDocumentDraftCreated,
   projects,
   saveProject,
   removeProject,
@@ -44,6 +49,7 @@ import {
   pauseSchedule,
   deleteSchedule,
   suggestMeetingSlots,
+  createDocumentFile,
 } from '@ai-chat/services';
 const uuid = (request: FastifyRequest) => z.uuid().parse((request.params as { id: string }).id);
 export function registerWorkspace(
@@ -72,6 +78,43 @@ export function registerWorkspace(
       .parse(r.body);
     await shareProjectFile(r.ownerId, uuid(r), b.file_id, b.remove);
     return { data: { ok: true } };
+  });
+  app.get('/v1/conversations/:id/document-drafts', async (r) => ({
+    data: await listDocumentDrafts(r.ownerId, uuid(r)),
+  }));
+  app.get('/v1/document-drafts/:id', async (r) => ({
+    data: await getDocumentDraft(r.ownerId, uuid(r)),
+  }));
+  app.patch('/v1/document-drafts/:id', async (r) => ({
+    data: await updateDocumentDraft(
+      r.ownerId,
+      uuid(r),
+      versionOf(r),
+      documentDraftPatchSchema.parse(r.body),
+    ),
+  }));
+  app.post('/v1/document-drafts/:id/create', async (r) => {
+    const draft = await getDocumentDraft(r.ownerId, uuid(r));
+    if (draft.status !== 'draft')
+      throw new AppError(409, 'DRAFT_CREATED', 'This draft already became a file');
+    if (!draft.assistant_message_id)
+      throw new AppError(422, 'VALIDATION_ERROR', 'This draft cannot be saved as a file');
+    const outcome = await createDocumentFile({
+      ownerId: r.ownerId,
+      conversationId: draft.conversation_id,
+      assistantMessageId: draft.assistant_message_id,
+      format: draft.format,
+      title: draft.title,
+      content: draft.content,
+    });
+    if (!outcome.ok || !outcome.data)
+      throw new AppError(
+        422,
+        outcome.error?.code ?? 'DOCUMENT_FAILED',
+        outcome.error?.message ?? 'The file could not be created.',
+      );
+    const fileId = String((outcome.data as { file_id: string }).file_id);
+    return { data: await markDocumentDraftCreated(r.ownerId, draft.id, fileId) };
   });
   app.get('/v1/documents', async (r) => ({ data: await documentList(r.ownerId) }));
   app.get('/v1/documents/:id', async (r) => ({

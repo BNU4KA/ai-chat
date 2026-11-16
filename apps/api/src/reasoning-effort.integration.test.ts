@@ -55,7 +55,11 @@ it('stores a per-conversation effort, rejects unknown values, and snapshots only
       headers,
       payload: { enabled_tools: [] },
     });
-    const conversation = created.json().data as { id: string; version: number };
+    const conversation = created.json().data as {
+      id: string;
+      version: number;
+      reasoning_effort?: string | null;
+    };
     expect(conversation.reasoning_effort ?? null).toBeNull();
 
     const saved = await app.inject({

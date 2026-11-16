@@ -1,4 +1,4 @@
-import type {z, conversationSchema, messageSchema, runSchema, modelSchema, fileSchema, credentialSchema, profileSchema, integrationSchema} from '@ai-chat/contracts';
+import type {z, DocumentBlock, conversationSchema, messageSchema, runSchema, modelSchema, fileSchema, credentialSchema, profileSchema, integrationSchema} from '@ai-chat/contracts';
 export type Conversation = z.infer<typeof conversationSchema>;
 export type Message = z.infer<typeof messageSchema>;
 export type Run = z.infer<typeof runSchema>;
@@ -12,3 +12,16 @@ export type ToolCall = {id: string; name: string; status: string; arguments: Rec
 export type Source = {citation_id: string; kind: string; title: string; url?: string; file_id?: string; document_id?:string; page?: number; section?: string;excerpt?:string;retrieved_at?:string};
 export type Snapshot = {run: Run; assistant_message: Message; tool_calls: ToolCall[]; approvals: Approval[]; sources: Source[]};
 export type Capabilities = {tools: Record<'web'|'files'|'gmail'|'calendar', string>; limits: {file_bytes: number}};
+export type DocumentDraft = {
+  id: string;
+  conversation_id: string;
+  assistant_message_id: string | null;
+  format: 'docx' | 'pdf';
+  title: string;
+  content: { blocks: DocumentBlock[] };
+  status: 'draft' | 'created';
+  file_id: string | null;
+  version: number;
+  created_at: string;
+  updated_at: string;
+};

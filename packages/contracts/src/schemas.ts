@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { LIMITS, TOOL_GROUPS } from './limits.ts';
 import { codePointLength } from './text.ts';
+import { documentContentSchema } from './documents.ts';
 
 const timestamp = z.iso.datetime({ offset: true });
 const toolGroup = z.enum(TOOL_GROUPS);
@@ -279,6 +280,14 @@ export const projectSchema = projectInputSchema.extend({
   created_at: timestamp,
   updated_at: timestamp,
 });
+export const documentDraftPatchSchema = z
+  .object({
+    title: z.string().trim().min(1).max(200).optional(),
+    format: z.enum(['docx', 'pdf']).optional(),
+    content: documentContentSchema.optional(),
+  })
+  .strict();
+
 export const documentInputSchema = z
   .object({
     title: z.string().trim().min(1).max(200),

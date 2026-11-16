@@ -69,6 +69,7 @@ export const BUILTIN_TOOLS = [
   'switch_model',
   'generate_image',
   'create_document',
+  'draft_document',
   'edit_document',
   'edit_image',
 ] as const;
@@ -91,6 +92,7 @@ export function toolGroup(name: ToolName): ToolGroup {
     name === 'switch_model' ||
     name === 'generate_image' ||
     name === 'create_document' ||
+    name === 'draft_document' ||
     name === 'edit_document' ||
     name === 'edit_image'
   )

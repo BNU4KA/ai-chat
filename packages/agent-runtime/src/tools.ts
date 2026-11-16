@@ -121,6 +121,14 @@ export const toolSchemas = {
       filename: z.string().min(1).max(120).optional(),
     })
     .strict(),
+  draft_document: z
+    .object({
+      format: z.enum(DOCUMENT_FORMATS),
+      title: z.string().min(1).max(200),
+      content: documentContentSchema,
+      filename: z.string().min(1).max(120).optional(),
+    })
+    .strict(),
   edit_document: z
     .object({
       source_file_id: z.uuid(),
@@ -162,6 +170,8 @@ export const toolDescriptions: Record<ToolName, string> = {
     'Generate a photo or image immediately using an image-generation model when the user explicitly asks to create/draw/generate a photo or picture.',
   create_document:
     'Create a new downloadable Word (docx) or PDF file for the user from structured content: headings, paragraphs, lists and tables. Use it when the user asks for a document file, not just text. Put the full text in blocks; do not invent facts the user did not supply.',
+  draft_document:
+    'Write a Word or PDF document as an editable draft shown to the user in a side panel. Nothing is saved as a file until the user presses Create file. Use it when the user asks for a document and may want to review or change it first. Put the full text in blocks; do not invent facts the user did not supply.',
   edit_document:
     'Create a new revised copy of a Word or PDF file that belongs to this conversation, applying the instructions. The original file is never changed. Use the source_file_id from the file list. Tell the user when fidelity is best_effort.',
   edit_image:
