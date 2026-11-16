@@ -1209,3 +1209,13 @@ Checks: integration test (named chat and unchanged chat with `titleModel: null`)
 disposable database (58 integration tests in total); unit tests 73 passed; `tsc` for runtime,
 database and worker, and eslint on touched files passed.
 Not verified against the live title model.
+
+## Release — CHAT-205 — 2026-11-16
+
+No migration. Runtime and worker changed (title request after the first completed exchange); the
+web bundle was rebuilt from the same commit. Release `20261116T140914Z` (commit `f02da5a`,
+archive sha256 `72bd6c95…`). Previous release `20261116T140334Z` is kept for rollback. Public and
+local readiness report database and queue ok; both services are active. The title model defaults
+to `google/gemini-3.8-flash`; set `TITLE_MODEL_ID` in `/etc/ai-chat/server.env` to change it.
+
+Not verified against the live title model on a real chat.
