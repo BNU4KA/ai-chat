@@ -1242,3 +1242,13 @@ passed on a disposable database); unit total 75 passed; tsc and eslint on touche
 Playwright: effort selection test passed on desktop and mobile web. Full run: 31 passed, 15 failed,
 the same pre-existing failures as before.
 Not verified against the live provider with a reasoning model.
+
+## Release — CHAT-206 — 2026-11-16
+
+Migration `0012_conversation_reasoning_effort.sql` (nullable column with check constraint) applied
+to the hosted database; latest migration is now 0012. Release `20261116T142148Z` (commit
+`375c387`, archive sha256 `c5d0d78d…`), previous `20261116T140914Z` kept for rollback. Readiness
+reports database and queue ok; both services active; no error entries in the journal after restart.
+Web bundle scan: no server secrets.
+
+Not verified on the hosted site with a reasoning-capable model.
