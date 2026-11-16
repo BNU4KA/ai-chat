@@ -1361,3 +1361,27 @@ Recorded `docs/ADR-002-agent-questions.md` with the owner's decisions: one to th
 call, single choice with optional "Other" field, skipping allowed, 12-hour wait without model cost,
 questions only when the request is ambiguous. Mirrors the approval pause (new `waiting_input`
 status, `agent_questions` table, same continuation and expiry sweep). No code changed in this step.
+
+## CHAT-111 / ADR-002 — Agent questions with answer options — 2026-11-16 (local, release pending)
+
+Implements ADR-002. Migration `0015_agent_questions.sql`: run and tool-call status constraints now
+include `waiting_input`; the single-active-run index covers it; new owner-scoped table
+`agent_questions` (RLS like approvals). Runtime: built-in tool `ask_user` (one to three questions,
+two to four options each, optional "Other" text) pauses the run in `waiting_input` without a model
+call; at most one `ask_user` call per run (later calls return a validation result to the model).
+The answer is written to the tool call's result; resume records it in the checkpoint and continues
+the run through the normal queue. Skipping is supported. Answers after the 12-hour window get 410;
+a second answer gets 409. Expired questions are swept by the maintenance job: the run ends as
+`failed` with `QUESTION_EXPIRED` (ADR updated to match approval expiry handling). Snapshot exposes
+pending questions; API `POST /v1/questions/:id/answer` takes `{skip: true}` or `{answers: [...]}`.
+Client: `AgentQuestionCard` (radio options, "Other" field, Answer and Skip) rendered in the stream;
+`question.required` and `question.resolved` events update the snapshot. The system prompt asks for
+`ask_user` only when a wrong guess would waste work.
+
+Checks: integration tests for pause and resume with the chosen option recorded for the model, skip
+and a second answer (409), and expiry (410) — 3 passed; full integration suite 65 passed on a
+disposable database; unit 75 passed; tsc for contracts, database, agent-runtime, services, api, and
+client; eslint on touched code passed; full Playwright run 37 passed, 15 failed (same pre-existing
+failures). Not verified: the maintenance expiry path end to end (typecheck only), the card in a
+browser, and the behaviour with a live model. The sidebar shows a running spinner while a run waits
+for an answer; a distinct "needs input" marker is not built yet.

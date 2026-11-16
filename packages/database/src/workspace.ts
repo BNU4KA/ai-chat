@@ -228,7 +228,7 @@ export async function compactConversation(
     if (
       (
         await tx.query(
-          "select id from runs where conversation_id=$1 and status in ('queued','running','waiting_approval')",
+          "select id from runs where conversation_id=$1 and status in ('queued','running','waiting_approval','waiting_input')",
           [id],
         )
       ).rowCount
@@ -400,8 +400,8 @@ export type ScheduleInput = {
 /** Revoke active consumers before removing a shared file or its original chat. */
 export async function cancelFileConsumers(tx: Tx, owner: string, file: string) {
   const runs = await tx.query(
-    `update runs r set cancel_requested_at=coalesce(r.cancel_requested_at,now()),status=case when r.status='waiting_approval' then 'queued' else r.status end,updated_at=now()
- where r.owner_id=$1 and r.status in ('queued','running','waiting_approval') and exists(
+    `update runs r set cancel_requested_at=coalesce(r.cancel_requested_at,now()),status=case when r.status in ('waiting_approval','waiting_input') then 'queued' else r.status end,updated_at=now()
+ where r.owner_id=$1 and r.status in ('queued','running','waiting_approval','waiting_input') and exists(
   select 1 from conversations c join project_files pf on pf.project_id=c.project_id and pf.owner_id=c.owner_id
   where c.id=r.conversation_id and pf.file_id=$2) returning r.id`,
     [owner, file],

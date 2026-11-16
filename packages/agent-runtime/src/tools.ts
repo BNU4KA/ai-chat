@@ -3,6 +3,7 @@ import {
   DOCUMENT_FORMATS,
   LIMITS,
   documentContentSchema,
+  askUserArgsSchema,
   type ToolName,
 } from '@ai-chat/contracts';
 
@@ -16,6 +17,7 @@ const email = z
 const range = z.iso.datetime({ offset: true });
 
 export const toolSchemas = {
+  ask_user: askUserArgsSchema,
   list_project_documents: z
     .object({
       offset: z.number().int().min(0).max(100000).default(0),
@@ -147,6 +149,8 @@ export const toolSchemas = {
 } satisfies Record<ToolName, z.ZodType>;
 
 export const toolDescriptions: Record<ToolName, string> = {
+  ask_user:
+    'Pause and ask the user one to three questions with 2-4 answer options each, when the request is ambiguous and a wrong guess would waste work. The user can pick an option, write their own answer, or skip. Use it at most once per answer; do not ask routine confirmations.',
   list_project_documents:
     'List all documents explicitly shared through the current project, with pagination and version numbers.',
   read_project_document:

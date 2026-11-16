@@ -14,6 +14,7 @@ import {
   deleteAccountSchema,
   editMessageSchema,
   selectVariantSchema,
+  answerQuestionSchema,
   messageCreateSchema,
   profilePatchSchema,
 } from '@ai-chat/contracts';
@@ -32,6 +33,7 @@ import {
   listConversations,
   listPinnedConversations,
   selectMessageVariant,
+  answerAgentQuestion,
   markConversationSeen,
   setConversationPinned,
   listMessages,
@@ -446,6 +448,12 @@ export function buildServer(): FastifyInstance {
     if (created.replayed) reply.header('idempotent-replayed', 'true');
     reply.status(created.status as number);
     return { data: created.body };
+  });
+
+  app.post('/v1/questions/:id/answer', async (request) => {
+    const params = request.params as { id: string };
+    const body = answerQuestionSchema.parse(request.body ?? {});
+    return { data: await answerAgentQuestion(request.ownerId, params.id, body) };
   });
 
   app.post('/v1/messages/:id/select-variant', async (request) => {

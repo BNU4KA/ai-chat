@@ -20,7 +20,7 @@ export type UsageRow = {
   cost_status: 'unknown' | 'estimated' | 'confirmed';
 };
 
-const ACTIVE = `('queued','running','waiting_approval')`;
+const ACTIVE = `('queued','running','waiting_approval','waiting_input')`;
 
 export function iso(value: Date | string | null | undefined): string | null {
   if (value == null) return null;
@@ -509,7 +509,7 @@ function conversationFrom(row: Row) {
 
 const conversationActivitySql = `c.*,
   exists(select 1 from runs r where r.conversation_id = c.id
-    and r.status in ('queued', 'running', 'waiting_approval')) as is_running,
+    and r.status in ('queued', 'running', 'waiting_approval', 'waiting_input')) as is_running,
   exists(select 1 from runs r where r.conversation_id = c.id
     and r.status in ('completed', 'failed', 'cancelled')
     and r.finished_at > coalesce(c.last_seen_at, c.created_at)) as has_unread`;
@@ -675,7 +675,7 @@ export async function updateConversation(
       patch.projectId !== undefined &&
       (
         await tx.query(
-          "select id from runs where conversation_id=$1 and status in ('queued','running','waiting_approval')",
+          "select id from runs where conversation_id=$1 and status in ('queued','running','waiting_approval','waiting_input')",
           [id],
         )
       ).rowCount
@@ -886,7 +886,7 @@ function runFrom(row: Row, lastEventSeq: string) {
     user_message_id: String(row.user_message_id),
     assistant_message_id: String(row.assistant_message_id),
     status: String(row.status) as
-      'queued' | 'running' | 'waiting_approval' | 'completed' | 'cancelled' | 'failed',
+      'queued' | 'running' | 'waiting_approval' | 'waiting_input' | 'completed' | 'cancelled' | 'failed',
     model_id: String(row.model_id),
     attempt: Number(row.attempt),
     version: Number(row.version),
@@ -1181,6 +1181,10 @@ async function loadSnapshot(tx: Tx, runId: string) {
   const tools = await tx.query('select * from tool_calls where run_id = $1 order by ordinal', [
     runId,
   ]);
+  const questions = await tx.query(
+    `select * from agent_questions where run_id = $1 and status = 'pending' order by created_at`,
+    [runId],
+  );
   const approvals = await tx.query(
     'select a.*,t.name as tool_name,t.arguments as editable_arguments,t.preview as structured_preview from approvals a join tool_calls t on t.id=a.tool_call_id where a.run_id = $1',
     [runId],
@@ -1206,6 +1210,14 @@ async function loadSnapshot(tx: Tx, runId: string) {
       safe_result: t.safe_result,
       provider_reference: t.provider_reference,
       error_code: t.error_code,
+    })),
+    questions: questions.rows.map((q) => ({
+      id: String(q.id),
+      run_id: String(q.run_id),
+      tool_call_id: String(q.tool_call_id),
+      questions: q.questions,
+      status: String(q.status),
+      expires_at: iso(q.expires_at as Date),
     })),
     approvals: approvals.rows.map((a) => ({
       id: String(a.id),
@@ -1239,7 +1251,7 @@ export async function cancelRun(ownerId: string, runId: string) {
     const current = await tx.query('select * from runs where id = $1 for update', [runId]);
     if (!current.rowCount) throw new AppError(404, 'NOT_FOUND', 'Run not found');
     const row = current.rows[0] as Row;
-    if (!['queued', 'running', 'waiting_approval'].includes(String(row.status))) {
+    if (!['queued', 'running', 'waiting_approval', 'waiting_input'].includes(String(row.status))) {
       const seq = await tx.query(
         `select coalesce(max(seq), 0) as seq from run_events where run_id = $1`,
         [runId],
@@ -1265,9 +1277,13 @@ export async function cancelRun(ownerId: string, runId: string) {
         `update runs set cancel_requested_at = coalesce(cancel_requested_at, now()), updated_at = now() where id = $1`,
         [runId],
       );
-      if (row.status === 'waiting_approval') {
+      if (row.status === 'waiting_approval' || row.status === 'waiting_input') {
         await tx.query(
           `update approvals set status = 'cancelled' where run_id = $1 and status = 'pending'`,
+          [runId],
+        );
+        await tx.query(
+          `update agent_questions set status = 'cancelled', decided_at = now() where run_id = $1 and status = 'pending'`,
           [runId],
         );
         await tx.query(
@@ -1603,6 +1619,77 @@ export async function selectMessageVariant(ownerId: string, messageId: string, v
   });
 }
 
+export async function answerAgentQuestion(
+  ownerId: string,
+  questionId: string,
+  body: {
+    skip?: true;
+    answers?: { question_id: string; option_index?: number; custom_text?: string }[];
+  },
+) {
+  return withOwner(ownerId, async (tx) => {
+    const found = await tx.query('select * from agent_questions where id = $1 for update', [
+      questionId,
+    ]);
+    if (!found.rowCount) throw new AppError(404, 'NOT_FOUND', 'Question not found');
+    const row = found.rows[0] as Row;
+    await tx.query('select id from runs where id = $1 for update', [row.run_id]);
+    if (row.status !== 'pending')
+      throw new AppError(409, 'QUESTION_ALREADY_ANSWERED', 'This question was already answered');
+    if (new Date(String(row.expires_at)).getTime() <= Date.now())
+      throw new AppError(410, 'QUESTION_EXPIRED', 'This question expired');
+    const questions = row.questions as {
+      id: string;
+      text: string;
+      allow_custom: boolean;
+      options: { label: string }[];
+    }[];
+    let status: 'answered' | 'skipped';
+    let outcome: Record<string, unknown>;
+    if (body.skip) {
+      status = 'skipped';
+      outcome = { ok: true, data: { skipped: true } };
+    } else {
+      status = 'answered';
+      const answers = (body.answers ?? []).map((answer) => {
+        const question = questions.find((item) => item.id === answer.question_id);
+        if (!question) throw new AppError(422, 'VALIDATION_ERROR', 'Unknown question');
+        if (answer.custom_text !== undefined) {
+          if (!question.allow_custom) throw new AppError(422, 'VALIDATION_ERROR', 'Choose an option');
+          return { question: question.text, custom_text: answer.custom_text };
+        }
+        const option = question.options[answer.option_index ?? -1];
+        if (!option) throw new AppError(422, 'VALIDATION_ERROR', 'Choose an available option');
+        return { question: question.text, selected: option.label };
+      });
+      outcome = { ok: true, data: { answers } };
+    }
+    await tx.query(
+      `update agent_questions set status = $2, answers = $3::jsonb, decided_at = now() where id = $1`,
+      [questionId, status, JSON.stringify(outcome.data)],
+    );
+    await tx.query(`update tool_calls set safe_result = $2::jsonb where id = $1`, [
+      row.tool_call_id,
+      JSON.stringify(outcome),
+    ]);
+    await tx.query(
+      `update runs set status = 'queued', lease_token = null, lease_until = null,
+         version = version + 1, updated_at = now()
+       where id = $1 and status = 'waiting_input'`,
+      [row.run_id],
+    );
+    await tx.query(
+      `insert into outbox (owner_id, topic, payload) values ($1, 'run.execute', $2::jsonb)`,
+      [ownerId, JSON.stringify({ runId: row.run_id })],
+    );
+    await appendEvent(tx, ownerId, String(row.run_id), 'question.resolved', {
+      id: questionId,
+      status,
+    });
+    return { status };
+  });
+}
+
 export async function retryMessage(
   ownerId: string,
   messageId: string,
@@ -1649,7 +1736,7 @@ export async function retryMessage(
     );
     if (
       !previous.rowCount ||
-      ['queued', 'running', 'waiting_approval'].includes(String(previous.rows[0]?.status))
+      ['queued', 'running', 'waiting_approval', 'waiting_input'].includes(String(previous.rows[0]?.status))
     ) {
       throw new AppError(422, 'VALIDATION_ERROR', 'Wait until the previous run finishes');
     }
@@ -1762,7 +1849,7 @@ export async function latestMessages(
 
 async function cancelKeyRuns(tx: Tx, owner: string, version: number) {
   const rows = await tx.query(
-    `update runs set cancel_requested_at=coalesce(cancel_requested_at,now()),status=case when status='waiting_approval' then 'queued' else status end,updated_at=now() where owner_id=$1 and credential_version=$2 and status in ('queued','running','waiting_approval') and coalesce(tool_snapshot->>'keySource','personal')='personal' returning id`,
+    `update runs set cancel_requested_at=coalesce(cancel_requested_at,now()),status=case when status in ('waiting_approval','waiting_input') then 'queued' else status end,updated_at=now() where owner_id=$1 and credential_version=$2 and status in ('queued','running','waiting_approval','waiting_input') and coalesce(tool_snapshot->>'keySource','personal')='personal' returning id`,
     [owner, version],
   );
   for (const row of rows.rows) {
@@ -1876,7 +1963,7 @@ export async function scheduleAccountDeletion(ownerId: string, expectedVersion: 
     );
     await tx.query(
       `update runs set cancel_requested_at = coalesce(cancel_requested_at, now()), updated_at = now()
-       where status in ('queued', 'running', 'waiting_approval')`,
+       where status in ('queued', 'running', 'waiting_approval', 'waiting_input')`,
     );
     await tx.query(
       `insert into outbox (owner_id, topic, payload) values ($1, 'account.purge', '{}'::jsonb)`,

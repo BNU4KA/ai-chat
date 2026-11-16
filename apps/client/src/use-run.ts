@@ -2,8 +2,8 @@ import {useEffect,useState} from 'react';
 import {useQuery,useQueryClient} from '@tanstack/react-query';
 import {api} from './api';
 import {readEvents,type RunEvent} from './stream';
-import type {Snapshot,Approval,ToolCall} from './types';
-export const activeStatus=(status:string)=>['queued','running','waiting_approval'].includes(status);
+import type {Snapshot,Approval,ToolCall,AgentQuestionItem} from './types';
+export const activeStatus=(status:string)=>['queued','running','waiting_approval','waiting_input'].includes(status);
 export function applyRunEvent(old:Snapshot,event:RunEvent):Snapshot{
  if(BigInt(event.seq)<=BigInt(old.run.last_event_seq))return old;
  const value:Snapshot={...old,run:{...old.run,last_event_seq:event.seq},assistant_message:{...old.assistant_message}};
@@ -11,6 +11,8 @@ export function applyRunEvent(old:Snapshot,event:RunEvent):Snapshot{
  if(event.type==='message.delta')value.assistant_message.content+=String(p.delta??'');
  if(event.type==='run.started')value.run.status='running';
  if(event.type==='approval.required'){value.run.status='waiting_approval';value.approvals=[...old.approvals.filter(a=>a.id!==p.id),p as unknown as Approval];}
+ if(event.type==='question.required'){value.run.status='waiting_input';value.questions=[...(old.questions??[]).filter(q=>q.id!==p.id),p as unknown as AgentQuestionItem];}
+ if(event.type==='question.resolved')value.questions=(old.questions??[]).filter(q=>q.id!==p.id);
  if(event.type==='approval.resolved')value.approvals=old.approvals.map(a=>a.id===p.approval_id?{...a,status:String(p.status)}:a);
  if(event.type==='tool.started')value.tool_calls=[...old.tool_calls.filter(t=>t.id!==p.tool_call_id),{id:String(p.tool_call_id),name:String(p.name),status:'executing',arguments:{}}];
  if(event.type==='tool.completed')value.tool_calls=old.tool_calls.map(t=>t.id===p.tool_call_id?{...t,status:String(p.status),safe_result:p.safe_result} as ToolCall:t);

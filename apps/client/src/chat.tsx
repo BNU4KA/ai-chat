@@ -53,6 +53,7 @@ import { SearchModal } from './search-modal';
 import { SettingsModal, type SettingsTab } from './settings-modal';
 import { Markdown } from './markdown';
 import { ApprovalCard } from './approval';
+import { AgentQuestionCard } from './agent-question';
 import { Attachment } from './attachment';
 import { ComposerFrame } from './composer-frame';
 import { GreetingName } from './greeting-name';
@@ -1472,6 +1473,9 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                 })}
               {snapshot.data?.approvals.map((approval) => (
                 <ApprovalCard key={approval.id} approval={approval} />
+              ))}
+              {snapshot.data?.questions?.map((question) => (
+                <AgentQuestionCard key={question.id} question={question} />
               ))}
               <RunUsage run={snapshot.data?.run} />
               {snapshot.data?.run.error_code && (

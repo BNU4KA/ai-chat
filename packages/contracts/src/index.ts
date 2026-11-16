@@ -41,6 +41,12 @@ export {
 } from './schemas.ts';
 export { canonicalJson, codePointLength, truncateCodePoints } from './text.ts';
 export { extractSuggestions, hideSuggestionBlock } from './suggestions.ts';
+export {
+  agentQuestionSchema,
+  askUserArgsSchema,
+  answerQuestionSchema,
+  type AgentQuestion,
+} from './questions.ts';
 export { z } from 'zod';
 export { applicationOpenApi } from './openapi.ts';
 export {

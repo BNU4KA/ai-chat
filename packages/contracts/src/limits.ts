@@ -66,6 +66,7 @@ export const READ_TOOLS = [
 ] as const;
 
 export const BUILTIN_TOOLS = [
+  'ask_user',
   'switch_model',
   'generate_image',
   'create_document',
@@ -91,6 +92,7 @@ export function toolGroup(name: ToolName): ToolGroup {
     name === 'read_project_document' ||
     name === 'switch_model' ||
     name === 'generate_image' ||
+    name === 'ask_user' ||
     name === 'create_document' ||
     name === 'draft_document' ||
     name === 'edit_document' ||

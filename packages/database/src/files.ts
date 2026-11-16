@@ -149,7 +149,7 @@ export async function deleteFile(owner: string, id: string, version: number) {
       [id],
     );
     const cancelled = await tx.query(
-      `update runs set cancel_requested_at=coalesce(cancel_requested_at,now()),status=case when status='waiting_approval' then 'queued' else status end,updated_at=now() where owner_id=$2 and conversation_id=$1 and status in ('queued','running','waiting_approval') returning id`,
+      `update runs set cancel_requested_at=coalesce(cancel_requested_at,now()),status=case when status in ('waiting_approval','waiting_input') then 'queued' else status end,updated_at=now() where owner_id=$2 and conversation_id=$1 and status in ('queued','running','waiting_approval','waiting_input') returning id`,
       [row.conversation_id, owner],
     );
     for (const run of cancelled.rows) {

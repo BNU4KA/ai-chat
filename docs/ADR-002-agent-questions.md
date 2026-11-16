@@ -23,8 +23,8 @@ Chips (CHAT-204) are different: they are suggestions for the next message and ne
 2. **Skipping is allowed.** The user may skip the whole question set. The tool result then says the user
    skipped it, and the model must continue without inventing an answer.
 3. **Waiting.** The run moves to a new status `waiting_input` and pauses without a model call. Waiting costs
-   nothing, so the owner set the timeout to **12 hours**. After expiry the run is cancelled with error code
-   `QUESTION_EXPIRED`; the model is not asked to guess.
+   nothing, so the owner set the timeout to **12 hours**. After expiry the run ends as `failed` with error code
+   `QUESTION_EXPIRED` (same handling as expired approvals); the model is not asked to guess.
 4. **When to ask.** The owner wants questions only when they are needed: an ambiguous brief, a choice that
    changes the result materially, missing required input. Routine confirmations and questions the model can
    answer itself are not asked. This is enforced by the system prompt and by a limit of one `ask_user` call per
