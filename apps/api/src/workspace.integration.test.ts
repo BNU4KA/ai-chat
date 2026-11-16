@@ -315,7 +315,22 @@ it('edits a user message in place, hides later turns and regenerates from the ed
   const replayed = await edit('Edited malachite question', key);
   expect(replayed.headers['idempotent-replayed']).toBe('true');
   expect(replayed.json().data.run.id).toBe(edited.json().data.run.id);
-  expect((await edit('Again', randomUUID())).statusCode).toBe(409);
+  const visibleEdit = (await request('GET', `/v1/conversations/${c.id}/messages`)).json().data[0];
+  expect(
+    (
+      await app.inject({
+        method: 'POST',
+        url: `/v1/messages/${visibleEdit.id}/edit`,
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${token}`,
+          'idempotency-key': randomUUID(),
+        },
+        payload: JSON.stringify({ text: 'Again' }),
+      })
+    ).statusCode,
+  ).toBe(409);
+  expect((await edit('Original again', randomUUID())).statusCode).toBe(404);
   const visible = (await request('GET', `/v1/conversations/${c.id}/messages`)).json().data;
   expect(visible.map((m: { content: string }) => m.content)).toEqual([
     'Edited malachite question',

@@ -33,7 +33,6 @@ import {
   useInfiniteQuery,
   useQuery,
   useQueryClient,
-  type InfiniteData,
 } from '@tanstack/react-query';
 import * as Crypto from 'expo-crypto';
 import { api, apiEnvelope, json } from './api';
@@ -65,8 +64,6 @@ import { collapseAttempts } from './visible-messages';
 import { usePinnedChats } from './pinned-chats';
 import { pickAndUpload } from './upload';
 import type { Conversation, Message, Run, FileRecord, Snapshot } from './types';
-
-type MessagePages = InfiniteData<{ data: Message[]; next_cursor?: string | null }>;
 
 const HEADER_HEIGHT = 52;
 const OPTIMISTIC_ENTERING = FadeInDown.duration(220);
@@ -527,6 +524,22 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
   }
 
   const startEdit = useCallback((messageId: string) => setEditingMessageId(messageId), []);
+  const selectVariant = useCallback(
+    async (messageId: string, variantId: string) => {
+      if (!id) return;
+      setError(null);
+      try {
+        await api(`/v1/messages/${messageId}/select-variant`, {
+          ...json('POST', { message_id: variantId }),
+        });
+        haptic();
+        await cache.invalidateQueries({ queryKey: ['messages', id] });
+      } catch (e) {
+        setError(e);
+      }
+    },
+    [cache, id],
+  );
   const cancelEdit = useCallback(() => setEditingMessageId(null), []);
   const submitEdit = useCallback(
     async (messageId: string, text: string) => {
@@ -538,19 +551,6 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
           json('POST', { text }, undefined, Crypto.randomUUID()),
         );
         haptic();
-        cache.setQueryData<MessagePages>(['messages', id], (old) => {
-          const edited = old?.pages.flatMap((page) => page.data).find((m) => m.id === messageId);
-          if (!old || !edited) return old;
-          return {
-            ...old,
-            pages: old.pages.map((page) => ({
-              ...page,
-              data: page.data
-                .filter((m) => BigInt(m.seq) <= BigInt(edited.seq))
-                .map((m) => (m.id === messageId ? { ...m, content: text } : m)),
-            })),
-          };
-        });
         cache.setQueryData(['runs', id], (old: Run[] | undefined) => [value.run, ...(old ?? [])]);
         setEditingMessageId(null);
         setAtBottom(true);
@@ -1382,6 +1382,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                   onTogglePassage={togglePassage}
                   onClosePassage={closePassage}
                   onSaveDocument={saveDocument}
+                  onSelectVariant={selectVariant}
                   onDraft={setDraft}
                   onOpenFile={openFile}
                   onHighlightLayout={scrollToHighlight}

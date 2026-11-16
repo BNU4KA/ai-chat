@@ -13,6 +13,7 @@ import {
   credentialPutSchema,
   deleteAccountSchema,
   editMessageSchema,
+  selectVariantSchema,
   messageCreateSchema,
   profilePatchSchema,
 } from '@ai-chat/contracts';
@@ -30,6 +31,7 @@ import {
   getSnapshot,
   listConversations,
   listPinnedConversations,
+  selectMessageVariant,
   markConversationSeen,
   setConversationPinned,
   listMessages,
@@ -446,6 +448,12 @@ export function buildServer(): FastifyInstance {
     return { data: created.body };
   });
 
+  app.post('/v1/messages/:id/select-variant', async (request) => {
+    const params = request.params as { id: string };
+    const body = selectVariantSchema.parse(request.body ?? {});
+    return { data: await selectMessageVariant(request.ownerId, params.id, body.message_id) };
+  });
+
   app.post('/v1/messages/:id/edit', async (request, reply) => {
     const params = request.params as { id: string };
     const { text } = editMessageSchema.parse(request.body);
@@ -632,7 +640,7 @@ async function conversationOfMessage(ownerId: string, messageId: string): Promis
     async (tx) =>
       (
         await tx.query(
-          'select m.conversation_id from messages m join conversations c on c.id=m.conversation_id where m.id=$1 and m.superseded_at is null',
+          'select m.conversation_id from messages m join conversations c on c.id=m.conversation_id where m.id=$1 and m.id in (select active_message_ids(m.conversation_id))',
           [messageId],
         )
       ).rows[0],

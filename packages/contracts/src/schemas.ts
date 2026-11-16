@@ -166,8 +166,13 @@ export const messageSchema = z.object({
   status: z.enum(['pending', 'complete', 'partial', 'failed', 'cancelled']),
   file_ids: z.array(z.uuid()),
   suggestions: z.array(z.string()).optional(),
+  branch: z
+    .object({ index: z.number().int(), count: z.number().int(), message_ids: z.array(z.uuid()) })
+    .optional(),
   created_at: timestamp,
 });
+
+export const selectVariantSchema = z.object({ message_id: z.uuid() }).strict();
 
 export const messageCreateSchema = z
   .object({

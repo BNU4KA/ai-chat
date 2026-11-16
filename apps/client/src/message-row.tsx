@@ -12,8 +12,12 @@ import { MessageActions } from './message-actions';
 import { StreamingMarkdown } from './streaming-markdown';
 import { LiveMessageContent } from './live-message';
 import { Button, Copy, Field } from './ui';
+import { Pressable, Text } from './locale-ui';
 import { useTheme } from './theme';
 import type { FileRecord, Message } from './types';
+
+const EDIT_MIN_HEIGHT = 120;
+const EDIT_MAX_HEIGHT = 480;
 
 export interface MessageRowProps {
   message: Message;
@@ -25,6 +29,7 @@ export interface MessageRowProps {
   passageOpen: boolean;
   onStartEdit: (id: string) => void;
   onCancelEdit: () => void;
+  onSelectVariant: (messageId: string, variantId: string) => void;
   onSubmitEdit: (id: string, text: string) => Promise<boolean>;
   onRetry: () => void;
   onCitation: (runId: string, citationId: string) => void;
@@ -51,6 +56,7 @@ function MessageRowView({
   passageOpen,
   onStartEdit,
   onCancelEdit,
+  onSelectVariant,
   onSubmitEdit,
   onRetry,
   onCitation,
@@ -66,6 +72,7 @@ function MessageRowView({
   const [draft, setDraft] = useState(message.content);
   const [saving, setSaving] = useState(false);
   const editField = useRef<ComponentRef<typeof Field>>(null);
+  const [fieldHeight, setFieldHeight] = useState(EDIT_MIN_HEIGHT);
 
   useEffect(() => {
     if (!editing || Platform.OS !== 'web') return;
@@ -126,11 +133,20 @@ function MessageRowView({
             autoFocus
             value={draft}
             onChangeText={setDraft}
-            style={styles.editField}
+            onContentSizeChange={(event) =>
+              setFieldHeight(
+                Math.min(
+                  EDIT_MAX_HEIGHT,
+                  Math.max(EDIT_MIN_HEIGHT, Math.ceil(event.nativeEvent.contentSize.height) + 16),
+                ),
+              )
+            }
+            scrollEnabled={fieldHeight >= EDIT_MAX_HEIGHT}
+            style={[styles.editField, { height: fieldHeight }]}
           />
           <View style={styles.editFooter}>
             <Copy small muted>
-              Later messages will be replaced by a new answer.
+              Your edit keeps the earlier answers; switch versions with the arrows.
             </Copy>
             <View style={styles.editButtons}>
               <Button secondary onPress={onCancelEdit}>
@@ -182,6 +198,43 @@ function MessageRowView({
         </View>
       )}
 
+      {isUser && message.branch && !editing && (
+        <View testID="branch-switcher" style={styles.branchSwitcher}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Previous version"
+            disabled={message.branch.index <= 1}
+            onPress={() =>
+              onSelectVariant(message.id, message.branch!.message_ids[message.branch!.index - 2]!)
+            }
+            style={({ hovered, pressed }) => [
+              styles.branchButton,
+              { backgroundColor: hovered || pressed ? c.hover : 'transparent' },
+              message.branch!.index <= 1 && { opacity: 0.35 },
+            ]}
+          >
+            <Text style={{ fontSize: 18, color: c.muted }}>‹</Text>
+          </Pressable>
+          <Text testID="branch-position" style={{ fontSize: 13, color: c.muted }}>
+            {message.branch.index}/{message.branch.count}
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Next version"
+            disabled={message.branch.index >= message.branch.count}
+            onPress={() =>
+              onSelectVariant(message.id, message.branch!.message_ids[message.branch!.index]!)
+            }
+            style={({ hovered, pressed }) => [
+              styles.branchButton,
+              { backgroundColor: hovered || pressed ? c.hover : 'transparent' },
+              message.branch!.index >= message.branch!.count && { opacity: 0.35 },
+            ]}
+          >
+            <Text style={{ fontSize: 18, color: c.muted }}>›</Text>
+          </Pressable>
+        </View>
+      )}
       {!editing && (message.content || (!isUser && !pending)) && (
         <MessageActions
           text={message.content}
@@ -215,6 +268,8 @@ const styles = StyleSheet.create({
   assistant: { alignSelf: 'stretch', maxWidth: '100%', gap: 6 },
   highlighted: { paddingLeft: 10, borderLeftWidth: 3 },
   editBox: { padding: 14, borderRadius: 20, gap: 10 },
+  branchSwitcher: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-end', gap: 2 },
+  branchButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 22 },
   editField: {
     borderWidth: 0,
     backgroundColor: 'transparent',

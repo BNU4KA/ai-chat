@@ -833,7 +833,37 @@ export type CreatedRun = {
   body: { message: ReturnType<typeof messageFrom>; run: ReturnType<typeof runFrom> };
 };
 
-function messageFrom(row: Row, fileIds: string[]) {
+type BranchInfo = { index: number; count: number; message_ids: string[] };
+
+// Variants of a user turn: the original message and every edit of it, oldest first.
+async function branchVariants(tx: Tx, rows: Row[]): Promise<Map<string, BranchInfo>> {
+  const result = new Map<string, BranchInfo>();
+  const turns = [...new Set(rows.filter((row) => row.turn_key).map((row) => String(row.turn_key)))];
+  if (!turns.length) return result;
+  const found = await tx.query(
+    'select id, turn_key from messages where turn_key = any($1::uuid[]) order by created_at, id',
+    [turns],
+  );
+  const groups = new Map<string, string[]>();
+  for (const variant of found.rows) {
+    const list = groups.get(String(variant.turn_key)) ?? [];
+    list.push(String(variant.id));
+    groups.set(String(variant.turn_key), list);
+  }
+  for (const row of rows) {
+    if (!row.turn_key) continue;
+    const ids = groups.get(String(row.turn_key)) ?? [];
+    if (ids.length < 2) continue;
+    result.set(String(row.id), {
+      index: ids.indexOf(String(row.id)) + 1,
+      count: ids.length,
+      message_ids: ids,
+    });
+  }
+  return result;
+}
+
+function messageFrom(row: Row, fileIds: string[], branch?: BranchInfo) {
   return {
     id: String(row.id),
     conversation_id: String(row.conversation_id),
@@ -843,6 +873,7 @@ function messageFrom(row: Row, fileIds: string[]) {
     content: String(row.content),
     status: String(row.status) as 'pending' | 'complete' | 'partial' | 'failed' | 'cancelled',
     file_ids: fileIds,
+    branch,
     suggestions: Array.isArray(row.suggestions) ? (row.suggestions as string[]) : undefined,
     created_at: mustIso(row.created_at as Date),
   };
@@ -1074,7 +1105,7 @@ export async function listMessages(
       cursorSql = ` and seq > $${params.length}::bigint`;
     }
     const found = await tx.query(
-      `select * from messages where conversation_id = $1 and superseded_at is null${cursorSql} order by seq asc limit $2`,
+      `select * from messages where conversation_id = $1 and id in (select active_message_ids($1))${cursorSql} order by seq asc limit $2`,
       params,
     );
     const rows = found.rows.slice(0, limit);
@@ -1092,8 +1123,15 @@ export async function listMessages(
       byMessage.set(String(link.message_id), list);
     }
     const last = rows.at(-1);
+    const variants = await branchVariants(tx, rows as Row[]);
     return {
-      items: rows.map((row) => messageFrom(row as Row, byMessage.get(String(row.id)) ?? [])),
+      items: rows.map((row) =>
+        messageFrom(
+          row as Row,
+          byMessage.get(String(row.id)) ?? [],
+          variants.get(String(row.id)),
+        ),
+      ),
       next:
         found.rows.length > limit && last
           ? Buffer.from(String(last.seq)).toString('base64url')
@@ -1463,37 +1501,105 @@ export async function editMessage(
     await lockProfile(tx, ownerId);
     await takeRate(tx, ownerId, 'runs', 'minute', LIMITS.runsPerMinute);
     const message = await tx.query(
-      `select * from messages where id = $1 and superseded_at is null for update`,
+      `select * from messages where id = $1 and id in (select active_message_ids(conversation_id)) for update`,
       [messageId],
     );
     if (!message.rowCount || message.rows[0]?.role !== 'user') {
       throw new AppError(404, 'NOT_FOUND', 'Message not found');
     }
-    const user = message.rows[0] as Row;
+    const original = message.rows[0] as Row;
     const conversation = await tx.query('select * from conversations where id = $1 for update', [
-      user.conversation_id,
+      original.conversation_id,
     ]);
     if (!conversation.rowCount) throw new AppError(404, 'NOT_FOUND', 'Conversation not found');
     const busy = await tx.query(
       `select id from runs where conversation_id = $1 and status in ${ACTIVE}`,
-      [user.conversation_id],
+      [original.conversation_id],
     );
     if (busy.rowCount)
       throw new AppError(409, 'ACTIVE_RUN_EXISTS', 'This conversation already has an active run');
-    await tx.query(
-      `update messages set superseded_at = now()
-       where conversation_id = $1 and seq > $2 and superseded_at is null`,
-      [user.conversation_id, user.seq],
+    const turnKey = String(original.turn_key ?? original.id);
+    if (!original.turn_key) {
+      await tx.query('update messages set turn_key = $2 where id = $1', [original.id, turnKey]);
+    }
+    const branch = await tx.query(
+      `insert into conversation_branches (owner_id, conversation_id, parent_branch_id, fork_seq, turn_key)
+       values ($1, $2, $3, $4, $5) returning id`,
+      [ownerId, original.conversation_id, original.branch_id, original.seq, turnKey],
     );
-    await tx.query(`update messages set content = $2 where id = $1`, [messageId, text]);
+    const branchId = String(branch.rows[0]?.id);
+    await tx.query('update conversations set active_leaf_branch_id = $2 where id = $1', [
+      original.conversation_id,
+      branchId,
+    ]);
+    const nextSeq = await tx.query(
+      `select coalesce(max(seq), 0) + 1 as seq from messages where conversation_id = $1`,
+      [original.conversation_id],
+    );
+    const editedId = randomUUID();
+    await tx.query(
+      `insert into messages (id, owner_id, conversation_id, branch_id, seq, role, content, status, turn_key)
+       values ($1, $2, $3, $4, $5, 'user', $6, 'complete', $7)`,
+      [editedId, ownerId, original.conversation_id, branchId, nextSeq.rows[0]?.seq, text, turnKey],
+    );
+    await tx.query(
+      `insert into message_files (message_id, file_id, owner_id)
+       select $1, file_id, owner_id from message_files where message_id = $2`,
+      [editedId, original.id],
+    );
     await tx.query(
       `update conversations set context_note = '', context_through_seq = 0, version = version + 1, updated_at = now()
        where id = $1 and context_through_seq >= $2`,
-      [user.conversation_id, user.seq],
+      [original.conversation_id, original.seq],
     );
+    const user = (
+      await tx.query('select * from messages where id = $1', [editedId])
+    ).rows[0] as Row;
     const body = await startAttempt(tx, ownerId, user, conversation.rows[0] as Row, modelMeta);
     await finishIdempotency(tx, ownerId, 'POST /messages/edit', idempotencyKey, 202, body);
     return { replayed: false, status: 202, body };
+  });
+}
+
+export async function selectMessageVariant(ownerId: string, messageId: string, variantId: string) {
+  return withOwner(ownerId, async (tx) => {
+    const message = (
+      await tx.query(
+        'select * from messages where id = $1 and id in (select active_message_ids(conversation_id))',
+        [messageId],
+      )
+    ).rows[0] as Row | undefined;
+    if (!message || message.role !== 'user' || !message.turn_key)
+      throw new AppError(404, 'NOT_FOUND', 'Message not found');
+    const busy = await tx.query(
+      `select id from runs where conversation_id = $1 and status in ${ACTIVE}`,
+      [message.conversation_id],
+    );
+    if (busy.rowCount)
+      throw new AppError(409, 'ACTIVE_RUN_EXISTS', 'Wait for the current task before switching');
+    const variant = (
+      await tx.query(
+        'select id, branch_id from messages where id = $1 and turn_key = $2 and conversation_id = $3',
+        [variantId, message.turn_key, message.conversation_id],
+      )
+    ).rows[0] as Row | undefined;
+    if (!variant) throw new AppError(404, 'NOT_FOUND', 'Variant not found');
+    let leaf = String(variant.branch_id);
+    for (;;) {
+      const next = await tx.query(
+        `select id from conversation_branches
+          where parent_branch_id = $1 and turn_key is distinct from $2
+          order by created_at desc, id desc limit 1`,
+        [leaf, message.turn_key],
+      );
+      if (!next.rowCount) break;
+      leaf = String(next.rows[0]?.id);
+    }
+    await tx.query('update conversations set active_leaf_branch_id = $2 where id = $1', [
+      message.conversation_id,
+      leaf,
+    ]);
+    return { active_leaf_branch_id: leaf };
   });
 }
 
@@ -1521,7 +1627,7 @@ export async function retryMessage(
     }
     const user = message.rows[0] as Row;
     const latest = await tx.query(
-      `select id from messages where conversation_id = $1 and role = 'user' and superseded_at is null order by seq desc limit 1`,
+      `select id from messages where conversation_id = $1 and role = 'user' and id in (select active_message_ids($1)) order by seq desc limit 1`,
       [user.conversation_id],
     );
     if (String(latest.rows[0]?.id) !== messageId) {
@@ -1629,7 +1735,7 @@ export async function latestMessages(
     const chat = await tx.query('select id from conversations where id=$1', [conversationId]);
     if (!chat.rowCount) throw new AppError(404, 'NOT_FOUND', 'Conversation not found');
     const found = await tx.query(
-      `select * from messages where conversation_id=$1 and superseded_at is null ${before ? 'and seq < $3::bigint' : ''} order by seq desc limit $2`,
+      `select * from messages where conversation_id=$1 and id in (select active_message_ids($1)) ${before ? 'and seq < $3::bigint' : ''} order by seq desc limit $2`,
       before ? [conversationId, limit + 1, before] : [conversationId, limit + 1],
     );
     const rows = found.rows.slice(0, limit).reverse();
@@ -1638,6 +1744,7 @@ export async function latestMessages(
       'select message_id,file_id from message_files where message_id=any($1::uuid[])',
       [ids],
     );
+    const variants = await branchVariants(tx, rows as Row[]);
     return {
       items: rows.map((row) =>
         messageFrom(
@@ -1645,6 +1752,7 @@ export async function latestMessages(
           links.rows
             .filter((link) => link.message_id === row.id)
             .map((link) => String(link.file_id)),
+          variants.get(String(row.id)),
         ),
       ),
       next: found.rows.length > limit ? String(rows[0]?.seq) : null,

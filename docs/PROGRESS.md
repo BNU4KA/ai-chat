@@ -1296,3 +1296,30 @@ later messages, so the earlier answers disappear and cannot be reopened. Decisio
 single visible-thread SQL function, plus a migration that puts existing messages into one root branch
 and keeps legacy superseded rows hidden. Implementation, the UX fixes for edit (no modal, scrollable
 field, focus) and the switcher follow in later commits. No code or schema changed in this step.
+
+## CHAT-202 — Message branching — 2026-11-16 (local, release pending)
+
+Implements ADR-001. Migration `0014_message_branches.sql`: `conversation_branches` (parent, fork
+seq, turn key, RLS), `messages.branch_id` and `messages.turn_key`, `conversations.active_leaf_branch_id`,
+root branch backfill, triggers that create a root branch for new conversations and assign new
+messages to the active leaf, and SQL functions `visible_message_ids(conv, leaf)` and
+`active_message_ids(conv)`. Every thread query now uses `active_message_ids` instead of
+`superseded_at is null` (legacy superseded rows stay hidden).
+
+Editing creates a child branch forked at the edited user message, copies its attachments, and starts
+a new run there. Nothing is deleted. Variants of one turn share `turn_key`; the message DTO exposes
+`branch: {index, count, message_ids}` when a turn has several versions. `POST /v1/messages/:id/select-variant`
+with `{message_id}` moves the active leaf to the newest branch of the chosen version (ADR open item:
+confirmed as the default behaviour). Client: a `< n/m >` switcher under edited user messages, the
+edit field grows up to 480 px and scrolls, and the local cache rewrite of later messages is removed.
+The edit hint text now says earlier answers are kept.
+
+Confirmation modal: no modal exists in the current client code; the edit button submits directly.
+
+Checks: integration tests for the branching flow (edit keeps original, switch both ways, branch info,
+new conversation gets a root branch) and for the adapted workspace edit test; full integration suite
+62 passed on a disposable database; unit 75 passed; migration check on a database that already had
+messages including legacy superseded rows: visible sequence before and after the migration identical
+(1,2,5,6). tsc and eslint on touched files passed. Full Playwright run: 31 passed, 15 failed, same
+pre-existing failures as before. No Playwright scenario yet for the switcher.
+Not verified against a live provider.

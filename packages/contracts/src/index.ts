@@ -51,6 +51,7 @@ export {
   documentSchema,
   rangeEditSchema,
   branchSchema,
+  selectVariantSchema,
   editMessageSchema,
   compactSchema,
   approvalRevisionSchema,

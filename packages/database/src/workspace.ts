@@ -236,14 +236,14 @@ export async function compactConversation(
       throw new AppError(409, 'ACTIVE_RUN_EXISTS', 'Wait for the current task');
     if (through !== '0') {
       const boundary = (
-        await tx.query('select seq from messages where conversation_id=$1 and seq=$2 and superseded_at is null', [
+        await tx.query('select seq from messages where conversation_id=$1 and seq=$2 and id in (select active_message_ids($1))', [
           id,
           through,
         ])
       ).rows[0];
       const latest = (
         await tx.query(
-          "select max(seq) as seq from messages where conversation_id=$1 and role='user' and superseded_at is null",
+          "select max(seq) as seq from messages where conversation_id=$1 and role='user' and id in (select active_message_ids($1))",
           [id],
         )
       ).rows[0];
@@ -261,7 +261,7 @@ export async function searchMessages(owner: string, query: string, offset: numbe
     const rows = await tx.query(
       `select m.id,m.conversation_id,m.seq,m.role,c.title,substring(m.content from greatest(1,strpos(lower(m.content),lower($1))-80) for 360) as snippet
  from messages m join conversations c on c.id=m.conversation_id
- where m.superseded_at is null and (to_tsvector('simple',m.content) @@ websearch_to_tsquery('simple',$1) or strpos(lower(m.content),lower($1))>0)
+ where m.id in (select active_message_ids(m.conversation_id)) and (to_tsvector('simple',m.content) @@ websearch_to_tsquery('simple',$1) or strpos(lower(m.content),lower($1))>0)
  order by m.created_at desc,m.id desc limit 30 offset $2`,
       [query, offset],
     );
@@ -272,7 +272,7 @@ export async function branchConversation(owner: string, messageId: string, text:
   return withOwner(owner, async (tx) => {
     const m = (
       await tx.query(
-        "select m.* from messages m join conversations c on c.id=m.conversation_id where m.id=$1 and m.role='user' and m.superseded_at is null",
+        "select m.* from messages m join conversations c on c.id=m.conversation_id where m.id=$1 and m.role='user' and m.id in (select active_message_ids(m.conversation_id))",
         [messageId],
       )
     ).rows[0];
@@ -295,7 +295,7 @@ export async function branchConversation(owner: string, messageId: string, text:
     );
     await tx.query(
       `insert into messages(owner_id,conversation_id,seq,role,content,status)
- select owner_id,$2,seq,role,content,status from messages where conversation_id=$1 and seq<$3 and status<>'pending' and superseded_at is null order by seq`,
+ select owner_id,$2,seq,role,content,status from messages where conversation_id=$1 and seq<$3 and status<>'pending' and id in (select active_message_ids($1)) order by seq`,
       [m.conversation_id, id, m.seq],
     );
     return { conversation_id: id, draft: text, attachments_copied: false };

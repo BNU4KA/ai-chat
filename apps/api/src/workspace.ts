@@ -183,14 +183,14 @@ export function registerWorkspace(
     data: await withOwner(r.ownerId, async (tx) => {
       const message = (
         await tx.query(
-          'select m.* from messages m join conversations c on c.id=m.conversation_id where m.id=$1 and m.superseded_at is null',
+          'select m.* from messages m join conversations c on c.id=m.conversation_id where m.id=$1 and m.id in (select active_message_ids(m.conversation_id))',
           [uuid(r)],
         )
       ).rows[0];
       if (!message) throw new AppError(404, 'NOT_FOUND', 'Message not found');
       const rows = (
         await tx.query(
-          `select m.*,coalesce((select json_agg(file_id) from message_files where message_id=m.id),'[]'::json) as file_ids from messages m where conversation_id=$1 and superseded_at is null and seq between greatest(0,$2::bigint-10) and $2::bigint+10 order by seq`,
+          `select m.*,coalesce((select json_agg(file_id) from message_files where message_id=m.id),'[]'::json) as file_ids from messages m where conversation_id=$1 and m.id in (select active_message_ids($1)) and seq between greatest(0,$2::bigint-10) and $2::bigint+10 order by seq`,
           [message.conversation_id, message.seq],
         )
       ).rows;
@@ -261,7 +261,7 @@ export function registerWorkspace(
       async (tx) =>
         (
           await tx.query(
-            'select role,content from messages where conversation_id=$1 and seq>$2 and superseded_at is null order by seq',
+            'select role,content from messages where conversation_id=$1 and seq>$2 and id in (select active_message_ids($1)) order by seq',
             [id, chat.context_through_seq],
           )
         ).rows,
