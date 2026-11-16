@@ -1323,3 +1323,12 @@ messages including legacy superseded rows: visible sequence before and after the
 (1,2,5,6). tsc and eslint on touched files passed. Full Playwright run: 31 passed, 15 failed, same
 pre-existing failures as before. No Playwright scenario yet for the switcher.
 Not verified against a live provider.
+
+## Release — CHAT-202 — 2026-11-16
+
+Migration `0014_message_branches.sql` applied to the hosted database after a before/after check of
+the visible thread for every conversation: 34 conversations, 0 mismatches. Release
+`20261116T144859Z` (commit `2d8527c`, archive sha256 `601bc8ff…`); previous `20261116T143419Z` kept
+for rollback. Readiness database and queue ok; both services active.
+
+Not verified on the hosted site: the branch switcher with a live provider answer.
