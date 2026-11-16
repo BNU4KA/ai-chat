@@ -14,6 +14,7 @@ import {
   estimateTokens,
   estimateCost,
   workflowPrompts,
+  LIMITS,
   type ToolName,
 } from '@ai-chat/contracts';
 import {
@@ -251,7 +252,7 @@ export function registerWorkspace(
     const meta = {
       contextLength: model.context_length,
       maxOutputTokens: Math.min(
-        4096,
+        LIMITS.maxOutputTokens,
         model.max_output_tokens ?? 4096,
         Math.floor((model.context_length ?? 32000) / 2),
       ),

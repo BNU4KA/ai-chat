@@ -275,7 +275,7 @@ async function executeClaimedRun(
       1,
       Math.min(
         LIMITS.maxOutputTokens,
-        Number(meta.maxOutputTokens ?? LIMITS.maxOutputTokens),
+        Number(meta.maxOutputTokens ?? 4096),
         Math.floor(contextLength / 2),
       ),
     );
