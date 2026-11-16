@@ -344,7 +344,7 @@ export default function WorkspacePage() {
       setBusy(false);
     }
   }
-  const { pinnedIds, togglePin } = usePinnedChats(profile.data?.id);
+  const { pinnedIds, pinned, togglePin } = usePinnedChats();
   const conversations = history.data?.pages.flatMap((page) => page.data) ?? [];
   const unreadNotices = (notices.data ?? []).filter((n) => !n.read_at).length;
   const sidebarSection: 'projects' | 'documents' | 'schedules' | 'notices' | 'search' | undefined =
@@ -357,6 +357,7 @@ export default function WorkspacePage() {
       expanded={mobile || sidebarExpanded}
       activeSection={sidebarSection}
       conversations={conversations}
+      pinned={pinned}
       pinnedIds={pinnedIds}
       onToggle={() => {
         if (mobile) setDrawer(false);

@@ -121,6 +121,8 @@ export const conversationSchema = z.object({
   budget_usd: z.string().nullable().optional(),
   model_id: z.string().nullable(),
   enabled_tools: z.array(toolGroup),
+  pinned_at: timestamp.nullable().optional(),
+  activity: z.enum(['idle', 'running', 'unread']).optional(),
   version: z.number().int(),
   created_at: timestamp,
   updated_at: timestamp,

@@ -91,6 +91,12 @@ const styles = StyleSheet.create({
   expandedComposer: { maxHeight: '88%' },
 });
 
+// On web, Keyboard.dismiss blurs the focused input, so taps and scrolls in the thread
+// would take focus away from the composer while an answer streams.
+const dismissKeyboardOnNative = () => {
+  if (Platform.OS !== 'web') Keyboard.dismiss();
+};
+
 type Group = 'web' | 'files' | 'gmail' | 'calendar';
 const groupLabels: Record<Group, string> = {
   web: 'Web research',
@@ -186,7 +192,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
   const sending = useRef(false);
   const creating = useRef<Promise<string> | null>(null);
   const profile = useProfile();
-  const { pinnedIds, togglePin, unpin } = usePinnedChats(profile.data?.id);
+  const { pinnedIds, pinned, togglePin } = usePinnedChats();
   const credential = useCredential();
   const capabilities = useCapabilities();
   const models = useModels(!!credential.data?.configured);
@@ -272,6 +278,13 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
   const latest = runs.data?.[0];
   const snapshot = useRun(latest?.id);
   const running = !!latest && activeStatus(snapshot.data?.run.status ?? latest.status);
+
+  useEffect(() => {
+    if (!id || running) return;
+    void api(`/v1/conversations/${id}/seen`, { method: 'POST' })
+      .then(() => cache.invalidateQueries({ queryKey: ['conversations'] }))
+      .catch(() => undefined);
+  }, [id, running, cache]);
   const retryTargetId = snapshot.data?.run.assistant_message_id ?? latest?.assistant_message_id;
   const currentModel = models.data?.find(
     (model) => model.id === (chat.data?.model_id ?? homeModel),
@@ -593,7 +606,6 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     if (!target) return;
     try {
       await api(`/v1/conversations/${target.id}`, json('DELETE', undefined, target.version));
-      unpin(target.id);
       setDialog(null);
       setTargetChat(null);
       await cache.invalidateQueries({ queryKey: ['conversations'] });
@@ -943,6 +955,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
       expanded={mobile || sidebarExpanded}
       selectedId={id}
       conversations={conversations}
+      pinned={pinned}
       pinnedIds={pinnedIds}
       onToggle={mobile ? sidebarActions.closeDrawer : sidebarActions.toggleExpanded}
       onNew={sidebarActions.onNew}
@@ -1182,11 +1195,11 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
               }}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-              onScrollBeginDrag={() => Keyboard.dismiss()}
+              onScrollBeginDrag={dismissKeyboardOnNative}
             >
               <Pressable
                 accessible={false}
-                onPress={() => Keyboard.dismiss()}
+                onPress={dismissKeyboardOnNative}
                 style={{
                   width: '100%',
                   maxWidth: 680,
@@ -1231,7 +1244,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                 }}
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-                onScrollBeginDrag={() => Keyboard.dismiss()}
+                onScrollBeginDrag={dismissKeyboardOnNative}
                 onScroll={(event) => {
                   const n = event.nativeEvent;
                   setAtBottom(
@@ -1245,7 +1258,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
               >
               <Pressable
                 accessible={false}
-                onPress={() => Keyboard.dismiss()}
+                onPress={dismissKeyboardOnNative}
                 style={styles.thread}
               >
                 {messages.hasNextPage && (

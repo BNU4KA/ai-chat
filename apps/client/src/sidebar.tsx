@@ -2,6 +2,7 @@ import { Pressable, Text } from './locale-ui';
 import { FoolSpinner } from './fool-spinner';
 import { memo, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Modal,
   Platform,
   ScrollView,
@@ -55,6 +56,7 @@ type SidebarProps = {
   selectedId?: string;
   activeSection?: 'projects' | 'documents' | 'schedules' | 'notices' | 'search';
   conversations: Conversation[];
+  pinned?: Conversation[];
   pinnedIds?: string[];
   busy?: boolean;
   loading?: boolean;
@@ -216,12 +218,8 @@ function ConversationSidebarView(props: SidebarProps) {
   const grouped = useMemo(() => {
     const order = ['Today', 'Yesterday', 'Previous 7 Days', 'Previous 30 Days', 'Older'];
     const map = new Map<string, Conversation[]>();
-    const pinnedItems: Conversation[] = [];
     for (const item of props.conversations) {
-      if (pinnedSet.has(item.id)) {
-        pinnedItems.push(item);
-        continue;
-      }
+      if (pinnedSet.has(item.id)) continue;
       const key = dateBucket(item.updated_at);
       const arr = map.get(key);
       if (arr) arr.push(item);
@@ -230,11 +228,12 @@ function ConversationSidebarView(props: SidebarProps) {
     const sections = order
       .filter((key) => map.has(key))
       .map((key) => ({ label: key, items: map.get(key)! }));
+    const pinnedItems = props.pinned ?? [];
     if (pinnedItems.length) {
       return [{ label: 'Pinned', items: pinnedItems }, ...sections];
     }
     return sections;
-  }, [props.conversations, props.pinnedIds, pinnedSet]);
+  }, [props.conversations, props.pinned, pinnedSet]);
 
   function openRowMenu(
     item: Conversation,
@@ -469,6 +468,26 @@ function ConversationSidebarView(props: SidebarProps) {
                         >
                           {item.title}
                         </Text>
+                        {item.activity === 'running' && (
+                          <ActivityIndicator
+                            testID="chat-running-indicator"
+                            size="small"
+                            color={c.muted}
+                            accessibilityLabel="Answering"
+                          />
+                        )}
+                        {item.activity === 'unread' && (
+                          <View
+                            testID="chat-unread-indicator"
+                            accessibilityLabel="New answer"
+                            style={{
+                              width: 8,
+                              height: 8,
+                              borderRadius: 4,
+                              backgroundColor: c.accent,
+                            }}
+                          />
+                        )}
                       </Pressable>
                       {(props.onTogglePin || props.onRename || props.onDelete) && (
                         <Pressable

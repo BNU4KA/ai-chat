@@ -139,7 +139,10 @@ async function fixture(
           catalog_stale: false,
         },
       ]);
+    if (path === '/v1/conversations' && method === 'GET' && new URL(req.url()).searchParams.get('pinned') === 'true')
+      return data([]);
     if (path === '/v1/conversations' && method === 'GET') return data(chat ? [chat] : []);
+    if (path === `/v1/conversations/${chatId}/seen` && method === 'POST') return data(chat);
     if (path === '/v1/conversations' && method === 'POST') {
       chat = {
         id: chatId,
@@ -1328,6 +1331,18 @@ test('sidebar row menu opens beside the list, tools dialog uses clean rows, and 
   await page.route('http://localhost:3001/v1/conversations**', async (route) => {
     const req = route.request();
     const u = new URL(req.url());
+    if (req.method() === 'GET' && u.pathname === '/v1/conversations' && u.searchParams.get('pinned') === 'true') {
+      return route.fulfill({
+        json: { data: [], next_cursor: null },
+        headers: { 'access-control-allow-origin': 'http://localhost:8092' },
+      });
+    }
+    if (req.method() === 'POST' && u.pathname === `/v1/conversations/${chatId}/seen`) {
+      return route.fulfill({
+        json: { data: conversations[0] },
+        headers: { 'access-control-allow-origin': 'http://localhost:8092' },
+      });
+    }
     if (req.method() === 'GET' && u.pathname === '/v1/conversations') {
       return route.fulfill({
         json: { data: conversations, next_cursor: null },
@@ -1589,6 +1604,12 @@ test('switching chats keeps sidebar mounted and shows chat skeleton while loadin
   await page.route('http://localhost:3001/v1/conversations**', async (route) => {
     const req = route.request();
     const u = new URL(req.url());
+    if (req.method() === 'GET' && u.pathname === '/v1/conversations' && u.searchParams.get('pinned') === 'true') {
+      return route.fulfill({
+        json: { data: [], next_cursor: null },
+        headers: { 'access-control-allow-origin': 'http://localhost:8092' },
+      });
+    }
     if (req.method() === 'GET' && u.pathname === '/v1/conversations') {
       return route.fulfill({
         json: {

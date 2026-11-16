@@ -29,6 +29,9 @@ import {
   getEffectiveOpenRouterStatus,
   getSnapshot,
   listConversations,
+  listPinnedConversations,
+  markConversationSeen,
+  setConversationPinned,
   listMessages,
   latestMessages,
   listRuns,
@@ -302,7 +305,10 @@ export function buildServer(): FastifyInstance {
   });
 
   app.get('/v1/conversations', async (request) => {
-    const query = request.query as { query?: string; limit?: string; cursor?: string };
+    const query = request.query as { query?: string; limit?: string; cursor?: string; pinned?: string };
+    if (query.pinned === 'true') {
+      return { data: await listPinnedConversations(request.ownerId), next_cursor: null };
+    }
     const page = await listConversations(
       request.ownerId,
       query.query ?? null,
@@ -328,6 +334,21 @@ export function buildServer(): FastifyInstance {
         projectId:body.project_id, researchMode:body.research_mode,budgetUsd:body.budget_usd,
       }),
     };
+  });
+
+  app.put('/v1/conversations/:id/pin', async (request) => {
+    const params = request.params as { id: string };
+    return { data: await setConversationPinned(request.ownerId, params.id, true) };
+  });
+
+  app.delete('/v1/conversations/:id/pin', async (request) => {
+    const params = request.params as { id: string };
+    return { data: await setConversationPinned(request.ownerId, params.id, false) };
+  });
+
+  app.post('/v1/conversations/:id/seen', async (request) => {
+    const params = request.params as { id: string };
+    return { data: await markConversationSeen(request.ownerId, params.id) };
   });
 
   app.delete('/v1/conversations/:id', async (request, reply) => {

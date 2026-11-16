@@ -96,6 +96,9 @@ export function applicationOpenApi() {
   route('/v1/conversations/{id}', 'get', 'conversationSchema');
   route('/v1/conversations/{id}', 'patch', 'conversationSchema', 'conversationPatchSchema');
   route('/v1/conversations/{id}', 'delete');
+  route('/v1/conversations/{id}/pin', 'put', 'conversationSchema');
+  route('/v1/conversations/{id}/pin', 'delete', 'conversationSchema');
+  route('/v1/conversations/{id}/seen', 'post', 'conversationSchema');
   route('/v1/conversations/{id}/messages', 'get', 'messageSchema', undefined, true);
   route('/v1/conversations/{id}/messages', 'post', undefined, 'messageCreateSchema');
   route('/v1/messages/{id}/retry', 'post');

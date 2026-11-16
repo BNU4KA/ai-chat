@@ -1109,3 +1109,32 @@ Commands and results:
 Environment: macOS darwin 25.6.0; Xcode 27.2; CocoaPods 1.16.2; Expo SDK 58 / RN 0.88.1.
 Not claimed: physical device install, Google native SSO smoke, Metro/dev-client runtime, store signing, Android re-verify.
 Next: T19 remaining live/native device acceptance; configure `EXPO_PUBLIC_GOOGLE_*` before native login checks.
+
+## CHAT-201 / CHAT-203 — Focus and sidebar state — 2026-11-16 (local, backend release pending)
+
+CHAT-201 (composer focus during streaming): web `Keyboard.dismiss()` blurs the focused input.
+The thread's tap handler and scroll-begin handler called it on web, so taps in the answer
+removed focus from the composer. Those calls are now native-only (`dismissKeyboardOnNative` in
+`apps/client/src/chat.tsx`). Not reproduced in a browser; verified by code reading of
+react-native-web 0.21.4 only. Typecheck and eslint on the touched file passed.
+
+CHAT-203 (sidebar state): pins moved from device `sessionStorage` to the server. Migration
+`0010_chat_activity.sql` adds `conversations.pinned_at` and `last_seen_at`; existing chats are
+marked seen. New endpoints: `PUT/DELETE /v1/conversations/:id/pin` (no version bump, no
+`updated_at` change), `POST /v1/conversations/:id/seen`, and `GET /v1/conversations?pinned=true`
+(up to 100). Conversation DTO adds `pinned_at` and `activity` (`running` / `unread` / `idle`).
+The sidebar shows a spinner for a running chat and a dot for an unread finished answer. The
+client marks a chat seen when it opens and when its run stops.
+Limitation: pins made on the device before this change are not migrated.
+
+Checks (Node v24.2.0, pnpm shim unavailable so binaries were run directly):
+- `tsc --noEmit`: contracts, database, api, client passed; eslint on touched files passed.
+- Integration on disposable local PostgreSQL 15 (`chat_activity_test`, not the Supabase `.env`
+  database): 10 files, 56 tests passed, including new `chat-activity.integration.test.ts`.
+- Unit (`vitest run`): 21 files, 68 tests passed.
+- Playwright desktop + mobile-web, synthetic fixtures: 23 passed, 19 failed. The same 19 fail
+  on the unmodified baseline (`git stash` comparison), so they are pre-existing. Added mock
+  handlers for `?pinned=true` and `/seen` in `e2e/chat.spec.ts`.
+
+Not done: backend release (migration 0010 on the hosted database plus API/worker restart) is
+still pending; the web client is guarded so it shows no pins when the server lacks `pinned_at`.

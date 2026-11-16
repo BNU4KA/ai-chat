@@ -498,10 +498,28 @@ function conversationFrom(row: Row) {
     budget_usd: row.budget_usd == null ? null : String(row.budget_usd),
     model_id: (row.model_id as string | null) ?? null,
     enabled_tools: (row.enabled_tools as ToolGroup[]) ?? [],
+    pinned_at: row.pinned_at ? mustIso(row.pinned_at as Date) : null,
+    activity: row.is_running ? 'running' : row.has_unread ? 'unread' : 'idle',
     version: Number(row.version),
     created_at: mustIso(row.created_at as Date),
     updated_at: mustIso(row.updated_at as Date),
-  };
+  } as const;
+}
+
+const conversationActivitySql = `c.*,
+  exists(select 1 from runs r where r.conversation_id = c.id
+    and r.status in ('queued', 'running', 'waiting_approval')) as is_running,
+  exists(select 1 from runs r where r.conversation_id = c.id
+    and r.status in ('completed', 'failed', 'cancelled')
+    and r.finished_at > coalesce(c.last_seen_at, c.created_at)) as has_unread`;
+
+async function loadConversation(tx: Tx, id: string) {
+  const found = await tx.query(
+    `select ${conversationActivitySql} from conversations c where c.id = $1`,
+    [id],
+  );
+  if (!found.rowCount) throw new AppError(404, 'NOT_FOUND', 'Conversation not found');
+  return conversationFrom(found.rows[0] as Row);
 }
 
 export async function createConversation(
@@ -540,8 +558,8 @@ export async function listConversations(
       where += ` and (updated_at, id) < ($${params.length - 1}::timestamptz, $${params.length}::uuid)`;
     }
     const found = await tx.query(
-      `select * from conversations where ${where}
-       order by updated_at desc, id desc limit $1`,
+      `select ${conversationActivitySql} from conversations c where ${where}
+       order by c.updated_at desc, c.id desc limit $1`,
       params,
     );
     const rows = found.rows.slice(0, limit);
@@ -556,11 +574,43 @@ export async function listConversations(
   });
 }
 
-export async function getConversation(ownerId: string, id: string) {
+export async function listPinnedConversations(ownerId: string) {
   return withOwner(ownerId, async (tx) => {
-    const found = await tx.query('select * from conversations where id = $1', [id]);
-    if (!found.rowCount) throw new AppError(404, 'NOT_FOUND', 'Conversation not found');
-    return conversationFrom(found.rows[0] as Row);
+    const found = await tx.query(
+      `select ${conversationActivitySql} from conversations c
+       where c.pinned_at is not null
+       order by c.pinned_at desc, c.id desc limit 100`,
+      [],
+    );
+    return found.rows.map((row) => conversationFrom(row as Row));
+  });
+}
+
+export async function getConversation(ownerId: string, id: string) {
+  return withOwner(ownerId, (tx) => loadConversation(tx, id));
+}
+
+export async function setConversationPinned(ownerId: string, id: string, pinned: boolean) {
+  return withOwner(ownerId, async (tx) => {
+    const updated = await tx.query(
+      `update conversations set
+         pinned_at = case when $2::bool then coalesce(pinned_at, now()) else null end
+       where id = $1 returning id`,
+      [id, pinned],
+    );
+    if (!updated.rowCount) throw new AppError(404, 'NOT_FOUND', 'Conversation not found');
+    return loadConversation(tx, id);
+  });
+}
+
+export async function markConversationSeen(ownerId: string, id: string) {
+  return withOwner(ownerId, async (tx) => {
+    const updated = await tx.query(
+      'update conversations set last_seen_at = now() where id = $1 returning id',
+      [id],
+    );
+    if (!updated.rowCount) throw new AppError(404, 'NOT_FOUND', 'Conversation not found');
+    return loadConversation(tx, id);
   });
 }
 
@@ -600,7 +650,7 @@ export async function updateConversation(
       ).rowCount
     )
       throw new AppError(409, 'ACTIVE_RUN_EXISTS', 'Wait for the current task');
-    const updated = await tx.query(
+    await tx.query(
       `update conversations set
          title = $2,
          title_source = case when $3::bool then 'manual' else title_source end,
@@ -620,7 +670,7 @@ export async function updateConversation(
         patch.budgetUsd === undefined ? row.budget_usd : patch.budgetUsd,
       ],
     );
-    return conversationFrom(updated.rows[0] as Row);
+    return loadConversation(tx, id);
   });
 }
 
