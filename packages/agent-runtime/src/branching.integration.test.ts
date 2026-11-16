@@ -71,7 +71,8 @@ it('edits keep the original turn, switch between variants, and leave earlier his
 
   const edited = await editMessage(owner, secondUser, 'two edited', randomUUID(), 'hash-edit');
   expect(edited.status).toBe(202);
-  const editedUser = (edited.body.run as { user_message_id: string }).user_message_id;
+  const editedBody = edited.body as { run: { id: string; user_message_id: string } };
+  const editedUser = editedBody.run.user_message_id;
   expect(await visibleTexts(conversation.id)).toEqual(['one', 'answer one', 'two edited', '']);
 
   const original = await withOwner(owner, async (tx) =>
@@ -79,7 +80,7 @@ it('edits keep the original turn, switch between variants, and leave earlier his
   );
   expect(original.rows[0]).toMatchObject({ content: 'two', superseded_at: null });
 
-  await executeRun(edited.body.run.id as string, {
+  await executeRun(editedBody.run.id, {
     now: () => new Date(),
     model: scriptedModel([{ text: 'answer two edited' }]),
     ports: {},

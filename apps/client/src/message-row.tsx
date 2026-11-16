@@ -16,6 +16,10 @@ import { Pressable, Text } from './locale-ui';
 import { useTheme } from './theme';
 import type { FileRecord, Message } from './types';
 
+const COLLAPSE_CHARS = 700;
+const COLLAPSE_LINES = 12;
+const COLLAPSED_HEIGHT = 220;
+
 const EDIT_MIN_HEIGHT = 120;
 const EDIT_MAX_HEIGHT = 480;
 
@@ -73,6 +77,7 @@ function MessageRowView({
   const [saving, setSaving] = useState(false);
   const editField = useRef<ComponentRef<typeof Field>>(null);
   const [fieldHeight, setFieldHeight] = useState(EDIT_MIN_HEIGHT);
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     if (!editing || Platform.OS !== 'web') return;
@@ -80,6 +85,10 @@ function MessageRowView({
     element?.setSelectionRange?.(element.value.length, element.value.length);
   }, [editing]);
   const isUser = message.role === 'user';
+  const collapsible =
+    isUser &&
+    (message.content.length > COLLAPSE_CHARS ||
+      message.content.split('\n').length > COLLAPSE_LINES);
   const pending = message.status === 'pending';
   const finished = !isUser && !pending && !!message.content;
   const runId = message.run_id;
@@ -166,7 +175,25 @@ function MessageRowView({
           {isUser ? (
             !!message.content && (
               <View style={styles.content}>
-                <StreamingMarkdown text={message.content} streaming={false} />
+                <View style={collapsible && !expanded ? styles.collapsed : undefined}>
+                  <StreamingMarkdown text={message.content} streaming={false} />
+                </View>
+                {collapsible && (
+                  <Pressable
+                    testID="message-expand"
+                    accessibilityRole="button"
+                    accessibilityLabel={expanded ? 'Show less of this message' : 'Show the full message'}
+                    onPress={() => setExpanded((value) => !value)}
+                    style={({ hovered, pressed }) => [
+                      styles.expandButton,
+                      { backgroundColor: hovered || pressed ? c.hover : 'transparent' },
+                    ]}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: '500', color: c.info }}>
+                      {expanded ? 'Show less' : 'Show more'}
+                    </Text>
+                  </Pressable>
+                )}
               </View>
             )
           ) : (
@@ -268,6 +295,14 @@ const styles = StyleSheet.create({
   assistant: { alignSelf: 'stretch', maxWidth: '100%', gap: 6 },
   highlighted: { paddingLeft: 10, borderLeftWidth: 3 },
   editBox: { padding: 14, borderRadius: 20, gap: 10 },
+  collapsed: { maxHeight: COLLAPSED_HEIGHT, overflow: 'hidden' },
+  expandButton: {
+    alignSelf: 'flex-start',
+    minHeight: 36,
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+    borderRadius: 18,
+  },
   branchSwitcher: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-end', gap: 2 },
   branchButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 22 },
   editField: {

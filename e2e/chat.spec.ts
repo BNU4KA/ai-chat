@@ -446,6 +446,86 @@ test('reasoning effort is chosen next to Tools and saved on the chat', async ({ 
   await expect(page.getByTestId('reasoning-effort-button')).toContainText('High');
 });
 
+async function pasteImage(page: Page, name: string) {
+  await page.getByLabel('Message', { exact: true }).evaluate((element, fileName) => {
+    const data = new DataTransfer();
+    data.items.add(new File([new Uint8Array([137, 80, 78, 71])], fileName, { type: 'image/png' }));
+    element.dispatchEvent(
+      new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }),
+    );
+  }, name);
+}
+
+test('an image pasted into the composer is attached to the next message', async ({ context, page }) => {
+  await seed(context);
+  const f = await fixture(page);
+  await page.route('https://synthetic.supabase.co/preview.png', (route) =>
+    route.fulfill({
+      contentType: 'image/png',
+      body: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j0O0AAAAASUVORK5CYII=',
+        'base64',
+      ),
+    }),
+  );
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Choose model' }).click();
+  await page.getByRole('button', { name: /Synthetic Model Tools supported/ }).click();
+  await pasteImage(page, 'pasted.png');
+  await expect(page.getByRole('img', { name: 'pasted.png' })).toBeVisible();
+  await page.getByLabel('Message', { exact: true }).fill('What is in this picture?');
+  await page.getByRole('button', { name: 'Send ↑', exact: true }).click();
+  await expect(page.getByText(/Synthetic answer with/)).toBeVisible();
+  expect((f.submissions[0]!.body as { file_ids: string[] }).file_ids).toHaveLength(1);
+});
+
+test('a long message is collapsed and expands on request', async ({ context, page }) => {
+  await seed(context);
+  const f = await fixture(page);
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Choose model' }).click();
+  await page.getByRole('button', { name: /Synthetic Model Tools supported/ }).click();
+  const long = Array.from({ length: 30 }, (_, i) => `Line ${i + 1} of a long synthetic paste.`).join('\n');
+  await page.getByLabel('Message', { exact: true }).fill(long);
+  await page.getByRole('button', { name: 'Send ↑', exact: true }).click();
+  await expect(page.getByText(/Synthetic answer with/)).toBeVisible();
+  expect(f.submissions).toHaveLength(1);
+  await expect(page.getByTestId('message-expand')).toHaveText('Show more');
+  await page.getByTestId('message-expand').click();
+  await expect(page.getByTestId('message-expand')).toHaveText('Show less');
+});
+
+test('a photo attachment opens in a viewer inside the app, not in a new tab', async ({ context, page }) => {
+  await seed(context);
+  await fixture(page);
+  await page.route('https://synthetic.supabase.co/preview.png', (route) =>
+    route.fulfill({
+      contentType: 'image/png',
+      body: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j0O0AAAAASUVORK5CYII=',
+        'base64',
+      ),
+    }),
+  );
+  await page.goto('/');
+  await expect(page.getByLabel('Message', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Choose model' }).click();
+  await page.getByRole('button', { name: /Synthetic Model Tools supported/ }).click();
+  await pasteImage(page, 'viewer.png');
+  await expect(page.getByRole('img', { name: 'viewer.png' })).toBeVisible();
+  await page.getByLabel('Message', { exact: true }).fill('Look at this');
+  await page.getByRole('button', { name: 'Send ↑', exact: true }).click();
+  await expect(page.getByText(/Synthetic answer with/)).toBeVisible();
+  const pagesBefore = context.pages().length;
+  await page.getByRole('button', { name: 'Open attachment viewer.png' }).click();
+  await expect(page.getByRole('button', { name: 'Close image' })).toBeVisible();
+  expect(context.pages().length).toBe(pagesBefore);
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: 'Close image' })).toHaveCount(0);
+});
+
 test('settings expose separate Google consent and require typed account-deletion confirmation', async ({
   context,
   page,

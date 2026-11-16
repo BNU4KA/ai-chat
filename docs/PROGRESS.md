@@ -1332,3 +1332,19 @@ the visible thread for every conversation: 34 conversations, 0 mismatches. Relea
 for rollback. Readiness database and queue ok; both services active.
 
 Not verified on the hosted site: the branch switcher with a live provider answer.
+
+## Chat input and reading — 2026-11-16 (local, release pending)
+
+- Paste an image from the clipboard into the composer (web): the composer's paste listener takes the
+  first image item and uploads it through the existing upload path. Native paste is not handled yet.
+- System prompt: default answers limited to about 3 sentences or 5 bullets (about 120 words); longer
+  answers only for explicit requests for detail, documents, code or comparisons.
+- Photo attachments open in an in-app viewer (Modal, closes with the button, backdrop or Escape)
+  instead of a new browser tab. Non-image files still open via the download URL.
+- Long user messages (over 700 characters or 12 lines) collapse to 220 px with a Show more / Show less
+  control; height changes use the row's existing layout animation.
+
+Checks: client, agent-runtime typecheck and eslint on touched files passed; unit 75 passed. New
+Playwright scenarios (paste, long message collapse/expand, photo viewer without a new page) passed on
+desktop and mobile web. Full run: 37 passed, 15 failed, the same pre-existing failures as before.
+Also fixed the branching unit test typing (`editMessage` body). Not verified with live models.

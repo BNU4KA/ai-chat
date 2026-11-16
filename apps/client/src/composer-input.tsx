@@ -31,6 +31,7 @@ export interface ComposerInputProps {
   onShapeChange: (shape: ComposerShape) => void;
   onSubmit: () => void;
   onFocusChange: (focused: boolean) => void;
+  onPasteFile?: (file: File) => void;
 }
 
 const MIN_HEIGHT = 24;
@@ -51,6 +52,7 @@ function ComposerInputView({
   onShapeChange,
   onSubmit,
   onFocusChange,
+  onPasteFile,
 }: ComposerInputProps) {
   const [text, setTextState] = useState(textRef.current);
   const [height, setHeight] = useState(MIN_HEIGHT);
@@ -63,6 +65,22 @@ function ComposerInputView({
   };
 
   useImperativeHandle(ref, () => ({ setText: update }));
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !onPasteFile) return;
+    const element = field.current as unknown as HTMLTextAreaElement | null;
+    if (!element?.addEventListener) return;
+    const onPaste = (event: ClipboardEvent) => {
+      const items = Array.from(event.clipboardData?.items ?? []);
+      const image = items.find((item) => item.kind === 'file' && item.type.startsWith('image/'));
+      const file = image?.getAsFile();
+      if (!file) return;
+      event.preventDefault();
+      onPasteFile(file);
+    };
+    element.addEventListener('paste', onPaste);
+    return () => element.removeEventListener('paste', onPaste);
+  }, [onPasteFile]);
 
   useLayoutEffect(() => {
     if (Platform.OS !== 'web') return;

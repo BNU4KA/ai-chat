@@ -26,6 +26,7 @@ import { KeyboardAvoidingView, KeyboardStickyView } from 'react-native-keyboard-
 import Animated, { FadeInDown, LayoutAnimationConfig } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChatScrollView } from './chat-scroll-view';
+import { ImageViewer } from './image-viewer';
 import { useRouter, useLocalSearchParams, type Href } from 'expo-router';
 import { ChatExtras, RunUsage } from './chat-extras';
 import { SourceCard } from './source-card';
@@ -62,7 +63,7 @@ import { ReasoningEffortButton } from './reasoning-effort';
 import { MessageRow } from './message-row';
 import { collapseAttempts } from './visible-messages';
 import { usePinnedChats } from './pinned-chats';
-import { pickAndUpload } from './upload';
+import { pickAndUpload, uploadPicked } from './upload';
 import type { Conversation, Message, Run, FileRecord, Snapshot } from './types';
 
 const HEADER_HEIGHT = 52;
@@ -577,20 +578,41 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     (text: string) => setDocumentSeed({ text, key: Crypto.randomUUID() }),
     [],
   );
-  const openFile = useCallback((fileId: string) => {
-    void api<{ url: string }>(`/v1/files/${fileId}/download`)
-      .then((value) => Linking.openURL(value.url))
-      .catch(setError);
-  }, []);
+  const [viewer, setViewer] = useState<{ url: string; name: string } | null>(null);
+  const closeViewer = useCallback(() => setViewer(null), []);
+  const openFile = useCallback(
+    (fileId: string) => {
+      const known = cache
+        .getQueryData<FileRecord[]>(['files', id])
+        ?.find((file) => file.id === fileId);
+      void api<{ url: string }>(`/v1/files/${fileId}/download`)
+        .then((value) => {
+          if (known?.detected_mime?.startsWith('image/'))
+            setViewer({ url: value.url, name: known.filename });
+          else void Linking.openURL(value.url);
+        })
+        .catch(setError);
+    },
+    [cache, id],
+  );
   const scrollToHighlight = useCallback((y: number) => {
     scroll.current?.scrollTo({ y: Math.max(0, y - 30), animated: false });
   }, []);
 
-  async function upload() {
+  async function upload(picked?: File) {
     setUploading(true);
     setError(null);
     try {
-      const file = await pickAndUpload(ensureChat);
+      const file = picked
+        ? await uploadPicked(
+            {
+              name: picked.name || `pasted-${Date.now()}.${picked.type.split('/')[1] ?? 'png'}`,
+              mime: picked.type,
+              blob: picked,
+            },
+            ensureChat,
+          )
+        : await pickAndUpload(ensureChat);
       if (file) {
         const targetId = file.conversation_id;
         setSelectedFiles((old) => [...old, file.id]);
@@ -834,6 +856,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
       onShapeChange={onShapeChange}
       onSubmit={submitComposer}
       onFocusChange={setComposerFocused}
+      onPasteFile={(file) => void upload(file)}
     />
   );
 
@@ -1529,6 +1552,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
         </View>
       </View>
 
+      <ImageViewer url={viewer?.url ?? null} name={viewer?.name ?? ''} onClose={closeViewer} />
       {!wide && (
         <ConversationDrawer open={drawer} onOpenChange={setDrawer}>
           {sidebar(true)}
