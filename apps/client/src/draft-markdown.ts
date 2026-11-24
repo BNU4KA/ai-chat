@@ -104,3 +104,42 @@ export function markdownToBlocks(markdown: string): DocumentBlock[] {
   endList();
   return blocks;
 }
+
+export type MarkupKind = 'heading' | 'bold' | 'bullet' | 'numbered';
+
+export function applyMarkup(
+  text: string,
+  start: number,
+  end: number,
+  kind: MarkupKind,
+): { text: string; start: number; end: number } {
+  const from = Math.max(0, Math.min(start, end, text.length));
+  const to = Math.max(0, Math.min(Math.max(start, end), text.length));
+  if (kind === 'bold') {
+    const selected = text.slice(from, to) || 'text';
+    const next = `${text.slice(0, from)}**${selected}**${text.slice(to)}`;
+    return { text: next, start: from + 2, end: from + 2 + selected.length };
+  }
+  const lineStart = text.lastIndexOf('\n', Math.max(0, from - 1)) + 1;
+  const lineBreak = text.indexOf('\n', to);
+  const lineEnd = lineBreak === -1 ? text.length : lineBreak;
+  const lines = text.slice(lineStart, lineEnd).split('\n');
+  const prefixed = lines
+    .map((line, index) => {
+      if (!line.trim()) {
+        if (lines.length > 1) return line;
+        if (kind === 'heading') return '# ';
+        if (kind === 'bullet') return '- ';
+        return '1. ';
+      }
+      if (kind === 'heading') return line.startsWith('# ') ? line.slice(2) : `# ${line}`;
+      if (kind === 'bullet') return line.startsWith('- ') ? line.slice(2) : `- ${line}`;
+      return /^\d+\. /.test(line) ? line.replace(/^\d+\. /, '') : `${index + 1}. ${line}`;
+    })
+    .join('\n');
+  return {
+    text: text.slice(0, lineStart) + prefixed + text.slice(lineEnd),
+    start: lineStart,
+    end: lineStart + prefixed.length,
+  };
+}

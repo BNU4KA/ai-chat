@@ -25,7 +25,13 @@ export function getPool(): pg.Pool {
       connectionString: databaseConnectionString(),
       max: 10,
       connectionTimeoutMillis: 10000,
+      idleTimeoutMillis: 30000,
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 10000,
+      query_timeout: 30000,
+      statement_timeout: 30000,
     });
+    pool.on('error', () => undefined);
   }
   return pool;
 }
@@ -65,6 +71,11 @@ export async function withRole<T>(
   fn: (tx: Tx) => Promise<T>,
 ): Promise<T> {
   const client = await getPool().connect();
+  let broken = false;
+  const onError = () => {
+    broken = true;
+  };
+  client.on('error', onError);
   try {
     await client.query('begin');
     await client.query(`set local role ${role}`);
@@ -76,13 +87,19 @@ export async function withRole<T>(
     return result;
   } catch (error) {
     try {
-      await client.query('rollback');
+      await Promise.race([
+        client.query('rollback'),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Rollback timed out')), 5000).unref(),
+        ),
+      ]);
     } catch {
-      /* the connection is already unusable */
+      broken = true;
     }
     throw error;
   } finally {
-    client.release();
+    client.removeListener('error', onError);
+    client.release(broken);
   }
 }
 

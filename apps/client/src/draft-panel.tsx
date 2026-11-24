@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { PanResponder, Platform, View, useWindowDimensions } from 'react-native';
+import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
+import { PanResponder, Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api, json } from './api';
-import { blocksToMarkdown, markdownToBlocks } from './draft-markdown';
+import { applyMarkup, blocksToMarkdown, markdownToBlocks, type MarkupKind } from './draft-markdown';
 import { Pressable, Text } from './locale-ui';
 import { useTheme } from './theme';
 import type { DocumentDraft } from './types';
@@ -14,10 +14,13 @@ const DRAFT_PANEL_MIN_WIDTH = 360;
 const DRAFT_PANEL_MAX_WIDTH = 900;
 // Height of the chat header; the panel starts below it so the header never covers its controls.
 const HEADER_OFFSET = 52;
-const MONO_FONT = Platform.select({
-  web: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-  default: 'monospace',
-});
+
+const MARKUP: { kind: MarkupKind; label: string; name: string }[] = [
+  { kind: 'heading', label: 'H', name: 'Heading' },
+  { kind: 'bold', label: 'B', name: 'Bold' },
+  { kind: 'bullet', label: '•', name: 'Bulleted list' },
+  { kind: 'numbered', label: '1.', name: 'Numbered list' },
+];
 
 export function clampDraftPanelWidth(width: number, windowWidth: number) {
   const max = Math.max(
@@ -130,6 +133,8 @@ function DraftEditor({ draft, onClose }: { draft: DocumentDraft; onClose: () => 
   const { colors: c } = useTheme();
   const [title, setTitle] = useState(draft.title);
   const [markdown, setMarkdown] = useState(() => blocksToMarkdown(draft.content.blocks));
+  const [selection, setSelection] = useState({ start: 0, end: 0 });
+  const markdownField = useRef<ComponentRef<typeof Field>>(null);
   const [state, setState] = useState<SaveState>(draft.status === 'created' ? 'created' : 'saved');
   const [version, setVersion] = useState(draft.version);
   const [error, setError] = useState<unknown>(null);
@@ -138,6 +143,21 @@ function DraftEditor({ draft, onClose }: { draft: DocumentDraft; onClose: () => 
   const chain = useRef<Promise<boolean>>(Promise.resolve(true));
   const locked = state === 'created';
   const dirty = title.trim() !== saved.current.title || markdown !== saved.current.markdown;
+
+  function apply(kind: MarkupKind) {
+    if (locked) return;
+    const next = applyMarkup(markdown, selection.start, selection.end, kind);
+    setMarkdown(next.text);
+    setSelection({ start: next.start, end: next.end });
+    requestAnimationFrame(() => {
+      const node = markdownField.current as {
+        focus?: () => void;
+        setSelectionRange?: (start: number, end: number) => void;
+      } | null;
+      node?.focus?.();
+      node?.setSelectionRange?.(next.start, next.end);
+    });
+  }
 
   // Writes run one at a time, so each sends the version returned by the previous write.
   function save(nextTitle: string, nextMarkdown: string): Promise<boolean> {
@@ -230,7 +250,7 @@ function DraftEditor({ draft, onClose }: { draft: DocumentDraft; onClose: () => 
           </Button>
         )}
       </View>
-      <View style={{ flex: 1, padding: 14, gap: 12 }}>
+      <View style={styles.editor}>
         <ErrorNotice error={error} />
         <Field
           accessibilityLabel="Draft title"
@@ -239,21 +259,34 @@ function DraftEditor({ draft, onClose }: { draft: DocumentDraft; onClose: () => 
           editable={!locked}
           maxLength={200}
         />
+        {!locked && (
+          <View style={[styles.plaque, { borderColor: c.border, backgroundColor: c.raised }]}>
+            {MARKUP.map((item) => (
+              <Pressable
+                key={item.kind}
+                accessibilityRole="button"
+                accessibilityLabel={item.name}
+                onPress={() => apply(item.kind)}
+                style={({ hovered, pressed }) => [
+                  styles.plaqueButton,
+                  { backgroundColor: hovered || pressed ? c.hover : 'transparent' },
+                ]}
+              >
+                <Text style={[styles.plaqueLabel, { color: c.text }]}>{item.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
         <Field
+          ref={markdownField}
           accessibilityLabel="Draft markdown"
           value={markdown}
           onChangeText={setMarkdown}
+          onSelectionChange={(event) => setSelection(event.nativeEvent.selection)}
           editable={!locked}
           multiline
           textAlignVertical="top"
-          style={{
-            flex: 1,
-            minHeight: 200,
-            paddingTop: 12,
-            fontFamily: MONO_FONT,
-            fontSize: 14,
-            lineHeight: 21,
-          }}
+          style={[styles.paper, { backgroundColor: c.surface }]}
         />
         {locked ? (
           <Copy small muted>
@@ -270,59 +303,113 @@ function DraftEditor({ draft, onClose }: { draft: DocumentDraft; onClose: () => 
   );
 }
 
-export function DraftLink({
-  title,
-  format,
-  onOpen,
-}: {
+interface DraftLinkProps {
   title: string;
   format: string;
+  created: boolean;
   onOpen: () => void;
-}) {
+}
+
+export function DraftLink({ title, format, created, onOpen }: DraftLinkProps) {
   const { colors: c } = useTheme();
+  const action = created ? 'Download' : 'Review';
   return (
     <Pressable
       testID="draft-link"
       accessibilityRole="button"
-      accessibilityLabel={`Open draft ${title}`}
+      accessibilityLabel={created ? `Open file ${title}` : `Open draft ${title}`}
       onPress={onOpen}
-      style={({ hovered, pressed }) => ({
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-        minHeight: 64,
-        paddingLeft: 10,
-        paddingRight: 14,
-        paddingVertical: 10,
-        borderRadius: 14,
-        borderWidth: 1,
-        borderColor: hovered || pressed ? c.info : c.border,
-        backgroundColor: hovered || pressed ? c.hover : c.raised,
-      })}
+      style={({ hovered, pressed }) => [
+        styles.link,
+        {
+          borderColor: c.border,
+          backgroundColor: hovered || pressed ? c.hover : c.surface,
+        },
+      ]}
     >
-      <View
-        style={{
-          width: 42,
-          height: 42,
-          borderRadius: 10,
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: c.infoSoft,
-        }}
-      >
-        <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 0.6, color: c.info }}>
+      <View style={[styles.page, { borderColor: c.border, backgroundColor: c.raised }]}>
+        <Text style={[styles.pageLabel, { color: created ? c.success : c.info }]}>
           {format.toUpperCase()}
         </Text>
       </View>
-      <View style={{ flex: 1, gap: 2, minWidth: 0 }}>
-        <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '600', color: c.text }}>
+      <View style={styles.linkText}>
+        <Text numberOfLines={1} style={[styles.linkTitle, { color: c.text }]}>
           {title}
         </Text>
-        <Text style={{ fontSize: 12, color: c.muted }}>
-          {format.toUpperCase()} draft · Open to review and edit
-        </Text>
+        <Text style={[styles.linkMeta, { color: c.muted }]}>{created ? 'File ready' : 'Draft'}</Text>
       </View>
-      <Text style={{ fontSize: 20, color: c.info }}>›</Text>
+      <View
+        style={[
+          styles.action,
+          { backgroundColor: created ? c.accent : c.infoSoft },
+        ]}
+      >
+        <Text style={[styles.actionLabel, { color: created ? c.accentText : c.info }]}>{action}</Text>
+      </View>
     </Pressable>
   );
 }
+
+const styles = StyleSheet.create({
+  editor: { flex: 1, padding: 14, gap: 12 },
+  plaque: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    padding: 4,
+    borderWidth: 1,
+    borderRadius: 12,
+  },
+  plaqueButton: {
+    minWidth: 36,
+    height: 32,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  plaqueLabel: { fontSize: 14, fontWeight: '700' },
+  paper: {
+    flex: 1,
+    minHeight: 240,
+    paddingTop: 14,
+    borderRadius: 16,
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  link: {
+    alignSelf: 'flex-start',
+    maxWidth: 420,
+    minHeight: 72,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingLeft: 10,
+    paddingRight: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderRadius: 16,
+  },
+  page: {
+    width: 44,
+    height: 52,
+    borderWidth: 1,
+    borderRadius: 6,
+    borderTopRightRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pageLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 0.4 },
+  linkText: { flex: 1, gap: 2, minWidth: 0 },
+  linkTitle: { fontSize: 14, fontWeight: '600' },
+  linkMeta: { fontSize: 12 },
+  action: {
+    minHeight: 28,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionLabel: { fontSize: 12, fontWeight: '600' },
+});

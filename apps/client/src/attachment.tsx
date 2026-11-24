@@ -23,6 +23,40 @@ const LARGE_PHOTO = 280;
 const styles = StyleSheet.create({
   largePhoto: { width: LARGE_PHOTO, height: LARGE_PHOTO },
   largeImage: { ...StyleSheet.absoluteFill, width: LARGE_PHOTO, height: LARGE_PHOTO },
+  file: {
+    alignSelf: 'flex-start',
+    maxWidth: 360,
+    minHeight: 64,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingLeft: 8,
+    paddingRight: 8,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderRadius: 16,
+  },
+  fileMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, minWidth: 0 },
+  fileText: { flex: 1, gap: 2, minWidth: 0 },
+  fileName: { fontSize: 14, fontWeight: '600' },
+  fileMeta: { fontSize: 12, fontWeight: '600' },
+  format: {
+    width: 44,
+    height: 52,
+    borderWidth: 1,
+    borderRadius: 6,
+    borderTopRightRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  formatLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 0.4 },
+  download: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });
 
 function PhotoSkeleton({ size }: { size: number }) {
@@ -115,6 +149,53 @@ export function Attachment({
   const ready = file?.status === 'ready';
   const failed = file?.status === 'failed';
   const photoLoading = photo && !failed && (!ready || preview.isLoading || !preview.data);
+  const extension = (file?.filename.split('.').pop() ?? 'FILE').toUpperCase().slice(0, 4);
+
+  if (!photo && ready && !compact) {
+    return (
+      <View
+        testID="attachment-card"
+        style={[styles.file, { borderColor: c.border, backgroundColor: c.surface }]}
+      >
+        <Pressable
+          accessibilityRole={onOpen ? 'button' : undefined}
+          accessibilityLabel={`Download ${file?.filename ?? 'file'}`}
+          onPress={onOpen}
+          disabled={!onOpen}
+          style={styles.fileMain}
+        >
+          <View style={[styles.format, { borderColor: c.border, backgroundColor: c.raised }]}>
+            <Text style={[styles.formatLabel, { color: extension === 'PDF' ? c.danger : c.info }]}>
+              {extension}
+            </Text>
+          </View>
+          <View style={styles.fileText}>
+            <Text translate={false} numberOfLines={1} style={[styles.fileName, { color: c.text }]}>
+              {file?.filename ?? 'File'}
+            </Text>
+            <Text style={[styles.fileMeta, { color: c.info }]}>Download</Text>
+          </View>
+          <View style={[styles.download, { backgroundColor: c.accent }]}>
+            <ChatGptIcon name="arrowDown" size={16} color={c.accentText} />
+          </View>
+        </Pressable>
+        {onRemove && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Remove attachment from message"
+            onPress={onRemove}
+            hitSlop={8}
+            style={({ hovered }) => [
+              styles.download,
+              { backgroundColor: hovered ? c.hover : 'transparent' },
+            ]}
+          >
+            <ChatGptIcon name="close" size={14} color={c.muted} />
+          </Pressable>
+        )}
+      </View>
+    );
+  }
 
   if (large && (photo || !file)) {
     return (

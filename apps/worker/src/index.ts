@@ -55,7 +55,18 @@ if (!process.env.DATABASE_URL) {
   process.exit(0);
 }
 
-const boss = new PgBoss({ connectionString: databaseConnectionString(), schema: 'pgboss' });
+const boss = new PgBoss({
+  connectionString: databaseConnectionString(),
+  schema: 'pgboss',
+  connectionTimeoutMillis: 10000,
+  options: '-c statement_timeout=30000',
+  ...({
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10000,
+    idleTimeoutMillis: 30000,
+    query_timeout: 30000,
+  } as Record<string, unknown>),
+});
 boss.on('error', (error: Error) => {
   console.log({ service: 'worker', status: 'queue_error', message: error.message });
 });
@@ -104,7 +115,7 @@ async function readRunKey(ownerId: string, run: Record<string, unknown>) {
   return key;
 }
 
-await boss.work('run.execute', async (jobs) => {
+await boss.work('run.execute', { localConcurrency: 4 }, async (jobs) => {
   for (const job of jobs) {
     const runId = String((job.data as { runId?: string }).runId ?? '');
     if (!runId) continue;

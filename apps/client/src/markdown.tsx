@@ -8,6 +8,7 @@ import { splitStreamTail } from './smooth-text';
 import { useTheme } from './theme';
 
 const parser = new MarkdownIt({ html: false, linkify: false, breaks: true });
+const webSelect = Platform.OS === 'web' ? ({ userSelect: 'text' as const }) : null;
 
 export function safeUrl(value: string) {
   try {
@@ -434,7 +435,10 @@ export function Markdown({
           const itemKey = cursor;
           const content = blocks('list_item_close');
           items.push(
-            <View key={itemKey} style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
+            <View
+              key={itemKey}
+              style={[{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }, webSelect]}
+            >
               <Text
                 selectable
                 style={{
@@ -446,13 +450,13 @@ export function Markdown({
               >
                 {ordered ? `${number++}.` : '•'}
               </Text>
-              <View style={{ flex: 1, minWidth: 0, gap: 6 }}>{content}</View>
+              <View style={[{ flex: 1, minWidth: 0, gap: 6 }, webSelect]}>{content}</View>
             </View>,
           );
         }
         cursor++;
         result.push(
-          <View key={key} style={{ gap: 6, paddingLeft: 4 }}>
+          <View key={key} style={[{ gap: 6, paddingLeft: 4 }, webSelect]}>
             {items}
           </View>,
         );
@@ -462,7 +466,7 @@ export function Markdown({
         result.push(
           <View
             key={key}
-            style={{ borderLeftWidth: 3, borderColor: c.border, paddingLeft: 14, gap: 8 }}
+            style={[{ borderLeftWidth: 3, borderColor: c.border, paddingLeft: 14, gap: 8 }, webSelect]}
           >
             {blocks('blockquote_close')}
           </View>,
@@ -511,5 +515,5 @@ export function Markdown({
     return result;
   }
 
-  return <View style={{ gap: 12, minWidth: 0 }}>{blocks()}</View>;
+  return <View style={[{ gap: 12, minWidth: 0 }, webSelect]}>{blocks()}</View>;
 }

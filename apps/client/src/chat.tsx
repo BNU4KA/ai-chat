@@ -66,7 +66,9 @@ import { MessageRow } from './message-row';
 import { collapseAttempts } from './visible-messages';
 import { usePinnedChats } from './pinned-chats';
 import { pickAndUpload, uploadPicked } from './upload';
-import type { Conversation, Message, Run, FileRecord, Snapshot } from './types';
+import type { Conversation, DocumentDraft, Message, Run, FileRecord, Snapshot } from './types';
+
+type OptimisticSend = { text: string; users: number };
 
 const HEADER_HEIGHT = 52;
 const OPTIMISTIC_ENTERING = FadeInDown.duration(220);
@@ -97,6 +99,8 @@ const styles = StyleSheet.create({
 const dismissKeyboardOnNative = () => {
   if (Platform.OS !== 'web') Keyboard.dismiss();
 };
+const dismissMode =
+  Platform.OS === 'ios' ? 'interactive' : Platform.OS === 'web' ? 'none' : 'on-drag';
 
 function draftFromTool(tool: { name: string; safe_result?: unknown }) {
   if (tool.name !== 'draft_document' && tool.name !== 'create_document') return null;
@@ -185,7 +189,9 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     draftRef.current = text;
     composerInput.current?.setText(text);
   }, []);
-  const [optimisticUser, setOptimisticUser] = useState<string | null>(null);
+  const [optimisticUser, setOptimisticUser] = useState<OptimisticSend | null>(null);
+  const refocusComposer = useRef(false);
+  const suggestionsWereVisible = useRef(false);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -228,6 +234,24 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     setPassageOpenId(null);
     setAtBottom(true);
   }, [activeId, profile.data?.id, setDraft]);
+
+  useEffect(() => {
+    setOpenDraftId(null);
+    setWorkToolsOpen(false);
+  }, [activeId]);
+
+  useEffect(() => {
+    if (id) return;
+    const timer = setTimeout(() => composerInput.current?.focus(), 60);
+    return () => clearTimeout(timer);
+  }, [id]);
+
+  useEffect(() => {
+    if (!refocusComposer.current) return;
+    refocusComposer.current = false;
+    const timer = setTimeout(() => composerInput.current?.focus(), 0);
+    return () => clearTimeout(timer);
+  }, [inputEpoch]);
 
   // Global Cmd/Ctrl+K search shortcut & Escape to dismiss model popover
   useEffect(() => {
@@ -277,6 +301,11 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     enabled: !!id,
     refetchInterval: 10000,
   });
+  const documentDrafts = useQuery({
+    queryKey: ['document-drafts', id],
+    queryFn: () => api<DocumentDraft[]>(`/v1/conversations/${id}/document-drafts`),
+    enabled: !!id,
+  });
   const files = useQuery({
     queryKey: ['files', id],
     queryFn: () => api<FileRecord[]>(`/v1/conversations/${id}/files`),
@@ -295,6 +324,10 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
 
   const wasRunning = useRef(false);
   useEffect(() => {
+    if (snapshot.data?.run.conversation_id && snapshot.data.run.conversation_id !== id) {
+      wasRunning.current = false;
+      return;
+    }
     if (running) {
       wasRunning.current = true;
       return;
@@ -302,8 +335,8 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     if (!wasRunning.current) return;
     wasRunning.current = false;
     const draft = (snapshot.data?.tool_calls ?? []).map(draftFromTool).find(Boolean);
-    if (draft) setOpenDraftId(draft.id);
-  }, [running, snapshot.data]);
+    if (draft && snapshot.data?.run.conversation_id === id) setOpenDraftId(draft.id);
+  }, [running, snapshot.data, id]);
 
   useEffect(() => {
     if (!id || running) return;
@@ -357,6 +390,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
       ? (lastMessage.suggestions ?? [])
       : [];
   const isHome = !id && !visibleMessages.length && optimisticUser === null;
+  const suggestionsVisible = !running && !shape.hasText && replySuggestions.length > 0;
   const firstName = (profile.data?.display_name ?? '').trim().split(/\s+/)[0] || '';
   const homeGreetingPrefix = language === 'ru' ? 'Что будем делать сегодня' : 'What are we doing today';
   const homeGreetingNode = firstName ? (
@@ -411,6 +445,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     } else if (routeId) {
       router.replace('/');
     }
+    setTimeout(() => composerInput.current?.focus(), 60);
   }
 
   function openChat(conversationId: string) {
@@ -449,7 +484,9 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     }
   }
 
-  async function send() {
+  async function send(override?: string) {
+    const outgoingText = override ?? draftRef.current;
+    const outgoingFiles = override ? [] : selectedFiles;
     if (
       sending.current ||
       running ||
@@ -458,28 +495,24 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
       incompatible ||
       imageIncompatible ||
       !fileReady ||
-      (!draftRef.current.trim() && !selectedFiles.length)
+      (!outgoingText.trim() && !outgoingFiles.length)
     )
       return;
     sending.current = true;
     setBusy(true);
     setError(null);
-    Keyboard.dismiss();
-    const outgoingText = draftRef.current;
-    const outgoingFiles = selectedFiles;
-    const startingFromHome = isHome;
-    const resetComposer = () => {
+    dismissKeyboardOnNative();
+    const users = visibleMessages.filter((message) => message.role === 'user').length;
+    if (outgoingText.trim()) setOptimisticUser({ text: outgoingText, users });
+    if (!override) {
       setDraft('');
       setSelectedFiles([]);
       setComposerExpanded(false);
+      refocusComposer.current = true;
       setInputEpoch((n) => n + 1);
       setComposerFocused(false);
-    };
-    haptic();
-    if (startingFromHome) {
-      setOptimisticUser(outgoingText);
-      resetComposer();
     }
+    haptic();
     try {
       const targetId = await ensureChat();
       const body = JSON.stringify({ text: outgoingText, file_ids: outgoingFiles });
@@ -496,8 +529,6 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
         ),
       );
       pending.current = null;
-      if (!startingFromHome) resetComposer();
-      Keyboard.dismiss();
       setAtBottom(true);
       cache.setQueryData(['runs', targetId], (old: Run[] | undefined) => [
         value.run,
@@ -510,11 +541,12 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
         if (Platform.OS === 'web' && typeof window !== 'undefined') {
           window.history.replaceState(null, '', `/chat/${targetId}`);
         }
+        setTimeout(() => composerInput.current?.focus(), 60);
       }
       void cache.invalidateQueries({ queryKey: ['conversations'] });
     } catch (e) {
-      if (startingFromHome) {
-        setOptimisticUser(null);
+      setOptimisticUser(null);
+      if (!override) {
         setDraft(outgoingText);
         setSelectedFiles(outgoingFiles);
       }
@@ -523,6 +555,12 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
       setBusy(false);
       sending.current = false;
     }
+  }
+
+  function summarize() {
+    void send(
+      'Summarize this conversation: the decisions, open questions, and facts established so far. Keep it short.',
+    );
   }
 
   async function stop() {
@@ -691,6 +729,11 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     };
   });
   const submitComposer = useCallback(() => void handlers.current.send(), []);
+  const uploadRef = useRef(upload);
+  uploadRef.current = upload;
+  const onPasteFile = useCallback((file: File) => {
+    void uploadRef.current(file);
+  }, []);
   const getDraft = useCallback(() => draftRef.current, []);
   const sidebarActions = useMemo(
     () => ({
@@ -883,7 +926,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
       onShapeChange={onShapeChange}
       onSubmit={submitComposer}
       onFocusChange={setComposerFocused}
-      onPasteFile={(file) => void upload(file)}
+      onPasteFile={onPasteFile}
     />
   );
 
@@ -927,7 +970,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
       )}
 
       {snapshot.data?.questions?.[0] && <AgentQuestionDock question={snapshot.data.questions[0]} />}
-      {!running && !shape.hasText && replySuggestions.length > 0 && (
+      {suggestionsVisible && (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -1088,6 +1131,12 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     '',
   );
 
+  useEffect(() => {
+    const wasVisible = suggestionsWereVisible.current;
+    suggestionsWereVisible.current = suggestionsVisible;
+    if (wasVisible && !suggestionsVisible && shape.hasText) composerInput.current?.focus();
+  }, [suggestionsVisible, shape.hasText]);
+
   return (
     <View style={{ flex: 1, flexDirection: 'row', backgroundColor: c.background }}>
       {wide && (
@@ -1182,6 +1231,25 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
           </View>
 
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            {!!id && visibleMessages.length > 0 && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Summarize chat"
+                disabled={running || busy}
+                onPress={summarize}
+                style={({ hovered, pressed }) => ({
+                  height: 34,
+                  paddingHorizontal: 10,
+                  borderRadius: 8,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  opacity: running || busy ? 0.4 : 1,
+                  backgroundColor: hovered || pressed ? c.hover : 'transparent',
+                })}
+              >
+                <Text style={{ fontSize: 13, fontWeight: '600', color: c.text }}>Summarize</Text>
+              </Pressable>
+            )}
             {!!id && (
               <Pressable
                 accessibilityRole="button"
@@ -1304,7 +1372,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                 paddingBottom: (wide ? 88 : 24) + inset.bottom,
               }}
               keyboardShouldPersistTaps="handled"
-              keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+              keyboardDismissMode={dismissMode}
               onScrollBeginDrag={dismissKeyboardOnNative}
             >
               <Pressable
@@ -1353,7 +1421,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                   flexGrow: 1,
                 }}
                 keyboardShouldPersistTaps="handled"
-                keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+                keyboardDismissMode={dismissMode}
                 onScrollBeginDrag={dismissKeyboardOnNative}
                 onScroll={(event) => {
                   const n = event.nativeEvent;
@@ -1369,7 +1437,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
               <Pressable
                 accessible={false}
                 onPress={dismissKeyboardOnNative}
-                style={styles.thread}
+                style={[styles.thread, Platform.OS === 'web' ? ({ userSelect: 'text' } as object) : null]}
               >
                 {messages.hasNextPage && (
                   <Button secondary onPress={() => void messages.fetchNextPage()}>
@@ -1399,32 +1467,8 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                     </Text>
                   </View>
                 )}
-                {optimisticUser !== null && !visibleMessages.some((m) => m.role === 'user') && (
-                  <>
-                    <Animated.View
-                      testID="chat-message"
-                      entering={OPTIMISTIC_ENTERING}
-                      style={styles.optimisticUser}
-                    >
-                      <View
-                        testID="user-message-bubble"
-                        style={{
-                          paddingHorizontal: 18,
-                          paddingVertical: 11,
-                          borderRadius: 22,
-                          backgroundColor: c.userBubble,
-                        }}
-                      >
-                        <Markdown text={optimisticUser} />
-                      </View>
-                    </Animated.View>
-                    <View testID="chat-message" style={{ alignSelf: 'stretch' }}>
-                      <ThinkingSkeleton />
-                    </View>
-                  </>
-                )}
               <LayoutAnimationConfig
-                key={`${id ?? 'new'}:${loadingThread}:${optimisticUser === null}`}
+                key={`${id ?? 'new'}:${loadingThread}`}
                 skipEntering
               >
               {visibleMessages.map((message) => (
@@ -1453,6 +1497,32 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                 />
               ))}
               </LayoutAnimationConfig>
+              {optimisticUser !== null &&
+                visibleMessages.filter((message) => message.role === 'user').length <=
+                  optimisticUser.users && (
+                  <>
+                    <Animated.View
+                      testID="chat-message"
+                      entering={OPTIMISTIC_ENTERING}
+                      style={styles.optimisticUser}
+                    >
+                      <View
+                        testID="user-message-bubble"
+                        style={{
+                          paddingHorizontal: 18,
+                          paddingVertical: 11,
+                          borderRadius: 22,
+                          backgroundColor: c.userBubble,
+                        }}
+                      >
+                        <Markdown text={optimisticUser.text} />
+                      </View>
+                    </Animated.View>
+                    <View testID="chat-message" style={{ alignSelf: 'stretch' }}>
+                      <ThinkingSkeleton />
+                    </View>
+                  </>
+                )}
 
               {(snapshot.data?.tool_calls ?? [])
                 .filter((tool) => running || tool.status === 'unknown' || tool.status === 'failed')
@@ -1515,14 +1585,21 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
               ))}
               {snapshot.data?.tool_calls.map((tool) => {
                 const draft = draftFromTool(tool);
-                return draft ? (
+                if (!draft) return null;
+                const known = documentDrafts.data?.find((item) => item.id === draft.id);
+                const created = known?.status === 'created';
+                return (
                   <DraftLink
                     key={tool.id}
-                    title={draft.title}
-                    format={draft.format}
-                    onOpen={() => openDraft(draft.id)}
+                    title={known?.title ?? draft.title}
+                    format={known?.format ?? draft.format}
+                    created={created}
+                    onOpen={() => {
+                      if (created && known?.file_id) openFile(known.file_id);
+                      else openDraft(draft.id);
+                    }}
                   />
-                ) : null;
+                );
               })}
               <RunUsage run={snapshot.data?.run} />
               {snapshot.data?.run.error_code && (

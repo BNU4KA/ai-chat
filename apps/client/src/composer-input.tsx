@@ -21,6 +21,7 @@ import { Field } from './ui';
 
 export interface ComposerHandle {
   setText: (text: string) => void;
+  focus: () => void;
 }
 
 export interface ComposerInputProps {
@@ -57,6 +58,8 @@ function ComposerInputView({
   const [text, setTextState] = useState(textRef.current);
   const [height, setHeight] = useState(MIN_HEIGHT);
   const field = useRef<ComponentRef<typeof Field>>(null);
+  const hadText = useRef(!!textRef.current.trim());
+  const focusedAt = useRef(0);
 
   const update = (next: string) => {
     textRef.current = next;
@@ -64,7 +67,10 @@ function ComposerInputView({
     if (!next) setHeight(MIN_HEIGHT);
   };
 
-  useImperativeHandle(ref, () => ({ setText: update }));
+  useImperativeHandle(ref, () => ({
+    setText: update,
+    focus: () => field.current?.focus(),
+  }));
 
   useEffect(() => {
     if (Platform.OS !== 'web' || !onPasteFile) return;
@@ -90,6 +96,16 @@ function ComposerInputView({
     const next = text ? Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, element.scrollHeight)) : MIN_HEIGHT;
     element.style.height = `${next}px`;
     setHeight(next);
+    const now = !!text.trim();
+    if (
+      now &&
+      !hadText.current &&
+      Date.now() - focusedAt.current < 500 &&
+      document.activeElement !== element
+    ) {
+      element.focus();
+    }
+    hadText.current = now;
   }, [text, layoutKey]);
 
   const shape = composerShape(text, height);
@@ -126,7 +142,10 @@ function ComposerInputView({
       multiline
       scrollEnabled={height >= maxHeight}
       onContentSizeChange={onContentSizeChange}
-      onFocus={() => onFocusChange(true)}
+      onFocus={() => {
+        focusedAt.current = Date.now();
+        onFocusChange(true);
+      }}
       onBlur={() => onFocusChange(false)}
       onKeyPress={onKeyPress}
       style={[

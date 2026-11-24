@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DocumentBlock } from '@ai-chat/contracts';
-import { blocksToMarkdown, markdownToBlocks } from './draft-markdown';
+import { applyMarkup, blocksToMarkdown, markdownToBlocks } from './draft-markdown';
 
 describe('draft markdown', () => {
   it('parses headings, paragraphs, lists and tables', () => {
@@ -52,5 +52,12 @@ describe('draft markdown', () => {
 
   it('returns no blocks for blank input', () => {
     expect(markdownToBlocks('  \n\n')).toEqual([]);
+  });
+
+  it('wraps the selection and toggles a list on the current line', () => {
+    expect(applyMarkup('hello', 0, 5, 'bold')).toEqual({ text: '**hello**', start: 2, end: 7 });
+    expect(applyMarkup('line', 0, 0, 'heading')).toEqual({ text: '# line', start: 0, end: 6 });
+    expect(applyMarkup('- line', 0, 6, 'bullet')).toEqual({ text: 'line', start: 0, end: 4 });
+    expect(applyMarkup('line', 1, 1, 'numbered')).toEqual({ text: '1. line', start: 0, end: 7 });
   });
 });

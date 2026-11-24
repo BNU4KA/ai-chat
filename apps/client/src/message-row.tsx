@@ -11,7 +11,7 @@ import { PassageActions } from './chat-extras';
 import { MessageActions } from './message-actions';
 import { StreamingMarkdown } from './streaming-markdown';
 import { LiveMessageContent } from './live-message';
-import { Button, Copy, Field } from './ui';
+import { Copy, Field } from './ui';
 import { Pressable, Text } from './locale-ui';
 import { useTheme } from './theme';
 import type { FileRecord, Message } from './types';
@@ -153,24 +153,52 @@ function MessageRowView({
             scrollEnabled={fieldHeight >= EDIT_MAX_HEIGHT}
             style={[styles.editField, { height: fieldHeight }]}
           />
-          <View style={styles.editFooter}>
-            <Copy small muted>
+          <View style={[styles.editFooter, { borderTopColor: c.border }]}>
+            <Text style={[styles.editHint, { color: c.muted }]}>
               Your edit keeps the earlier answers; switch versions with the arrows.
-            </Copy>
+            </Text>
             <View style={styles.editButtons}>
-              <Button secondary onPress={onCancelEdit}>
-                Cancel
-              </Button>
-              <Button disabled={busy || saving || !draft.trim()} onPress={submitEdit}>
-                Save & regenerate
-              </Button>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Cancel"
+                onPress={onCancelEdit}
+                style={({ hovered, pressed }) => [
+                  styles.editCancel,
+                  {
+                    borderColor: c.border,
+                    backgroundColor: hovered || pressed ? c.hover : 'transparent',
+                  },
+                ]}
+              >
+                <Text style={[styles.editButtonLabel, { color: c.text }]}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Save & regenerate"
+                disabled={busy || saving || !draft.trim()}
+                onPress={submitEdit}
+                style={({ pressed }) => [
+                  styles.editSave,
+                  {
+                    backgroundColor: c.accent,
+                    opacity: busy || saving || !draft.trim() ? 0.45 : pressed ? 0.8 : 1,
+                  },
+                ]}
+              >
+                <Text style={[styles.editButtonLabel, { color: c.accentText }]}>
+                  Save & regenerate
+                </Text>
+              </Pressable>
             </View>
           </View>
         </Animated.View>
       ) : (
         <View
           testID={isUser ? 'user-message-bubble' : 'assistant-message-body'}
-          style={isUser ? [styles.bubble, { backgroundColor: c.userBubble }] : styles.body}
+          style={[
+            isUser ? [styles.bubble, { backgroundColor: c.userBubble }] : styles.body,
+            Platform.OS === 'web' ? styles.selectable : null,
+          ]}
         >
           {isUser ? (
             !!message.content && (
@@ -294,7 +322,7 @@ const styles = StyleSheet.create({
   userEditing: { alignSelf: 'stretch', maxWidth: '100%', gap: 6 },
   assistant: { alignSelf: 'stretch', maxWidth: '100%', gap: 6 },
   highlighted: { paddingLeft: 10, borderLeftWidth: 3 },
-  editBox: { padding: 14, borderRadius: 20, gap: 10 },
+  editBox: { paddingTop: 14, paddingHorizontal: 14, borderRadius: 20, gap: 8, minHeight: 180 },
   collapsed: { maxHeight: COLLAPSED_HEIGHT, overflow: 'hidden' },
   expandButton: {
     alignSelf: 'flex-start',
@@ -317,11 +345,34 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 8,
     flexWrap: 'wrap',
+    gap: 12,
+    marginHorizontal: -14,
+    marginTop: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderTopWidth: 1,
   },
-  editButtons: { flexDirection: 'row', gap: 8 },
+  editHint: { flex: 1, fontSize: 12, lineHeight: 16 },
+  editButtons: { flexDirection: 'row', gap: 8, flexShrink: 0 },
+  editCancel: {
+    minHeight: 36,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editSave: {
+    minHeight: 36,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editButtonLabel: { fontSize: 14, fontWeight: '600' },
   bubble: { gap: 10, paddingHorizontal: 18, paddingVertical: 11, borderRadius: 22 },
   body: { gap: 10 },
+  selectable: { userSelect: 'text' },
   content: { gap: 6 },
 });

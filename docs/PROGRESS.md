@@ -1476,3 +1476,13 @@ tsc and eslint on touched files passed. Not verified with a live model.
 Release `20261116T190645Z` (commit `3f01214`, archive sha256 `4b169f20…`). Previous `20261116T185139Z`
 kept for rollback; older releases removed to keep disk usage (55% -> 60% after install). Install exit 0;
 readiness ok; both services active; site 200.
+
+## Native Android release build and physical device verification — 2026-11-22
+
+Task ID: T19 partial (Android physical device install and standalone release APK verification).
+Implemented behavior:
+- Synced `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID` into gitignored `apps/client/.env` and added `-keep class expo.modules.** { *; }` to `apps/client/android/app/proguard-rules.pro` so R8 preserves Expo module enums in release builds.
+- Built standalone `apps/client/android/app/build/outputs/apk/release/app-release.apk` (`./gradlew assembleRelease`, Gradle 9.4.1, OpenJDK 17.0.18, embedded Hermes bundle `assets/index.android.bundle`).
+- Removed `adb reverse` port forwarding (`adb -s c2e4b6869807 reverse --remove-all`), installed `app-release.apk` on physical device Redmi 8A (`c2e4b6869807`), and verified standalone launch into the authenticated home screen without Metro.
+- Fixed iOS `Info.plist` (`CFBundleShortVersionString` / `CFBundleVersion`) to use `$(MARKETING_VERSION)` and `$(CURRENT_PROJECT_VERSION)` and set `version: "1.1"`, `ios.buildNumber: "2"` in `apps/client/app.json`.
+- Fixed worker queue stall after Supabase TCP connection drops (`packages/database/src/pool.ts`, `apps/worker/src/index.ts`): enabled TCP keepalive (`keepAlive: true`), 30 s query/statement timeouts, bounded 5 s rollback timeout with broken-client eviction (`client.release(broken)`), and `localConcurrency: 4` on `run.execute`. Deployed updated `pool.ts` and `apps/worker/src/index.ts` to VPS `/opt/ai-chat/current` and restarted `ai-chat-api` and `ai-chat-worker`; pending run `f4bf9ec1-7f65-4fb8-94e4-a3bb892a22d9` completed and `/health/ready` returned `database` and `queue` ok.
