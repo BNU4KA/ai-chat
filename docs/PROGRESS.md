@@ -1490,3 +1490,13 @@ Implemented behavior:
 ## Release — chat polish and web search prompt — 2026-11-24
 
 Runtime and web release `20261124T164805Z` from commit `59c4078`, archive sha256 `0fe54692f1a86ff161a23af9f5b2168fb43a6e2b675d9be55b7a88c40870338a`. Previous runtime and web `20261116T212826Z` kept for rollback. No migration. Install exit 0; readiness database and queue ok; anonymous profile 401; home 200; both services active. The hosted bundle contains the summarize control, and the worker copy of the system prompt tells the model to call `search_web` before answering current facts. Not verified in a signed-in browser session.
+
+## UX polish — model picker, suggestions noise, summarize language, missing chat — 2026-11-25
+
+Owner request (uncommitted):
+1. Model search Field moved outside Dialog/model-popover ScrollView; inset focus outline so scrollbar does not clip the ring.
+2. Tool-activity pills only for known `ALL_TOOLS`; system prompt: `<suggestions>` is not a tool.
+3. Summarize / Explain / Shorten / Check append language-of-conversation hint; system prompt matches chat/passage language for English meta-instructions.
+4. `ConversationMissing` illustrated empty state with light float/pulse animation replaces raw not-found copy.
+
+Checks: `tsc --noEmit` on `apps/client` and `packages/agent-runtime` passed. Not verified in a signed-in browser session.

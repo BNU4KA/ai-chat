@@ -36,6 +36,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import * as Crypto from 'expo-crypto';
+import { ALL_TOOLS } from '@ai-chat/contracts';
 import { api, apiEnvelope, json } from './api';
 import { useAuth } from './auth';
 import { useTheme } from './theme';
@@ -43,6 +44,7 @@ import { useLocale } from './locale';
 import { useCredential, useCapabilities, useModels, useProfile } from './queries';
 import { useRun, activeStatus } from './use-run';
 import { Button, Copy, ErrorNotice, Field, Panel } from './ui';
+import { ConversationMissing } from './conversation-missing';
 import { Dialog } from './dialog';
 import {
   ConversationSidebar,
@@ -116,6 +118,9 @@ const groupLabels: Record<Group, string> = {
   gmail: 'Gmail',
   calendar: 'Google Calendar',
 };
+const KNOWN_TOOLS = new Set<string>(ALL_TOOLS);
+const LANGUAGE_HINT =
+  'Respond in the same language as the conversation so far (not the language of this instruction).';
 
 export function ChatWorkspace({ id: routeId }: { id?: string }) {
   const auth = useAuth();
@@ -559,7 +564,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
 
   function summarize() {
     void send(
-      'Summarize this conversation: the decisions, open questions, and facts established so far. Keep it short.',
+      `Summarize this conversation: the decisions, open questions, and facts established so far. Keep it short. ${LANGUAGE_HINT}`,
     );
   }
 
@@ -1306,13 +1311,15 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                   : {}),
               }}
             >
-              <Field
-                accessibilityLabel="Search models"
-                placeholder="Search models"
-                value={modelSearch}
-                onChangeText={setModelSearch}
-                style={{ minHeight: 38, borderRadius: 10, fontSize: 14, paddingVertical: 6 }}
-              />
+              <View testID="dialog-header">
+                <Field
+                  accessibilityLabel="Search models"
+                  placeholder="Search models"
+                  value={modelSearch}
+                  onChangeText={setModelSearch}
+                  style={{ minHeight: 38, borderRadius: 10, fontSize: 14, paddingVertical: 6 }}
+                />
+              </View>
               <ErrorNotice error={models.error} />
               {models.isPending && credential.data?.configured && (
                 <FoolSpinner
@@ -1321,7 +1328,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                   style={{ alignSelf: 'center', marginVertical: 12 }}
                 />
               )}
-              <ScrollView keyboardShouldPersistTaps="handled">
+              <ScrollView keyboardShouldPersistTaps="handled" style={{ flexGrow: 0, flexShrink: 1 }}>
                 <ModelList
                   showPopular={!modelSearch.trim()}
                   models={(models.data ?? []).filter((m) =>
@@ -1445,11 +1452,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                   </Button>
                 )}
                 {id && chat.isError && (
-                  <View style={{ padding: 16, gap: 14 }}>
-                    <Copy>Conversation not found or temporarily unavailable.</Copy>
-                    <ErrorNotice error={chat.error} />
-                    <Button onPress={() => void createChat()}>Back to conversations</Button>
-                  </View>
+                  <ConversationMissing onBack={() => void createChat()} />
                 )}
                 {loadingThread && <ChatThreadSkeleton />}
                 {!loadingThread && !chat.isError && !visibleMessages.length && optimisticUser === null && (
@@ -1525,7 +1528,11 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                 )}
 
               {(snapshot.data?.tool_calls ?? [])
-                .filter((tool) => running || tool.status === 'unknown' || tool.status === 'failed')
+                .filter(
+                  (tool) =>
+                    KNOWN_TOOLS.has(tool.name) &&
+                    (running || tool.status === 'unknown' || tool.status === 'failed'),
+                )
                 .map((tool) => {
                   const active = tool.status === 'executing' || tool.status === 'pending';
                   const failed = tool.status === 'failed' || tool.status === 'unknown';
@@ -1705,13 +1712,19 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
       />
 
       {!wide && (
-        <Dialog title="Choose a model" visible={dialog === 'models'} close={() => setDialog(null)}>
-          <Field
-            accessibilityLabel="Search models"
-            placeholder="Search models"
-            value={modelSearch}
-            onChangeText={setModelSearch}
-          />
+        <Dialog
+          title="Choose a model"
+          visible={dialog === 'models'}
+          close={() => setDialog(null)}
+          header={
+            <Field
+              accessibilityLabel="Search models"
+              placeholder="Search models"
+              value={modelSearch}
+              onChangeText={setModelSearch}
+            />
+          }
+        >
           <ErrorNotice error={models.error} />
           {models.isPending && credential.data?.configured && (
             <FoolSpinner size={24} label="Loading models" />

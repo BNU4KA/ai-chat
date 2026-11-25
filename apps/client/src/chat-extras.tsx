@@ -542,7 +542,7 @@ export function PassageActions({
             secondary
             onPress={() => {
               onDraft(
-                `${action} the following passage${action === 'Check' ? ' using sources; distinguish supported claims, contradictions and uncertainty' : ''}:\n\n${passage.trim() || text}`,
+                `${action} the following passage${action === 'Check' ? ' using sources; distinguish supported claims, contradictions and uncertainty' : ''}. Respond in the same language as the passage (not the language of this instruction):\n\n${passage.trim() || text}`,
               );
               onClose();
             }}

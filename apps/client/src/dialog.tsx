@@ -9,12 +9,14 @@ export function Dialog({
   visible,
   close,
   children,
+  header,
   loading = false,
 }: {
   title: string;
   visible: boolean;
   close: () => void;
   children: ReactNode;
+  header?: ReactNode;
   loading?: boolean;
 }) {
   const { colors: c, isDark } = useTheme();
@@ -115,7 +117,12 @@ export function Dialog({
               <ChatGptIcon name="close" size={16} color={c.muted} />
             </Pressable>
           </View>
-          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 10 }}>
+          {header ? <View testID="dialog-header">{header}</View> : null}
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            style={{ flexGrow: 0, flexShrink: 1 }}
+            contentContainerStyle={{ gap: 10 }}
+          >
             {loading ? (
               <View style={{ gap: 10, paddingVertical: 8 }}>
                 {[0.92, 1, 0.7].map((w, i) => (

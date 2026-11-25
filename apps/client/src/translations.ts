@@ -363,6 +363,9 @@ export const russian: Record<string, string> = {
   Stop: 'Остановить',
   'Conversation not found or temporarily unavailable.':
     'Разговор не найден или временно недоступен.',
+  'Conversation missing': 'Разговор пропал',
+  'This chat wandered off or is temporarily unavailable. Pick another conversation and keep going.':
+    'Этот чат куда-то делся или временно недоступен. Выберите другой разговор и продолжайте.',
   'Start with a thought.': 'Начните с идеи.',
   'Ask a question, research a topic, or attach a document.':
     'Задайте вопрос, изучите тему или прикрепите документ.',

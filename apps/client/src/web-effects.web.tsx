@@ -86,6 +86,26 @@ const css = `
   border: 0 !important;
 }
 
+[data-testid="dialog-panel"] input:focus,
+[data-testid="dialog-panel"] input:focus-visible,
+[data-testid="dialog-header"] input:focus,
+[data-testid="dialog-header"] input:focus-visible,
+[data-testid="model-popover"] input:focus,
+[data-testid="model-popover"] input:focus-visible {
+  outline: 2px solid rgba(142, 142, 142, 0.65);
+  outline-offset: -2px;
+}
+
+[data-testid="dialog-header"] {
+  position: relative;
+  z-index: 2;
+}
+
+[data-testid="model-popover"] input {
+  position: relative;
+  z-index: 2;
+}
+
 button, [role="button"], [role="menuitem"] {
   transition: opacity 140ms ease, transform 120ms ease;
 }
