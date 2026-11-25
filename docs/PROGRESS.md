@@ -1493,10 +1493,14 @@ Runtime and web release `20261124T164805Z` from commit `59c4078`, archive sha256
 
 ## UX polish — model picker, suggestions noise, summarize language, missing chat — 2026-11-25
 
-Owner request (uncommitted):
+Owner request (commit `706b226`):
 1. Model search Field moved outside Dialog/model-popover ScrollView; inset focus outline so scrollbar does not clip the ring.
 2. Tool-activity pills only for known `ALL_TOOLS`; system prompt: `<suggestions>` is not a tool.
 3. Summarize / Explain / Shorten / Check append language-of-conversation hint; system prompt matches chat/passage language for English meta-instructions.
 4. `ConversationMissing` illustrated empty state with light float/pulse animation replaces raw not-found copy.
 
 Checks: `tsc --noEmit` on `apps/client` and `packages/agent-runtime` passed. Not verified in a signed-in browser session.
+
+## Release — UX polish — 2026-11-25
+
+Runtime and web release `20261125T202558Z` from commit `706b226`, archive sha256 `3a55d87c8a399533ab7ec264a89f7106b867a4155eb5c29b83483f693ed15489`. Previous `20261124T164805Z` kept for rollback. No migration. Install exit 0; readiness database and queue ok; anonymous profile 401; home 200; both services active. Hosted bundle contains Conversation missing copy; worker `execute.ts` has the suggestions-not-a-tool and conversation-language prompt lines. Not verified in a signed-in browser session.
