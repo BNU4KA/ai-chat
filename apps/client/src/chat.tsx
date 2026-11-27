@@ -1,6 +1,7 @@
 import { ModelList } from './model-list';
 import { ComposerInput, type ComposerHandle } from './composer-input';
 import { EMPTY_SHAPE, sameShape, type ComposerShape } from './composer-shape';
+import { readComposerDraft, writeComposerDraft } from './composer-drafts';
 import { consumeDraft } from './draft-transfer';
 import { Pressable, Text } from './locale-ui';
 import {
@@ -67,10 +68,11 @@ import { ReasoningEffortButton } from './reasoning-effort';
 import { MessageRow } from './message-row';
 import { collapseAttempts } from './visible-messages';
 import { usePinnedChats } from './pinned-chats';
-import { pickAndUpload, uploadPicked } from './upload';
+import { fileNameForUpload, pickFile, uploadPicked, type PickedFile } from './upload';
 import type { Conversation, DocumentDraft, Message, Run, FileRecord, Snapshot } from './types';
 
 type OptimisticSend = { text: string; users: number };
+type HeldFile = PickedFile & { key: string };
 
 const HEADER_HEIGHT = 52;
 const OPTIMISTIC_ENTERING = FadeInDown.duration(220);
@@ -122,6 +124,39 @@ const KNOWN_TOOLS = new Set<string>(ALL_TOOLS);
 const LANGUAGE_HINT =
   'Respond in the same language as the conversation so far (not the language of this instruction).';
 
+function LocalFileChip({ name, onRemove }: { name: string; onRemove: () => void }) {
+  const { colors: c } = useTheme();
+  return (
+    <View
+      style={{
+        maxWidth: 240,
+        minHeight: 36,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingLeft: 10,
+        paddingRight: 4,
+        borderWidth: 1,
+        borderColor: c.border,
+        borderRadius: 12,
+        backgroundColor: c.raised,
+      }}
+    >
+      <Text style={{ flex: 1, fontSize: 13, color: c.text }} numberOfLines={1} translate={false}>
+        {name}
+      </Text>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Remove ${name}`}
+        onPress={onRemove}
+        style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}
+      >
+        <ChatGptIcon name="close" size={14} color={c.muted} />
+      </Pressable>
+    </View>
+  );
+}
+
 export function ChatWorkspace({ id: routeId }: { id?: string }) {
   const auth = useAuth();
   const params = useLocalSearchParams<{ draft?: string; project?: string; message?: string }>();
@@ -163,12 +198,12 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     const next = Math.round(event.nativeEvent.layout.height);
     setDockHeight((prev) => (prev === next ? prev : next));
   }, []);
-  const stickyOffset = useMemo(() => ({ closed: inset.bottom, opened: 0 }), [inset.bottom]);
+  const stickyOffset = useMemo(() => ({ closed: 0, opened: -inset.bottom }), [inset.bottom]);
   const headerOffset = HEADER_HEIGHT + inset.top;
   const fades = useMemo(
     () => ({
-      header: { backgroundImage: `linear-gradient(to bottom, ${c.background} 70%, ${c.background}00 100%)` },
       dock: { backgroundImage: `linear-gradient(to bottom, ${c.background}00 0%, ${c.background} 28%)` },
+      headerFade: { backgroundImage: `linear-gradient(to bottom, ${c.background}, ${c.background}00)` },
     }),
     [c.background],
   );
@@ -184,6 +219,9 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
   const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(null);
   const [passageOpenId, setPassageOpenId] = useState<string | null>(null);
   const draftRef = useRef('');
+  const draftSlot = useRef(activeId ?? 'home');
+  const [homeTools, setHomeTools] = useState<Conversation['enabled_tools'] | null>(null);
+  const [localFiles, setLocalFiles] = useState<HeldFile[]>([]);
   const composerInput = useRef<ComposerHandle>(null);
   const [shape, setShape] = useState<ComposerShape>(EMPTY_SHAPE);
   const onShapeChange = useCallback(
@@ -230,8 +268,15 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
   const unreadNotices = (notices.data ?? []).filter((n) => !n.read_at).length;
 
   useEffect(() => {
-    setDraft(profile.data?.id ? (consumeDraft(profile.data.id, activeId ?? 'home') ?? '') : '');
+    const owner = profile.data?.id;
+    const next = activeId ?? 'home';
+    if (owner && draftSlot.current !== next) writeComposerDraft(owner, draftSlot.current, draftRef.current);
+    draftSlot.current = next;
+    const transferred = owner ? consumeDraft(owner, next) : null;
+    if (owner && transferred) writeComposerDraft(owner, next, transferred);
+    setDraft(owner ? (transferred ?? readComposerDraft(owner, next)) : '');
     setSelectedFiles([]);
+    setLocalFiles([]);
     setOptimisticUser(null);
     setError(null);
     pending.current = null;
@@ -315,7 +360,10 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     queryKey: ['files', id],
     queryFn: () => api<FileRecord[]>(`/v1/conversations/${id}/files`),
     enabled: !!id,
-    refetchInterval: 30000,
+    refetchInterval: (query) =>
+      query.state.data?.some((file) => file.status === 'pending_upload' || file.status === 'processing')
+        ? 1500
+        : 30000,
   });
   const targetMessage = useQuery({
     queryKey: ['message-context', params.message],
@@ -353,16 +401,21 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
   const currentModel = models.data?.find(
     (model) => model.id === (chat.data?.model_id ?? homeModel),
   );
+  const activeTools =
+    chat.data?.enabled_tools ??
+    homeTools ??
+    (['web', ...(capabilities.data?.tools.files === 'available' ? (['files'] as const) : [])] as Conversation['enabled_tools']);
   const incompatible =
-    !!currentModel && !currentModel.supports_tools && !!chat.data?.enabled_tools.length;
+    !!currentModel && !currentModel.supports_tools && activeTools.length > 0;
   const imageIncompatible =
     !!currentModel &&
     !currentModel.supports_images &&
-    (files.data ?? []).some(
-      (file) =>
-        file.detected_mime?.startsWith('image/') &&
-        (selectedFiles.includes(file.id) || listHasFile(file.id)),
-    );
+    (localFiles.some((file) => file.mime.startsWith('image/')) ||
+      (files.data ?? []).some(
+        (file) =>
+          file.detected_mime?.startsWith('image/') &&
+          (selectedFiles.includes(file.id) || listHasFile(file.id)),
+      ));
 
   function listHasFile(fileId: string) {
     return (
@@ -414,7 +467,10 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     creating.current = (async () => {
       const value = await api<Conversation>(
         '/v1/conversations',
-        json('POST', { model_id: homeModel }),
+        json('POST', {
+          model_id: homeModel,
+          ...(homeTools ? { enabled_tools: homeTools } : {}),
+        }),
       );
       if (params.project) {
         const attached = await api<Conversation>(
@@ -437,12 +493,18 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
   }
 
   async function createChat() {
+    const owner = profile.data?.id;
+    const current = activeId ?? 'home';
+    if (owner && current !== 'home') writeComposerDraft(owner, current, draftRef.current);
+    if (owner) writeComposerDraft(owner, 'home', '');
+    draftSlot.current = 'home';
     creating.current = null;
     setCreatedChat(null);
     setActiveId(undefined);
     setOptimisticUser(null);
     setDraft('');
     setSelectedFiles([]);
+    setLocalFiles([]);
     setError(null);
     setDrawer(false);
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -471,7 +533,8 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     const target = explicitTarget ?? chat.data;
     if (!target) {
       if (body.model_id) setHomeModel(body.model_id);
-      setDialog(null);
+      if (body.enabled_tools) setHomeTools(body.enabled_tools);
+      if (!body.enabled_tools) setDialog(null);
       return;
     }
     try {
@@ -482,7 +545,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
       if (target.id === id) cache.setQueryData(['conversation', id], value);
       void cache.invalidateQueries({ queryKey: ['conversations'] });
       setTargetChat(null);
-      setDialog(null);
+      if (!body.enabled_tools) setDialog(null);
     } catch (e) {
       setError(e);
       if (target.id === id) void chat.refetch();
@@ -492,6 +555,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
   async function send(override?: string) {
     const outgoingText = override ?? draftRef.current;
     const outgoingFiles = override ? [] : selectedFiles;
+    const outgoingLocal = override ? [] : localFiles;
     if (
       sending.current ||
       running ||
@@ -500,7 +564,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
       incompatible ||
       imageIncompatible ||
       !fileReady ||
-      (!outgoingText.trim() && !outgoingFiles.length)
+      (!outgoingText.trim() && !outgoingFiles.length && !outgoingLocal.length)
     )
       return;
     sending.current = true;
@@ -509,18 +573,43 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     dismissKeyboardOnNative();
     const users = visibleMessages.filter((message) => message.role === 'user').length;
     if (outgoingText.trim()) setOptimisticUser({ text: outgoingText, users });
+    const draftOwner = profile.data?.id;
+    const draftSlotId = activeId ?? 'home';
     if (!override) {
       setDraft('');
+      if (draftOwner) writeComposerDraft(draftOwner, draftSlotId, '');
       setSelectedFiles([]);
+      setLocalFiles([]);
       setComposerExpanded(false);
       refocusComposer.current = true;
       setInputEpoch((n) => n + 1);
       setComposerFocused(false);
     }
     haptic();
+    const uploadedIds: string[] = [];
     try {
       const targetId = await ensureChat();
-      const body = JSON.stringify({ text: outgoingText, file_ids: outgoingFiles });
+      for (const local of outgoingLocal) {
+        const file = await uploadPicked(local, targetId);
+        uploadedIds.push(file.id);
+        cache.setQueryData(['files', targetId], (old: FileRecord[] | undefined) => [
+          file,
+          ...(old ?? []).filter((item) => item.id !== file.id),
+        ]);
+      }
+      const fileIds = [...outgoingFiles, ...uploadedIds];
+      const records = cache.getQueryData<FileRecord[]>(['files', targetId]) ?? [];
+      const notReady = fileIds.some((fileId) => records.find((file) => file.id === fileId)?.status !== 'ready');
+      if (notReady) {
+        setSelectedFiles(fileIds);
+        setLocalFiles(outgoingLocal.slice(uploadedIds.length));
+        setDraft(outgoingText);
+        if (draftOwner) writeComposerDraft(draftOwner, activeId ?? draftSlotId, outgoingText);
+        setOptimisticUser(null);
+        setError(new Error('Wait until every attachment is ready'));
+        return;
+      }
+      const body = JSON.stringify({ text: outgoingText, file_ids: fileIds });
       if (pending.current?.body !== body)
         pending.current = { body, key: Crypto.randomUUID(), clientId: Crypto.randomUUID() };
       const saved = pending.current;
@@ -528,7 +617,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
         `/v1/conversations/${targetId}/messages`,
         json(
           'POST',
-          { client_message_id: saved.clientId, text: outgoingText, file_ids: outgoingFiles },
+          { client_message_id: saved.clientId, text: outgoingText, file_ids: fileIds },
           undefined,
           saved.key,
         ),
@@ -553,7 +642,9 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
       setOptimisticUser(null);
       if (!override) {
         setDraft(outgoingText);
-        setSelectedFiles(outgoingFiles);
+        if (draftOwner) writeComposerDraft(draftOwner, activeId ?? 'home', outgoingText);
+        setSelectedFiles([...outgoingFiles, ...uploadedIds]);
+        setLocalFiles(outgoingLocal.slice(uploadedIds.length));
       }
       setError(e);
     } finally {
@@ -673,25 +764,29 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     setUploading(true);
     setError(null);
     try {
-      const file = picked
-        ? await uploadPicked(
-            {
-              name: picked.name || `pasted-${Date.now()}.${picked.type.split('/')[1] ?? 'png'}`,
-              mime: picked.type,
-              blob: picked,
-            },
-            ensureChat,
-          )
-        : await pickAndUpload(ensureChat);
-      if (file) {
-        const targetId = file.conversation_id;
-        setSelectedFiles((old) => [...old, file.id]);
-        cache.setQueryData(['files', targetId], (old: FileRecord[] | undefined) => [
-          file,
-          ...(old ?? []).filter((item) => item.id !== file.id),
-        ]);
-        await cache.invalidateQueries({ queryKey: ['files', targetId] });
+      const chosen = picked
+        ? {
+            name: fileNameForUpload(
+              picked.name || `pasted-${Date.now()}`,
+              picked.type || 'image/png',
+            ),
+            mime: picked.type || 'image/png',
+            blob: picked,
+          }
+        : await pickFile();
+      if (!chosen) return;
+      if (selectedFiles.length + localFiles.length >= 5) return;
+      if (!id) {
+        setLocalFiles((old) => [...old, { key: Crypto.randomUUID(), ...chosen }]);
+        return;
       }
+      const file = await uploadPicked(chosen, id);
+      setSelectedFiles((old) => [...old, file.id]);
+      cache.setQueryData(['files', id], (old: FileRecord[] | undefined) => [
+        file,
+        ...(old ?? []).filter((item) => item.id !== file.id),
+      ]);
+      await cache.invalidateQueries({ queryKey: ['files', id] });
     } catch (e) {
       setError(e);
     } finally {
@@ -734,6 +829,13 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     };
   });
   const submitComposer = useCallback(() => void handlers.current.send(), []);
+  const onComposerText = useCallback(
+    (text: string) => {
+      const owner = profile.data?.id;
+      if (owner) writeComposerDraft(owner, activeId ?? 'home', text);
+    },
+    [activeId, profile.data?.id],
+  );
   const uploadRef = useRef(upload);
   uploadRef.current = upload;
   const onPasteFile = useCallback((file: File) => {
@@ -784,6 +886,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
   const fileReady = selectedFiles.every((fileId) =>
     files.data?.some((file) => file.id === fileId && file.status === 'ready'),
   );
+  const attachmentCount = selectedFiles.length + localFiles.length;
   const canSend =
     !busy &&
     !uploading &&
@@ -792,11 +895,11 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     !incompatible &&
     !imageIncompatible &&
     fileReady &&
-    (shape.hasText || !!selectedFiles.length);
+    (shape.hasText || attachmentCount > 0);
 
-  const webEnabled = chat.data?.enabled_tools.includes('web') ?? true;
+  const webEnabled = activeTools.includes('web');
   const webAvailable = capabilities.data?.tools.web === 'available';
-  const multilineComposer = shape.multiline || selectedFiles.length > 0;
+  const multilineComposer = shape.multiline || attachmentCount > 0;
   const stackedComposer = !wide || multilineComposer;
 
   const attachBtn = (
@@ -806,7 +909,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
       disabled={
         uploading ||
         running ||
-        selectedFiles.length >= 5 ||
+        attachmentCount >= 5 ||
         capabilities.data?.tools.files !== 'available'
       }
       onPress={() => void upload()}
@@ -820,7 +923,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
         opacity:
           uploading ||
           running ||
-          selectedFiles.length >= 5 ||
+          attachmentCount >= 5 ||
           capabilities.data?.tools.files !== 'available'
             ? 0.4
             : 1,
@@ -838,11 +941,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel="Choose tools"
-      onPress={() =>
-        void ensureChat()
-          .then(() => setDialog('tools'))
-          .catch(setError)
-      }
+      onPress={() => setDialog('tools')}
       style={({ hovered, pressed }) => ({
         height: 34,
         width: wide ? undefined : 34,
@@ -927,11 +1026,12 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
       ref={composerInput}
       textRef={draftRef}
       expanded={composerExpanded}
-      layoutKey={`${wide}:${selectedFiles.length}`}
+      layoutKey={`${wide}:${attachmentCount}`}
       onShapeChange={onShapeChange}
       onSubmit={submitComposer}
       onFocusChange={setComposerFocused}
       onPasteFile={onPasteFile}
+      onText={onComposerText}
     />
   );
 
@@ -960,8 +1060,16 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
       {incompatible && (
         <ErrorNotice error="This model does not support the selected tools. Choose another model or turn off tools." />
       )}
-      {!!selectedFiles.length && (
+      <ErrorNotice error={error} />
+      {(!!selectedFiles.length || !!localFiles.length) && (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {localFiles.map((file) => (
+            <LocalFileChip
+              key={file.key}
+              name={file.name}
+              onRemove={() => setLocalFiles((old) => old.filter((item) => item.key !== file.key))}
+            />
+          ))}
           {selectedFiles.map((fileId) => (
             <Attachment
               key={fileId}
@@ -1086,7 +1194,6 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
       {imageIncompatible && (
         <ErrorNotice error="This model cannot see photos. Choose a model with photo support." />
       )}
-      <ErrorNotice error={error} />
     </View>
   );
 
@@ -1188,7 +1295,15 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
         {/* ChatGPT 52px top header */}
         <View
           testID="chat-header"
-          style={[styles.header, fades.header, { height: headerOffset, paddingTop: inset.top, paddingHorizontal: wide ? 16 : 10 }]}
+          style={[
+            styles.header,
+            {
+              height: headerOffset,
+              paddingTop: inset.top,
+              paddingHorizontal: wide ? 16 : 10,
+              backgroundColor: c.background,
+            },
+          ]}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
             {!wide && (
@@ -1277,6 +1392,22 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
             )}
           </View>
         </View>
+        {Platform.OS === 'web' && (
+          <View
+            pointerEvents="none"
+            style={[
+              {
+                position: 'absolute',
+                top: headerOffset,
+                left: 0,
+                right: 0,
+                height: 16,
+                zIndex: 59,
+              },
+              fades.headerFade,
+            ]}
+          />
+        )}
 
         {/* Top-left floating Model Dropdown Popover (on desktop/wide) */}
         {dialog === 'models' && wide && (
@@ -1368,7 +1499,10 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
 
         <View style={styles.column}>
           {isHome ? (
-            <KeyboardAvoidingView behavior="padding" style={styles.column}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'web' ? undefined : 'padding'}
+              style={styles.column}
+            >
             <ScrollView
               contentContainerStyle={{
                 flexGrow: 1,
@@ -1391,6 +1525,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                   marginBottom: 24,
                   alignItems: 'center',
                   flexGrow: 1,
+                  flexShrink: 1,
                   justifyContent: 'center',
                 }}
               >
@@ -1421,7 +1556,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                 contentContainerStyle={{
                   paddingHorizontal: wide ? 24 : 14,
                   paddingTop: headerOffset + 16,
-                  paddingBottom: dockHeight + inset.bottom + 16,
+                  paddingBottom: dockHeight + 16,
                   maxWidth: 792,
                   width: '100%',
                   alignSelf: 'center',
@@ -1646,9 +1781,10 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
               </View>
             )}
             <KeyboardStickyView
+              enabled={Platform.OS !== 'web'}
               offset={stickyOffset}
               onLayout={onDockLayout}
-              style={[styles.dock, fades.dock]}
+              style={[styles.dock, fades.dock, { paddingBottom: inset.bottom }]}
             >
               {!composerExpanded && composer}
             </KeyboardStickyView>
@@ -1677,7 +1813,11 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                   }}
                   style={{ flex: 1 }}
                 />
-                <KeyboardStickyView offset={stickyOffset} style={styles.expandedComposer}>
+                <KeyboardStickyView
+                  enabled={Platform.OS !== 'web'}
+                  offset={stickyOffset}
+                  style={styles.expandedComposer}
+                >
                   {composer}
                 </KeyboardStickyView>
               </View>
@@ -1758,7 +1898,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
           }}
         >
           {(Object.keys(groupLabels) as Group[]).map((group, idx) => {
-            const enabled = !!chat.data?.enabled_tools.includes(group);
+            const enabled = activeTools.includes(group);
             const available = capabilities.data?.tools[group] === 'available';
             const disabled = !available && !enabled;
             const iconName: ChatGptIconName =
@@ -1778,8 +1918,8 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
                 onPress={() =>
                   void patch({
                     enabled_tools: enabled
-                      ? chat.data!.enabled_tools.filter((g) => g !== group)
-                      : [...chat.data!.enabled_tools, group],
+                      ? activeTools.filter((g) => g !== group)
+                      : [...activeTools, group],
                   })
                 }
                 style={({ hovered, pressed }) => ({
@@ -1835,6 +1975,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
           })}
         </View>
 
+        {!!id && (
         <View
           style={{
             borderRadius: 12,
@@ -1957,6 +2098,7 @@ export function ChatWorkspace({ id: routeId }: { id?: string }) {
             </Text>
           </Pressable>
         </View>
+        )}
       </Dialog>
 
       <Dialog

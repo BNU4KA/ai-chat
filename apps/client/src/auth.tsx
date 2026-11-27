@@ -1,3 +1,4 @@
+import { clearComposerDrafts } from './composer-drafts';
 import {clearDraftTransfer} from './draft-transfer';
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { AppState, Platform } from 'react-native';
@@ -18,7 +19,11 @@ export function AuthProvider({children}: {children: ReactNode}) {
     let mounted = true;let authEvent=false;
     const update = (next: Session | null) => {
       if (!mounted) return;
-      if (user.current !== undefined && user.current !== (next?.user.id ?? null)) {cache.clear();clearDraftTransfer();}
+      if (user.current !== undefined && user.current !== (next?.user.id ?? null)) {
+        cache.clear();
+        clearDraftTransfer();
+        if (user.current) clearComposerDrafts(user.current);
+      }
       user.current = next?.user.id ?? null;
       setSession(next); setReady(true);
     };
@@ -32,7 +37,10 @@ export function AuthProvider({children}: {children: ReactNode}) {
     return () => {mounted = false; data.subscription.unsubscribe(); subscription.remove();};
   }, [cache]);
   async function signOut() {
-    cache.clear();clearDraftTransfer();
+    const owner = user.current;
+    cache.clear();
+    clearDraftTransfer();
+    if (owner) clearComposerDrafts(owner);
     if (supabase) await supabase.auth.signOut({scope: 'local'});
     setSession(null);
   }

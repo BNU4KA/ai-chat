@@ -545,7 +545,7 @@ export async function listConversations(
 ): Promise<{ items: ReturnType<typeof conversationFrom>[]; next: string | null }> {
   return withOwner(ownerId, async (tx) => {
     const params: unknown[] = [limit + 1];
-    let where = 'true';
+    let where = `exists (select 1 from messages m where m.conversation_id = c.id and m.role = 'user')`;
     if (query) {
       params.push(`%${query.replace(/[\\%_]/g, (char) => `\\${char}`)}%`);
       where += ` and title ilike $${params.length} escape '\\'`;

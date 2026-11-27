@@ -33,6 +33,7 @@ export interface ComposerInputProps {
   onSubmit: () => void;
   onFocusChange: (focused: boolean) => void;
   onPasteFile?: (file: File) => void;
+  onText?: (text: string) => void;
 }
 
 const MIN_HEIGHT = 24;
@@ -54,6 +55,7 @@ function ComposerInputView({
   onSubmit,
   onFocusChange,
   onPasteFile,
+  onText,
 }: ComposerInputProps) {
   const [text, setTextState] = useState(textRef.current);
   const [height, setHeight] = useState(MIN_HEIGHT);
@@ -61,14 +63,15 @@ function ComposerInputView({
   const hadText = useRef(!!textRef.current.trim());
   const focusedAt = useRef(0);
 
-  const update = (next: string) => {
+  const update = (next: string, notify = true) => {
     textRef.current = next;
     setTextState(next);
     if (!next) setHeight(MIN_HEIGHT);
+    if (notify) onText?.(next);
   };
 
   useImperativeHandle(ref, () => ({
-    setText: update,
+    setText: (text: string) => update(text, false),
     focus: () => field.current?.focus(),
   }));
 

@@ -16,6 +16,7 @@ import { LocaleProvider } from '../src/locale';
 import { WebEffects } from '../src/web-effects';
 import { useProfile } from '../src/queries';
 import { rememberReturnPath, consumeReturnPath } from '../src/return-path';
+import { useVisualViewportFrame } from '../src/visual-viewport';
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -32,6 +33,7 @@ function Navigation() {
   const profileSettled = !session || !profile.isPending;
   const launchReady = themeReady && ready && profileSettled;
   const profileTheme = profile.data?.theme;
+  useVisualViewportFrame();
 
   useEffect(() => {
     if (profileTheme) setChoice(profileTheme);

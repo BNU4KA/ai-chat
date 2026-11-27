@@ -54,6 +54,18 @@ const css = `
   100% { opacity: 0; transform: translate(var(--kx, 36px), var(--ky, -34px)) scale(1.35) rotate(220deg); }
 }
 
+html, body, #root {
+  height: var(--app-height, 100dvh);
+  overflow: hidden;
+}
+body {
+  position: fixed;
+  top: var(--app-top, 0px);
+  left: 0;
+  right: 0;
+  width: 100%;
+}
+
 * {
   scrollbar-width: thin;
   scrollbar-color: rgba(142, 142, 142, 0.25) transparent;

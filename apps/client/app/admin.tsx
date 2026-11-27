@@ -4,6 +4,7 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
+  useWindowDimensions,
   View,
   type TextStyle,
   type ViewStyle,
@@ -57,6 +58,8 @@ type AdminStyles = {
   colUserActions: ViewStyle;
   actionRow: ViewStyle;
   actionStack: ViewStyle;
+  card: ViewStyle;
+  cardLine: ViewStyle;
   title: TextStyle;
   headText: TextStyle;
   cellText: TextStyle;
@@ -156,6 +159,15 @@ function useAdminStyles(): AdminStyles {
           justifyContent: 'flex-end',
         },
         actionStack: { flexDirection: 'column', alignItems: 'flex-start', gap: 4 },
+        card: {
+          gap: 8,
+          padding: 12,
+          borderWidth: 1,
+          borderColor: c.border,
+          borderRadius: 12,
+          backgroundColor: c.raised,
+        },
+        cardLine: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'center' },
         title: { color: c.text, fontSize: 16, fontWeight: '600' },
         headText: { color: c.muted, fontSize: 12, fontWeight: '600' },
         cellText: { color: c.text, fontSize: 13 },
@@ -287,7 +299,8 @@ export default function AdminScreen() {
   const profile = useProfile();
   const admin = Boolean(profile.data?.is_admin);
   const styles = useAdminStyles();
-  const [tab, setTab] = useState<AdminTab>('keys');
+  const wide = useWindowDimensions().width >= 1024;
+  const [tab, setTab] = useState<AdminTab>('users');
   const [label, setLabel] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [keyOpen, setKeyOpen] = useState(false);
@@ -411,22 +424,27 @@ export default function AdminScreen() {
 
   return (
     <Page title="Admin Panel" wide>
-      <View style={styles.shell}>
-        <View style={styles.navShift}>
-        <View style={styles.nav}>
-          <NavItem
-            label="OpenRouter keys"
-            icon="sliders"
-            active={tab === 'keys'}
-            styles={styles}
-            onPress={showKeys}
-          />
+      <View style={[styles.shell, !wide && { flexDirection: 'column', gap: 12 }]}>
+        <View style={[styles.navShift, !wide && { paddingTop: 0 }]}>
+        <View
+          style={[
+            styles.nav,
+            !wide && { width: '100%', flexDirection: 'row', borderRightWidth: 0, paddingRight: 0 },
+          ]}
+        >
           <NavItem
             label="Users"
             icon="projects"
             active={tab === 'users'}
             styles={styles}
             onPress={showUsers}
+          />
+          <NavItem
+            label="OpenRouter keys"
+            icon="sliders"
+            active={tab === 'keys'}
+            styles={styles}
+            onPress={showKeys}
           />
         </View>
         </View>
@@ -482,6 +500,7 @@ export default function AdminScreen() {
             autoCapitalize="none"
             autoCorrect={false}
           />
+          {wide ? (
           <ScrollView horizontal style={styles.scroller}>
             <View style={styles.tableUsers}>
               <View style={styles.head}>
@@ -526,6 +545,25 @@ export default function AdminScreen() {
               ))}
             </View>
           </ScrollView>
+          ) : (
+            <View style={styles.stack}>
+              {(users.data ?? []).map((user) => (
+                <UserRow
+                  key={user.id}
+                  card
+                  user={user}
+                  self={user.id === profile.data?.id}
+                  busy={busy}
+                  confirm={confirmUser === user.id}
+                  styles={styles}
+                  onAssign={openAssign}
+                  onConfirm={setConfirmUser}
+                  onCancel={setConfirmUser}
+                  onDelete={removeUser}
+                />
+              ))}
+            </View>
+          )}
           {users.data?.length === 0 && <Copy>No users match this search.</Copy>}
         </View>
       )}
@@ -782,6 +820,7 @@ interface UserRowProps {
   self: boolean;
   busy: boolean;
   confirm: boolean;
+  card?: boolean;
   styles: AdminStyles;
   onAssign: (user: AdminUser) => void;
   onConfirm: (id: string | null) => void;
@@ -794,6 +833,7 @@ function UserRow({
   self,
   busy,
   confirm,
+  card = false,
   styles,
   onAssign,
   onConfirm,
@@ -805,6 +845,72 @@ function UserRow({
   const cancel = useCallback(() => onCancel(null), [onCancel]);
   const remove = useCallback(() => onDelete(user.id), [onDelete, user.id]);
   const name = user.display_name || user.email || user.id;
+  const actions = confirm ? (
+    <>
+      <Button quiet danger disabled={busy} onPress={remove}>
+        Confirm delete
+      </Button>
+      <Button quiet secondary disabled={busy} onPress={cancel}>
+        Cancel
+      </Button>
+    </>
+  ) : (
+    <Button quiet danger disabled={busy} onPress={confirmDelete}>
+      Delete
+    </Button>
+  );
+  if (card) {
+    return (
+      <View style={styles.card}>
+        <Text style={styles.cellText} translate={false} numberOfLines={1}>
+          {name}
+        </Text>
+        {user.email && user.email !== name ? (
+          <Text style={styles.headText} translate={false} numberOfLines={1}>
+            {user.email}
+          </Text>
+        ) : null}
+        <View style={styles.cardLine}>
+          <Text style={styles.headText}>Joined</Text>
+          <Text style={styles.cellText} translate={false}>
+            {when(user.created_at)}
+          </Text>
+        </View>
+        <View style={styles.cardLine}>
+          <Text style={styles.headText}>Chats</Text>
+          <Text style={styles.cellText} translate={false}>
+            {String(user.conversations_count)}
+          </Text>
+        </View>
+        <View style={styles.cardLine}>
+          <Text style={styles.headText}>Spend</Text>
+          <Text style={styles.cellText} translate={false}>
+            {`$${user.total_cost_usd}`}
+          </Text>
+        </View>
+        <View style={styles.cardLine}>
+          <Text style={styles.headText}>Personal</Text>
+          <Text style={styles.cellText}>{user.has_personal_key ? 'Yes' : 'No'}</Text>
+        </View>
+        <View style={styles.cardLine}>
+          <Text style={styles.headText}>Server</Text>
+          <Text style={styles.cellText} translate={user.managed_key == null}>
+            {user.managed_key?.label ?? 'None'}
+          </Text>
+        </View>
+        <View style={styles.cardLine}>
+          <Text style={styles.headText}>Priority</Text>
+          <Text style={styles.cellText}>{user.key_priority === 'server' ? 'Server' : 'Personal'}</Text>
+        </View>
+        <View style={styles.actionRow}>
+          <Button quiet secondary disabled={busy} onPress={assign}>
+            Assign
+          </Button>
+          {!self && actions}
+        </View>
+      </View>
+    );
+  }
   return (
     <View style={styles.line}>
       <View style={[styles.cell, styles.colUser]}>
@@ -839,21 +945,7 @@ function UserRow({
         <Button quiet secondary disabled={busy} onPress={assign}>
           Assign
         </Button>
-        {!self &&
-          (confirm ? (
-            <>
-              <Button quiet danger disabled={busy} onPress={remove}>
-                Confirm delete
-              </Button>
-              <Button quiet secondary disabled={busy} onPress={cancel}>
-                Cancel
-              </Button>
-            </>
-          ) : (
-            <Button quiet danger disabled={busy} onPress={confirmDelete}>
-              Delete
-            </Button>
-          ))}
+        {!self && actions}
       </View>
     </View>
   );
